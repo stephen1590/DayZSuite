@@ -1,0 +1,57 @@
+// CryptPad server config — RENDERED by ../Deploy-CryptPad.ps1 from this template.
+// Do NOT hand-edit the deployed copy at <AppDir>/config/config.js; change this
+// template and re-run the deploy (project rule: never hand-patch the live box).
+//
+// CryptPad needs TWO origins for its sandbox isolation: the main app origin
+// (httpUnsafeOrigin) handles keys/accounts, the sandbox origin (httpSafeOrigin)
+// renders untrusted document UI. They MUST be different origins. As of CryptPad
+// 2026.x the app itself emits the Content-Security-Policy / cross-origin headers,
+// so nginx is only a thin reverse proxy (see ../nginx/cryptpad.conf.template).
+module.exports = {
+    httpUnsafeOrigin: '__MAIN_ORIGIN__',
+    httpSafeOrigin:   '__SANDBOX_ORIGIN__',
+
+    // Node listens on localhost only; nginx terminates TLS on 443 and proxies
+    // to 3000 (HTTP) and /cryptpad_websocket -> 3003. These ports are never
+    // exposed publicly — do not open them in the firewall.
+    httpAddress: 'localhost',
+    // httpPort:      3000,   // default; matches the HTTP upstream in the nginx template
+    // websocketPort: 3003,   // default; matches the WS upstream in the nginx template
+
+    // Admin-panel access — rendered from AdminKeys in deploy.config.json. This is
+    // the ONLY way to bootstrap an admin: register the account first, copy its
+    // Settings -> "Public Signing Key", paste it into deploy.config.json, redeploy.
+    // NOTE: the server reads adminKeys and defaultStorageLimit (below) from THIS
+    // file, but invite-only registration and anonymous access are NOT config.js
+    // keys in CryptPad 2026.x — they are runtime "decrees" you toggle once in the
+    // admin panel; they are stored in __DATA_DIR__/data/decrees and survive every
+    // redeploy (this script never clobbers the data dir).
+    adminKeys: [
+        __ADMIN_KEYS__
+    ],
+
+    // Default per-user storage quota, in BYTES (server default is 50MB). Honored
+    // by lib/env.js unless overridden by an admin-panel decree. = __DEFAULT_STORAGE_GB__ GB/user.
+    defaultStorageLimit: __DEFAULT_STORAGE_BYTES__,
+
+    // Max upload size (bytes). Keep in sync with client_max_body_size in the
+    // nginx template.
+    maxUploadSize: __MAX_UPLOAD_BYTES__,
+
+    // ---- storage: EVERYTHING under __DATA_DIR__ so it is one clean SFTP target ----
+    filePath:        '__DATA_DIR__/datastore/',
+    archivePath:     '__DATA_DIR__/data/archive',
+    pinPath:         '__DATA_DIR__/data/pins',
+    taskPath:        '__DATA_DIR__/data/tasks',
+    blockPath:       '__DATA_DIR__/block',
+    blobPath:        '__DATA_DIR__/blob',
+    blobStagingPath: '__DATA_DIR__/data/blobstage',
+    decreePath:      '__DATA_DIR__/data/decrees',
+    logPath:         '__DATA_DIR__/data/logs',
+
+    logToStdout: false,
+    logLevel:    'info',
+    logFeedback: false,
+    verbose:     false,
+    installMethod: 'unspecified',
+};

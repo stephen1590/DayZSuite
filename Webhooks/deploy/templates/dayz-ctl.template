@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# dayz-ctl — the ONE privileged action script. Installed at /usr/local/bin/dayz-ctl
+# and callable by the webhooks service ONLY as `sudo dayz-ctl <verb> [arg]`
+# (see webhooks.sudoers). This is the entire privilege surface of the webhook API:
+# a closed verb set, every argument re-validated here regardless of what the caller
+# claims to have checked. Rendered from this template by Deploy-Webhooks.ps1
+# (__UNIT__ / __SERVER_DIR__ filled in) — never hand-edit the installed copy.
+set -euo pipefail
+
+UNIT='__UNIT__'
+SERVER_DIR='__SERVER_DIR__'
+RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
+
+die() { echo "dayz-ctl: $*" >&2; exit 1; }
+
+verb="${1:-}"
+arg="${2:-}"
+
+case "$verb" in
+  restart|start|stop)
+    exec systemctl "$verb" "$UNIT"
+    ;;
+
+  status)
+    # Print active/inactive/... and always exit 0 (status is a query, not a failure).
+    systemctl is-active "$UNIT" || true
+    ;;
+
+  players)
+    [ -f "$RCON" ] || die "rcon script not found: $RCON"
+    exec pwsh -NoProfile -File "$RCON" "$SERVER_DIR" players
+    ;;
+
+  broadcast)
+    [ -n "$arg" ] || die "broadcast needs a message"
+    # Second line of defence: printable ASCII only, capped. The service sanitizes
+    # too, but this script trusts nothing it is handed.
+    msg="$(printf '%s' "$arg" | tr -cd '\11\12\40-\176' | cut -c1-200)"
+    [ -n "$msg" ] || die "empty message after sanitising"
+    [ -f "$RCON" ] || die "rcon script not found: $RCON"
+    exec pwsh -NoProfile -File "$RCON" "$SERVER_DIR" "say -1 $msg"
+    ;;
+
+  set-map)
+    # Validate the mission NAME (no path traversal) AND that it is actually installed,
+    # then persist it and restart. Exit 2 specifically = unknown mission (the service
+    # maps that to a 400 for the caller).
+    case "$arg" in
+      ''|*/*|*..*) die "invalid mission name" ;;
+    esac
+    [ -d "$SERVER_DIR/mpmissions/$arg" ] || { echo "dayz-ctl: mission not installed: $arg" >&2; exit 2; }
+    printf 'DAYZ_MISSION=%s\n' "$arg" > "$SERVER_DIR/map.env"
+    exec systemctl restart "$UNIT"
+    ;;
+
+  *)
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map)"
+    ;;
+esac

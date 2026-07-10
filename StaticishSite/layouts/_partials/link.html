@@ -1,0 +1,21 @@
+{{- /*
+  Shared anchor builder. The `link` and `image` shortcodes both call this so
+  the tel:/mailto: handling and external-tab attributes live in one place.
+
+  Params (dict):
+    tel      phone number  → tel: link
+    email    address       → mailto: link
+    href     any URL       (used only when neither tel nor email is set)
+    external "true"        → target="_blank" rel="noopener noreferrer"
+    class    extra CSS class(es) on the <a>
+    content  inner HTML of the anchor (link text, or an <img>)
+*/ -}}
+{{- $href := "" -}}
+{{- if .tel -}}
+  {{- $href = printf "tel:%s" .tel -}}
+{{- else if .email -}}
+  {{- $href = printf "mailto:%s" .email -}}
+{{- else -}}
+  {{- $href = .href -}}
+{{- end -}}
+<a href="{{ $href | safeURL }}"{{ if .external }} target="_blank" rel="noopener noreferrer"{{ end }}{{ with .class }} class="{{ . }}"{{ end }}>{{ .content | safeHTML }}</a>

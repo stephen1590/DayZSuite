@@ -1,0 +1,8 @@
+# Sudoers grant for the webhook service — installed to /etc/sudoers.d/webhooks
+# (mode 0440, validated with `visudo -c` by deploy.sh). Rendered from this template
+# by Deploy-Webhooks.ps1 (__RUN_USER__ = the service account).
+#
+# The service account may run EXACTLY ONE program as root, with no password: the
+# dayz-ctl allowlist script. It has no other sudo rights. Do not widen this — every
+# capability the webhook API can ever have is defined by dayz-ctl's verb set, not here.
+__RUN_USER__ ALL=(root) NOPASSWD: /usr/local/bin/dayz-ctl

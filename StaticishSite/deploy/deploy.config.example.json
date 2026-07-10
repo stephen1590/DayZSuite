@@ -1,0 +1,17 @@
+{
+  // StaticishSite deploy config. Deploy-Site.ps1 loads it for content deploys;
+  // ../../Provision-Tls.ps1 -Service StaticishSite reads the TLS keys. Shared
+  // host + domain values come from ../../host.config.env (merged in by
+  // Load-DeployConfig.ps1); ${BaseDomain} resolves from there, so the domain
+  // lives in exactly one place. Only StaticishSite-specific values are here.
+
+  // --- content deploy (Deploy-Site.ps1) ---
+  "RemotePath": "/var/www/personal-projects",   // web root nginx serves
+
+  // --- TLS provisioning (../../Provision-Tls.ps1 -Service StaticishSite) ---
+  "SiteName": "personal-projects",
+  "Hostnames": ["${BaseDomain}"],               // 1 name: the apex domain
+  "NginxTemplate": "nginx/personal-projects.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/personal-projects-http-only.conf.template",
+  "Webroot": "/var/www/personal-projects"       // = RemotePath; engine mkdir+chowns to SshUser
+}

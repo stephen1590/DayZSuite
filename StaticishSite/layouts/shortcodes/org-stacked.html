@@ -1,0 +1,20 @@
+{{- $image := .Get "image" -}}
+{{- $logo := .Get "logo" -}}
+{{- $title := .Get "title" -}}
+
+<div class="sc-org-stacked">
+  {{- if $logo }}
+  <div class="sc-org-stacked-logo">
+    <img src="{{ $logo }}" alt="{{ with $title }}{{ . }} logo{{ else }}logo{{ end }}">
+    {{- with $title }}<p class="sc-org-stacked-title">{{ . }}</p>{{ end }}
+  </div>
+  {{- else if $title }}
+  <p class="sc-org-stacked-title">{{ $title }}</p>
+  {{- end }}
+  {{- if $image }}
+  <div class="sc-org-stacked-image">
+    <img src="{{ $image }}" alt="{{ $title }}">
+  </div>
+  {{- else if and $logo (not $image) }}{{/* logo only — already rendered above */}}
+  {{- end }}
+</div>

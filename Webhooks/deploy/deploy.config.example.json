@@ -1,0 +1,65 @@
+{
+  // Webhooks deploy config — EVERY tunable lives HERE; the deploy scripts hold no
+  // values, only flow. Shared host + domain values come from ../../host.config.env
+  // (merged in by Load-DeployConfig.ps1); ${BaseDomain}, ${Port} and ${SshUser}
+  // resolve from the merged config so each primitive lives in exactly one place.
+  // Read by:
+  //   ../../Provision-Tls.ps1 -Service Webhooks  (TLS keys)
+  //   Deploy-Webhooks.ps1                         (app keys)
+  //
+  // NOTE: no secrets here. The HMAC signing secret and the VPP URL token are
+  // generated ONCE on the box by remote/deploy.sh (into /etc/webhooks/secrets.env)
+  // and printed for you to copy — they never touch this file or the repo.
+
+  // --- TLS provisioning ---
+  "SiteName": "webhooks",
+  "Hostnames": ["hooks.${BaseDomain}"],          // single public name, one cert
+  "NginxTemplate": "nginx/webhooks.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/webhooks-http-only.conf.template",
+  "TemplateVars": {
+    "__UPSTREAM__": "localhost:${Port}"          // nginx proxy_pass target (from Port)
+  },
+
+  // --- app deploy (Deploy-Webhooks.ps1) ---
+  "AppDir":    "/opt/webhooks",       // where the built Node app is installed
+  "NodeMajor": 22,                    // Node.js major (matches CryptPad on this box)
+  "NodeBin":   "/usr/bin/node",       // node path baked into the systemd unit
+  "RunUser":   "webhooks",            // dedicated, unprivileged service account
+  "Port":      3100,                  // localhost port the Node app listens on
+  "AuditDir":  "/var/log/webhooks",   // CSV audit ledger (journald is the full log)
+
+  // Which DayZ server dayz-ctl drives. ServerDir follows the DayZ deploy home
+  // (/home/<SshUser>); Unit is the systemd unit name.
+  "Dayz": {
+    "Unit":      "dayz-server",
+    "ServerDir": "/home/${SshUser}/servers/dayz-server"
+  },
+
+  // Per-action cooldown (seconds). "default" covers any action not named here.
+  // The "you already asked for a restart" guard — a second call inside the window
+  // gets a friendly 409 telling it how long to wait.
+  "Cooldowns": {
+    "restart":   60,
+    "stop":      60,
+    "start":     10,
+    "map":       120,
+    "broadcast": 5,
+    "default":   3
+  },
+
+  // Refuse destructive actions (restart/stop/map) while players are online,
+  // unless the request body says {"force": true}. Uses the DayZ RCon player count.
+  "PlayerGuard": true,
+
+  // Coarse global rate limit (per source IP) in front of the per-action cooldowns.
+  "RateLimit": { "Max": 30, "WindowMs": 60000 },
+
+  // VPP (and other event-source senders) ingress at /sources/vpp/<token>.
+  // Enabled = accept the feed and audit it. Rules map an event's text to an
+  // action (substring match) and are OFF by default — add deliberately, e.g.:
+  //   { "match": "!restart-now", "action": "restart", "params": {} }
+  "Vpp": {
+    "Enabled": true,
+    "Rules": []
+  }
+}

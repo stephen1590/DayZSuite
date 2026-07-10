@@ -1,0 +1,33 @@
+# CryptPad — plain HTTP reverse proxy (no TLS). TEMPORARY, written by
+# Provision-Tls.ps1 -SkipTls for use before DNS points here. NOTE: CryptPad needs
+# a secure (HTTPS) context to actually function; this only gets nginx answering
+# so you can confirm routing. Re-run WITHOUT -SkipTls once DNS is correct.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __SERVER_NAMES__;
+
+    client_max_body_size __MAX_BODY_MB__;   # from MaxUploadMb in deploy.config.json
+
+    location ^~ /cryptpad_websocket {
+        proxy_pass http://__UPSTREAM_WS__;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://__UPSTREAM_HTTP__;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

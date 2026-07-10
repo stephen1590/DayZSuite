@@ -1,0 +1,21 @@
+{{- $title := .Get "title" -}}
+{{- $image := .Get "image" -}}
+{{- $url := .Get "url" -}}
+{{- $urlText := .Get "url-text" | default "Learn more" -}}
+{{- $external := .Get "external" -}}
+{{- $class := .Get "class" -}}
+
+<div class="sc-card{{ with $class }} {{ . }}{{ end }}">
+  {{- with $image }}
+  <div class="sc-card-image">
+    <img src="{{ . }}" alt="{{ $title }}">
+  </div>
+  {{- end }}
+  <div class="sc-card-body">
+    {{- with $title }}<h3 class="sc-card-title">{{ . }}</h3>{{ end }}
+    <div class="sc-card-content">{{ .Inner | markdownify }}</div>
+    {{- with $url }}
+    {{ partial "link.html" (dict "href" . "external" $external "class" "sc-card-link" "content" $urlText) }}
+    {{- end }}
+  </div>
+</div>

@@ -1,0 +1,43 @@
+{
+  // CryptPad deploy config — EVERY tunable lives HERE; the deploy scripts hold
+  // no values, only flow. Shared host + domain values come from
+  // ../../host.config.env (merged in by Load-DeployConfig.ps1); ${BaseDomain}
+  // and ${MaxUploadMb} resolve from the merged config so each primitive lives in
+  // exactly one place and cannot drift. Read by:
+  //   ../../Provision-Tls.ps1 -Service CryptPad  (TLS keys)
+  //   Deploy-CryptPad.ps1                         (app keys)
+
+  // --- TLS provisioning ---
+  "SiteName": "cryptpad",
+  "Hostnames": ["pad.${BaseDomain}", "pad-sandbox.${BaseDomain}"],  // ONE cert, two SANs
+  "NginxTemplate": "nginx/cryptpad.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/cryptpad-http-only.conf.template",
+  // no Webroot: CryptPad is a proxied Node service, not a static rsync target.
+  "TemplateVars": {
+    "__MAIN_DOMAIN__":    "pad.${BaseDomain}",
+    "__SANDBOX_DOMAIN__": "pad-sandbox.${BaseDomain}",
+    "__UPSTREAM_HTTP__":  "localhost:3000",     // CryptPad node httpPort
+    "__UPSTREAM_WS__":    "localhost:3003",     // CryptPad node websocketPort
+    "__MAX_BODY_MB__":    "${MaxUploadMb}m"     // nginx client_max_body_size (from MaxUploadMb)
+  },
+
+  // --- app deploy (Deploy-CryptPad.ps1) ---
+  "AppDir":    "/opt/cryptpad",       // cloned CryptPad source + node_modules
+  "DataDir":   "/var/lib/cryptpad",   // datastore/ blob/ block/ data/ — the SFTP target
+  "Ref":       "2026.5.1",            // pinned CryptPad release tag (update = bump + redeploy)
+  "RepoUrl":   "https://github.com/cryptpad/cryptpad.git",
+  "NodeMajor": 22,                    // Node.js major (Active LTS)
+  "NodeBin":   "/usr/bin/node",       // node path baked into the systemd unit
+  "RunUser":   "cryptpad",            // dedicated service account
+
+  "MaxUploadMb":      300,            // per-file upload cap (config.js + nginx, see __MAX_BODY_MB__)
+  "DefaultStorageGb": 10,             // default per-user storage quota (config.js defaultStorageLimit)
+
+  // Admin-panel bootstrap. Public signing keys (Settings -> "Public Signing
+  // Key") of the accounts that get admin. Empty on the FIRST deploy; then
+  // register at https://pad.${BaseDomain}, copy your key, paste it here (e.g.
+  // "[cryptpad-user@pad.${BaseDomain}/PASTE_KEY=]"), and redeploy. Invite-only
+  // registration / anonymous access are admin-panel decrees (DataDir/data/decrees),
+  // not config keys.
+  "AdminKeys": []
+}

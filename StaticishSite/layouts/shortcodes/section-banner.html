@@ -1,0 +1,7 @@
+{{- $src := .Get "src" -}}
+{{- $alt := .Get "alt" | default "" -}}
+{{- $height := .Get "height" | default "300px" -}}
+
+<div class="sc-section-banner" style="height:{{ $height }}">
+  <img src="{{ $src }}" alt="{{ $alt }}">
+</div>

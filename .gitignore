@@ -1,0 +1,33 @@
+# NginxService — one repo for the shared nginx/TLS engine + all nested services.
+# Per-subproject .gitignore files also exist (StaticishSite/, Webhooks/app/);
+# this root file is the single place for host-level secrets and cross-cutting
+# generated output. Committable *.example.ps1 siblings stay tracked.
+
+# ── Secrets / machine-specific (never commit; ship a *.example.env/.json instead) ──
+/host.config.env
+**/deploy/deploy.config.json
+**/secrets.env
+
+# ── Rendered runtime config (generated from *.template) ──
+**/config.json
+
+# ── Deploy artifacts (regenerated every run) ──
+**/deploy/stage/
+**/logs/
+*.log
+
+# ── Node (Webhooks app) ──
+**/node_modules/
+**/dist/
+
+# ── Hugo (StaticishSite) ──
+/StaticishSite/public/
+/StaticishSite/resources/
+/StaticishSite/.hugo_build.lock
+/StaticishSite/bin/
+
+# ── Editor / OS / agent cruft ──
+.claude/
+CLAUDE.md
+.DS_Store
+Thumbs.db
