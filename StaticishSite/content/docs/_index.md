@@ -13,5 +13,6 @@ box.
 |---|---|---|
 | [DayZ — *Commie Lobby*]({{< relref "/docs/game-servers/dayz" >}}) | Modded DayZ dedicated server | Live |
 | [Mumble]({{< relref "/docs/mumble" >}}) | Low-latency voice chat | Live |
+| [CryptPad]({{< relref "/docs/cryptpad" >}}) | End-to-end encrypted docs | Coming soon |
 
 More game servers will land under **[Game Servers]({{< relref "/docs/game-servers" >}})** over time.

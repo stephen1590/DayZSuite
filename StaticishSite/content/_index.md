@@ -17,3 +17,4 @@ Right now this is where I document the **services I host**: game servers and voi
 
 - **[Game Servers]({{< relref "/docs/game-servers" >}})** — dedicated game servers. Currently [DayZ]({{< relref "/docs/game-servers/dayz" >}}).
 - **[Mumble]({{< relref "/docs/mumble" >}})** — the voice server for coordinating.
+- **[CryptPad]({{< relref "/docs/cryptpad" >}})** — end-to-end encrypted docs (coming soon).

@@ -57,6 +57,11 @@ you connect.
 | **AI Bandits** | Hostile roaming AI — patrols and ambushes | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769) |
 | **AIB Unleashed** | AI Bandits add-on (expanded AI) | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844) |
 | **AI Bandit Voices** | AI Bandits add-on — voice lines for the bandits | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
+| **Dr Jones Trader** | Buy & sell at safezone trader NPCs | [1590841260](https://steamcommunity.com/sharedfiles/filedetails/?id=1590841260) |
+| **Code Lock** | Combination locks for doors, gates, and stashes | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754) |
+| **Survivor Animations** | Animation dependency (required by Bicycle) | [2918418331](https://steamcommunity.com/sharedfiles/filedetails/?id=2918418331) |
+| **Bicycle** | Rideable bicycles for getting around | [2971190303](https://steamcommunity.com/sharedfiles/filedetails/?id=2971190303) |
+| **DayZ-Dog** | Tameable companion dogs | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750) |
 
 > [!WARNING]
 > **AI Bandit Voices** is delisted from the Steam Workshop, so DayZ can't auto-subscribe
@@ -73,11 +78,25 @@ you connect.
   across settlements and points of interest rather than clustered in one place.
   Don't treat any quiet stretch as safe. (See **Bandits** below for what you're up
   against.)
+- **More bandits, more places** *(recent)* — bandit coverage was recently expanded:
+  more groups seeded at more locations across Sakhal — settlements, landmarks, and
+  chokepoints alike. The extra pressure comes from **more spawn points**, not bigger
+  packs, so the map feels lived-in (and dangerous) wherever you go.
 - The world persists (bases, vehicles, and stashed loot survive restarts via the
   central economy), so build like you mean to keep it.
 - **Accelerated day/night cycle** — a full day/night takes **4 hours real time**:
   **3 hours of daylight, 1 hour of night**. Plan supply runs and bandit-territory
   crossings around it — night falls faster than you'd expect.
+- **Traders** — NPC traders operate out of a **safezone** where you can buy and sell
+  gear for in-game currency. No fighting inside the zone. *(Vehicle/boat trading is
+  off for now.)*
+- **Code locks** — lock doors, gates, and stashes with a combination code instead of
+  a key. Don't forget the code.
+- **Bicycles** — pedal-powered transport, no fuel required. Quiet, cheap, and a lot
+  faster than walking the coast.
+- **Dogs** — tameable companion dogs are in the world. Befriend one and it'll travel
+  with you. (Some bandit groups run dogs too — a bark in the treeline isn't always
+  friendly.)
 
 ## Bandits — know what you're walking into
 
