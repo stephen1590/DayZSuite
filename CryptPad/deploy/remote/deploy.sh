@@ -8,8 +8,10 @@
 #   * clones CryptPad on first run, else fetches + checks out the pinned tag
 #   * rebuilds (npm ci / install:components / build)
 #   * installs the shipped config.js + systemd unit verbatim, every run
-#   * creates the data dir once and NEVER clobbers it; the loginSalt in
-#     customize/application_config.js is generated once and then preserved.
+#   * creates the data dir once and NEVER clobbers it
+#   * re-renders customize/application_config.js every run (managed policy:
+#     registered-only file uploads, min password length) while preserving the
+#     generated-once loginSalt (carried forward from the previous file)
 set -euo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=/dev/null
@@ -65,22 +67,41 @@ $SUDO usermod -aG "$RUN_USER" "$SSH_USER"
 echo '== config.js (shipped file) =='
 $SUDO install -o "$RUN_USER" -g "$RUN_USER" -m 0644 ./config.js "$APP_DIR/config/config.js"
 
-echo '== application_config.js (loginSalt — generated once, then preserved) =='
+echo '== application_config.js (managed policy; loginSalt preserved) =='
+# Client-served AppConfig override. loginSalt MUST stay stable once accounts
+# exist (changing it locks everyone out), so it is generated ONCE and then
+# preserved — carried forward by reading it back out of the previous file. The
+# rest is POLICY we re-apply on every deploy (so it stays managed here, never
+# hand-edited on the box). registeredOnlyTypes gains 'file' => only registered
+# users can UPLOAD files; guests can still open pads shared with them by link.
 $SUDO -u "$RUN_USER" mkdir -p "$APP_DIR/customize"
 APPCFG="$APP_DIR/customize/application_config.js"
+SALT=
 if $SUDO test -f "$APPCFG"; then
-  echo 'application_config.js exists — keeping the existing loginSalt'
-else
+  SALT=$($SUDO sed -n "s/.*loginSalt *= *'\([a-f0-9]*\)'.*/\1/p" "$APPCFG" | head -n1)
+fi
+if [ -z "$SALT" ]; then
   SALT=$(openssl rand -hex 32)
-  $SUDO -u "$RUN_USER" tee "$APPCFG" >/dev/null <<EOF
+  echo 'generated a fresh loginSalt'
+else
+  echo 'preserved the existing loginSalt'
+fi
+$SUDO -u "$RUN_USER" tee "$APPCFG" >/dev/null <<EOF
 define(['/common/application_config_internal.js'], function (AppConfig) {
+    // loginSalt: generated once, preserved on every redeploy (see deploy.sh).
     AppConfig.loginSalt = '$SALT';
     AppConfig.minimumPasswordLength = 8;
+
+    // Registered-users-only file uploads. Adding 'file' to registeredOnlyTypes
+    // makes the File app show guests "You must be logged in to upload files",
+    // while pads shared by link still open for them.
+    AppConfig.registeredOnlyTypes = AppConfig.registeredOnlyTypes || [];
+    if (AppConfig.registeredOnlyTypes.indexOf('file') === -1) {
+        AppConfig.registeredOnlyTypes.push('file');
+    }
     return AppConfig;
 });
 EOF
-  echo 'generated a fresh loginSalt'
-fi
 
 echo '== systemd unit (shipped file) =='
 $SUDO install -o root -g root -m 0644 ./cryptpad.service /etc/systemd/system/cryptpad.service
