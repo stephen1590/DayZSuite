@@ -1,0 +1,13 @@
+# Per-host secrets & values — host.env.example is the tracked template; host.env
+# itself holds real DEPLOY_SERVER_PASSWORD/DEPLOY_ADMIN_PASSWORD and is never shipped
+# (Deploy-DayZServer.ps1 also rsync-excludes it between hosts).
+/host.env
+
+# Local run logs / transcripts
+/logs/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+.claude/

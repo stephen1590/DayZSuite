@@ -1,0 +1,9 @@
+[Unit]
+Description=Archive DayZ server logs (zip per day, month retention)
+
+[Service]
+# TEMPLATE: DEPLOY_* placeholders rendered per-host by Deploy-DayZServer.ps1 (host.env).
+Type=oneshot
+User={{DEPLOY_USER}}
+Group={{DEPLOY_GROUP}}
+ExecStart=/usr/bin/pwsh -NoProfile -File {{DEPLOY_HOME}}/servers/dayz-server/Archive-Logs.ps1 -SourceDir {{DEPLOY_HOME}}/servers/dayz-server/profiles -Name dayz -Fix

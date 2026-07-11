@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Native DayZ scheduled restart + player notices (see https://dzconfig.com/wiki/messages).
+     Lives in the active mission's db/ folder; prestart.sh injects this copy there on
+     every start, so it survives map switches. deadline/delay/repeat are MINUTES.
+     shutdown=1 cleanly STOPS the server at the deadline - systemd's Restart=always
+     brings it back up, completing the restart. countdown=1 auto-warns players at
+     90/60/45/30/20/15/10/5/2/1 minutes before the deadline. -->
+<messages>
+    <message>
+        <deadline>360</deadline>
+        <shutdown>1</shutdown>
+        <countdown>1</countdown>
+        <text>[SERVER] Scheduled server restart in #tmin minute(s)</text>
+    </message>
+    <message>
+        <onconnect>1</onconnect>
+        <text>[SERVER] Welcome #name! This server restarts every 6 hours (with warnings).</text>
+    </message>
+</messages>

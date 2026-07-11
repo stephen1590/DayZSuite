@@ -1,0 +1,27 @@
+{
+  "_readme": "VPP spawn-name classification, maintained BY HAND. A VPP TeleportManager bookmark named <Map>_<Category>_<ArbitraryName> (e.g. S_Mil_IslandBlockade) is parsed by Sync-VPPCoordinates.ps1 and mirrored into DynamicAIB groups by Build-AIBandits.ps1 (match->update, new->create, extra->remove). A known CATEGORY in field 2 makes it a spawn; SIZE is OPTIONAL - normally OMITTED so each spawn uses its template's default member count and you add DENSITY by adding more bookmarks. Insert _<Size>_ as field 3 only to override (e.g. S_Mil_L_IslandBlockade). categories: Category token -> a template name that MUST exist in common/DynamicAIB.common.json groupTemplates. sizes: OPTIONAL Size letter -> member-count override. maps: Map letter -> mission folder. A name whose field 2 is NOT a known category is coordinate-only (<Map>_<Name>): it only updates a same-named group's coords, never creates. Snipers use the per-map snipers[] spec, NOT this file. Edit freely and re-run Sync-VPPCoordinates.ps1 -Execute.",
+  "sizes": {
+    "XS": 1,
+    "S": 2,
+    "M": 4,
+    "L": 4,
+    "XL": 4,
+    "XXL": 5
+  },
+  "categories": {
+    "Mil": "raider_heavy",
+    "MilH": "raider_heavy",
+    "Scav": "scavenger",
+    "Desp": "desperate",
+    "Hold": "holdout",
+    "Guard": "guard_patrol",
+    "Air": "airfield_m4",
+    "AKM": "patrol_akm",
+    "Road": "roadblock"
+  },
+  "maps": {
+    "S": "dayzOffline.sakhal",
+    "C": "dayzOffline.chernarusplus",
+    "E": "dayzOffline.enoch"
+  }
+}

@@ -1,0 +1,67 @@
+// ------------------------------------------------------ Trader Markers (Sakhal) -------------------------------------------------------
+// One safezone cluster at Petropavlovsk-Sakhalinsky (coastal hub). Marker IDs 0-4 MUST match
+// the <Trader> order in TraderConfig.txt: 0 Consume, 1 Misc, 2 Weapon, 3 Weapon Supplies, 4 Clothing.
+// TraderMarkerPosition must equal ObjectPosition exactly. Only marker 0 owns the safezone.
+//
+// Positions were seeded from a VPP capture (S_P-S_fire1 = 5528.90 / 2.79 / 10203.25) and
+// spread ~4m apart on flat ground. VERIFY in-game: if an NPC floats or is buried, nudge its
+// Y, or fly to the spot with VPPAdminTools, copy the position, and paste X/Y/Z here (both the
+// TraderMarkerPosition and ObjectPosition lines). No decorative props are placed (they clip
+// unfamiliar terrain); add your own later if you want a built-up market.
+
+//----------------------------------------------------------- Consume Trader (safezone owner)
+<TraderMarker>          0
+<TraderMarkerPosition>  5528.90, 2.79, 10203.25
+<TraderMarkerSafezone>  300
+<Object>                SurvivorF_Irena
+<ObjectPosition>        5528.90, 2.79, 10203.25
+<ObjectOrientation>     0, 0, 0
+<ObjectAttachment>      Apple
+<ObjectAttachment>      WaterBottle
+//-----------------------------------------------------------
+
+//----------------------------------------------------------- Misc Trader
+<TraderMarker>          1
+<TraderMarkerPosition>  5533.00, 2.79, 10203.25
+<TraderMarkerSafezone>  0
+<Object>                SurvivorF_Keiko
+<ObjectPosition>        5533.00, 2.79, 10203.25
+<ObjectOrientation>     90, 0, 0
+<ObjectAttachment>      Wrench
+<ObjectAttachment>      WorkingGloves_Brown
+//-----------------------------------------------------------
+
+//----------------------------------------------------------- Weapon Trader
+<TraderMarker>          2
+<TraderMarkerPosition>  5528.90, 2.79, 10207.35
+<TraderMarkerSafezone>  0
+<Object>                SurvivorM_Seth
+<ObjectPosition>        5528.90, 2.79, 10207.35
+<ObjectOrientation>     180, 0, 0
+<ObjectAttachment>      AKM
+<ObjectAttachment>      TacticalGloves_Black
+//-----------------------------------------------------------
+
+//----------------------------------------------------------- Weapon Supplies Trader
+<TraderMarker>          3
+<TraderMarkerPosition>  5524.80, 2.79, 10203.25
+<TraderMarkerSafezone>  0
+<Object>                SurvivorM_Taiki
+<ObjectPosition>        5524.80, 2.79, 10203.25
+<ObjectOrientation>     270, 0, 0
+<ObjectAttachment>      Mag_AKM_30Rnd
+//-----------------------------------------------------------
+
+//----------------------------------------------------------- Clothing Trader
+<TraderMarker>          4
+<TraderMarkerPosition>  5528.90, 2.79, 10199.15
+<TraderMarkerSafezone>  0
+<Object>                SurvivorF_Frida
+<ObjectPosition>        5528.90, 2.79, 10199.15
+<ObjectOrientation>     0, 0, 0
+<ObjectAttachment>      GorkaEJacket_Flat
+<ObjectAttachment>      CombatBoots_Black
+//-----------------------------------------------------------
+
+//<OpenFile> FileName.txt   // Must be right above <FileEnd> if you chain another file.
+<FileEnd>                    // This has to be at the End of this File and is very important!

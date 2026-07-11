@@ -1,0 +1,32 @@
+[Unit]
+Description=DayZ Dedicated Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# TEMPLATE: the DEPLOY_USER/GROUP/HOME placeholders below are rendered per-host by
+# Deploy-DayZServer.ps1 from host.env — never install this file without substituting them.
+User={{DEPLOY_USER}}
+Group={{DEPLOY_GROUP}}
+WorkingDirectory={{DEPLOY_HOME}}/servers/dayz-server/
+# Map selection: edit DAYZ_MISSION in map.env, then restart. Do not delete map.env.
+EnvironmentFile={{DEPLOY_HOME}}/servers/dayz-server/map.env
+# prestart.sh = storage backup + character migration on map switch. Local file ops
+# only — no steamcmd here (its login would bump the account's other Steam session;
+# one session per account, Valve-side). update.sh is run by Deploy when mods are missing.
+ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
+# The -mod chain is RENDERED from deploy/mods.conf ({{DEPLOY_MODLINE}}) — enable/disable/
+# reorder mods THERE (line order = load order), then ./Deploy-DayZServer.ps1 -Fix.
+# Never hand-edit a mod list here: it would drift from the registry on the next deploy.
+ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s INT $MAINPID
+LimitNOFILE=100000
+TimeoutStartSec=900
+# always, not on-failure: messages.xml <shutdown> and VPP's restart both exit CLEANLY
+# (0) — on-failure would leave the server down after every scheduled/admin restart.
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,105 @@
+{
+  "_readme": "PER-MAP PLACEMENTS for Sakhal (dayzOffline.sakhal). Every group references a GLOBAL progression template in ../../common/DynamicAIB.common.json (raider_heavy>patrol>holdout>scavenger>desperate) - only the LOCATION lives here. Loadout/weapon/size/accuracy/grenade now come from the shared template (retune a bandit TYPE once in common, every map updates); override any field inline per site if needed (e.g. Volcano bumps size). pos is a RAW Sakhal world coord x y z captured from VPPAdminTools; waypoints is an array of the same. Merged into the flat DynamicAIB.json by Build-AIBandits.ps1. Snipers: none yet - add a snipers[] entry referencing sniperTemplates.svd_nest once real VPP positions are captured.",
+  "groups": [
+    {
+      "name": "S_Lesogorovka",
+      "template": "holdout",
+      "pos": "10943.731445 102.309608 9699.191406"
+    },
+    {
+      "name": "S_Nogovo_Airfield",
+      "template": "raider_heavy",
+      "pos": "7131.107422 2.660000 7463.282715"
+    },
+    {
+      "name": "S_Vysokoye",
+      "template": "holdout",
+      "pos": "11055.637695 112.191010 8031.274902"
+    },
+    {
+      "name": "S_Yuzhnoye",
+      "template": "holdout",
+      "pos": "10971.511719 8.517496 6344.327148"
+    },
+    {
+      "name": "S_Dudino",
+      "template": "holdout",
+      "pos": "6220.643555 2.894624 7303.765625"
+    },
+    {
+      "name": "S_Bolotnoye",
+      "template": "holdout",
+      "pos": "5151.667969 5.302985 8741.722656"
+    },
+    {
+      "name": "S_P-S_gas1",
+      "template": "holdout",
+      "pos": "5948.014160 31.153223 10368.039063"
+    },
+    {
+      "name": "S_Zhupanovo",
+      "template": "holdout",
+      "pos": "5704.352051 7.763875 12520.127930"
+    },
+    {
+      "name": "S_Sovetskoye",
+      "template": "holdout",
+      "pos": "6268.023438 2.310000 12798.379883"
+    },
+    {
+      "name": "Shantar",
+      "template": "holdout",
+      "pos": "1523.044189 5.438050 3033.603516"
+    },
+    {
+      "name": "S_Aniva",
+      "template": "scavenger",
+      "pos": "12904.370117 2.535336 7427.403320"
+    },
+    {
+      "name": "S_Vostok",
+      "template": "scavenger",
+      "pos": "13914.807617 32.706078 8581.369141"
+    },
+    {
+      "name": "S_Shumnoye",
+      "template": "scavenger",
+      "pos": "14350.000000 8.920000 8859.111328"
+    },
+    {
+      "name": "S_Bayakovo",
+      "template": "desperate",
+      "pos": "14570.801758 7.470947 9694.422852"
+    },
+    {
+      "name": "S_Matrosovo",
+      "template": "desperate",
+      "pos": "14265.721680 6.001800 11632.820313"
+    },
+    {
+      "name": "S_Rudnogorsk_Gas",
+      "template": "scavenger",
+      "pos": "13912.971680 2.550000 11788.021484"
+    },
+    {
+      "name": "S_Rybnoye",
+      "template": "desperate",
+      "pos": "12453.980469 4.817930 12703.14550"
+    },
+    {
+      "name": "S_Podgornoye",
+      "template": "scavenger",
+      "pos": "11005.190430 14.990008 13154.324219"
+    },
+    {
+      "name": "S_Severomorsk",
+      "template": "scavenger",
+      "pos": "9804.278320 7.278943 13454.884766"
+    },
+    {
+      "name": "S_Tumanovo",
+      "template": "desperate",
+      "pos": "8350.278320 2.178943 13454.884766"
+    }
+  ]
+}

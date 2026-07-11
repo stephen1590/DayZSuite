@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily DayZ log archiving
+
+[Timer]
+# Shortly after day rollover; Persistent replays a missed run at next boot, which
+# covers "day rolled over while the host was down / before anything archived".
+OnCalendar=*-*-* 00:20
+Persistent=true
+
+[Install]
+WantedBy=timers.target
