@@ -13,7 +13,7 @@ progress.
 
 | | |
 |---|---|
-| **Server name** | Commie Lobby |
+| **Server name** | [US-PNW] Commie Lobby (PVE) |
 | **Address** | `51.81.167.216:2301` |
 | **Query port** | `27016` |
 | **Host** | `cytonicmushroom.ddns.net` |
@@ -71,6 +71,34 @@ you connect.
 
 > [!NOTE]
 > **Knock Knock** (an AI Bandits add-on) is temporarily disabled — it'll be back soon.
+
+### DayZ-Expansion
+
+A separate mod family — 16 pieces, each its own Workshop item, all required together:
+
+| Mod | Role | Workshop | Status |
+|---|---|---|---|
+| **Dabs Framework** | Required framework dependency for DayZ-Expansion | [2545327648](https://steamcommunity.com/sharedfiles/filedetails/?id=2545327648) | Enabled |
+| **DayZ-Expansion** | Base package — new points of interest, kill feed, player list, quality-of-life additions | [2116151222](https://steamcommunity.com/sharedfiles/filedetails/?id=2116151222) | Enabled |
+| **DayZ-Expansion-Licensed** | Licensed content pack required by several modules below | [2116157322](https://steamcommunity.com/sharedfiles/filedetails/?id=2116157322) | Enabled |
+| **DayZ-Expansion-BaseBuilding** | Territory system + expanded base building | [2792982513](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982513) | Enabled |
+| **DayZ-Expansion-Book** | In-game book — stats, recipes, server info | [2572324799](https://steamcommunity.com/sharedfiles/filedetails/?id=2572324799) | Enabled |
+| **DayZ-Expansion-Vehicles** | Extra vehicles — helicopters, boats, cars, amphibious rides | [2291785437](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785437) | Enabled |
+| **DayZ-Expansion-Groups** | Party/group system with a shared HUD and map pings | [2792983364](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983364) | Enabled |
+| **DayZ-Expansion-Missions** | Dynamic missions — contamination zones, airdrops | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | Enabled |
+| **DayZ-Expansion-SpawnSelection** | Pick your spawn point on the map after death | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | Enabled |
+| **DayZ-Expansion-Chat** | Extra chat channels (proximity, vehicle, party, admin) | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | Enabled |
+| **DayZ-Expansion-Map-Assets** | Decorative map objects | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
+| **DayZ-Expansion-Animations** | Extra vehicle animations | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | Disabled - Incompatible with Bicycle Animations |
+| **DayZ-Expansion-Quests** | Quest system — collection, delivery, combat, and exploration objectives | [2828486817](https://steamcommunity.com/sharedfiles/filedetails/?id=2828486817) | Enabled |
+| **DayZ-Expansion-PersonalStorage** | Private virtual storage stash | [2946236937](https://steamcommunity.com/sharedfiles/filedetails/?id=2946236937) | Enabled |
+| **DayZ-Expansion-Weapons** | Extra firearms, optics, and grenades | [2792985069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792985069) | Enabled |
+| **DayZ-Expansion-Navigation** | Satellite map, GPS, compass, and marker HUD | [2792984722](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984722) | Enabled |
+
+> [!NOTE]
+> **DayZ-Expansion-Bundle** (the all-in-one package) is intentionally not used — this
+> server runs the 16 modular pieces above instead, so it won't show up in your
+> subscribe prompt.
 
 ## Gameplay notes
 
