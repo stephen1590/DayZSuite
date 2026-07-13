@@ -21,7 +21,15 @@ ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
 ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s INT $MAINPID
-LimitNOFILE=100000
+# DayZ-Expansion's AI (eAIGroup::Save) LEAKS file descriptors — the process climbs
+# ~600 fds/min and, capped at 100000, hit the ceiling in <3h (well inside the 6h
+# messages.xml restart cycle). At the ceiling every file write fails with "Couldn't
+# open file for writing" (storage_1/expansion/ai/*), degrading the live server.
+# We can't patch the mod, but the ceiling is ours: 1048576 (the kernel fs.nr_open
+# default max, no sysctl needed) gives ~28h of runway, so a 6h cycle finishes clean
+# and the scheduled restart resets the count. Mitigation, not a leak fix — if the
+# leak rate climbs, shorten the restart cadence or cut the eAI load.
+LimitNOFILE=1048576
 TimeoutStartSec=900
 # always, not on-failure: messages.xml <shutdown> and VPP's restart both exit CLEANLY
 # (0) — on-failure would leave the server down after every scheduled/admin restart.
