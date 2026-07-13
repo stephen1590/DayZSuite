@@ -73,20 +73,23 @@ per-map file. The same squads therefore appear on **all** maps — only coordina
 The builder auto-detects which format a `maps/<mission>/DynamicAIB.json` is:
 
 1. **Compose (ours)** — top-level `groups[]` (and optional `snipers[]`) referencing `common`
-   templates/kits. Merged with `common/` into the flat file. **Both Sakhal and Chernarus use
-   this** — Chernarus's coordinates come from scalespeeder (see its `SOURCE.md`) but its bandits
-   are the shared `common` templates.
+   templates/kits. Merged with `common/` into the flat file. **Chernarus uses this** — its
+   coordinates come from scalespeeder (see its `SOURCE.md`) but its bandits are the shared
+   `common` templates. Chernarus is currently **parked**: kept in-repo but **not deployed**
+   (see its `PARKED.md`). (Sakhal has no per-map file — its spawns come from VPP; see below.)
 2. **Native passthrough** — a complete mod-format file (top-level `GroupLocations` /
    `SniperLocations` / `PredefinedWeapons`, no `groups`). Copied **verbatim**, `common/` ignored.
    Kept as an escape hatch to drop in a community config unchanged without converting it.
 
-## ⚠ Sakhal coordinates are APPROXIMATE
+## Sakhal spawns come from VPP (no per-map DynamicAIB)
 
-Every `pos` in `maps/dayzOffline.sakhal/DynamicAIB.json` carries a `_verify` note and is a rough
-seed. Fly to each with VPPAdminTools, read the real position off the admin menu, and correct it —
-X/Z near the POI matters most; height (Y) should match terrain. `StaticAIB` for Sakhal is the
-previously-shipped 3 NPCs, carried forward under this map (their intended map was unrecorded) —
-verify or repoint them too.
+Sakhal dynamic bandits are sourced **entirely from VPP TeleportManager bookmarks** — there is no
+`maps/dayzOffline.sakhal/DynamicAIB.json`. `Sync-VPPCoordinates.ps1` pulls the bookmarks,
+`common/classification.json` maps their name tokens to templates/sizes, and the builder's VPP
+mirror composes the groups (create / update / remove) at prestart. To add or move a Sakhal spawn,
+capture or rename the VPP bookmark and re-run `Sync-VPPCoordinates.ps1` — don't hand-author
+placements. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays
+per-map.
 
 Schema note: on a mod update that changes the flat-file schema, adjust the builder's output shape
 and/or `common` — the source tree stays; only the composition changes.

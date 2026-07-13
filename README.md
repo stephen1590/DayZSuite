@@ -195,35 +195,83 @@ server — costs a second copy of the game; not worth it for a LAN server.
 
 ---
 
-## Mods: CF + VPPAdminTools + AI Bandits (+ AI Bandits add-ons)
+## Mods
 
-Installed 2026-07-03. `update.sh` owns the whole pipeline (auto-run by
-`Deploy-DayZServer.ps1 -Fix` when the unit references mods missing on disk; run it
-manually only on game-patch days — see
-postmortem #6; formerly ExecStartPre):
+**`deploy/mods.conf` is the single source of truth** — enable/disable/reorder there,
+then `./Deploy-DayZServer.ps1 -Fix` (drift detection auto-runs `update.sh` for any
+enabled `@folder` missing on disk; run `update.sh` by hand only on game-patch days —
+see postmortem #6; formerly `ExecStartPre`). **Line order in `mods.conf` = load order**
+= the unit's `-mod=` line, built verbatim from the enabled lines in sequence.
 
-1. steamcmd downloads app 223350 + workshop items `1559212036` (Community
-   Framework), `1828439124` (VPPAdminTools — requires CF), `3628006769`
-   (AI Bandits — requires CF; ~400 MB), and three AI Bandits add-ons (all depend on
-   `@aibandits`, already installed):
-   - `3638393043` — Knock Knock AI Bandits (`@knockknock`), bandits ambush from behind
-     doors. **Server-side only.**
-   - `3682348844` — AIB_Unleashed (`@aibunleashed`), squad tactics / stealth /
-     breaching. **Server-side only**, loads after `@aibandits`.
-   - `3679500367` — AI Bandit Voices (`@aibvoices`). **Client-side** (players must
-     subscribe too) and **removed from the workshop**, so steamcmd may fail to fetch
-     it — it's a separate *optional* download that won't abort `update.sh`. With
-     `verifySignatures = 2`, if the server can't get its `.bikey`, clients running it
-     fail signature checks; if it stays undownloadable, drop `@aibvoices` from the
-     unit `-mod` line.
-2. Each mod is rsync-copied out of `steamapps/workshop/content/221100/<id>/` into
-   `@cf` / `@vppadmintools` in the server root (workshop copy stays pristine for
-   steamcmd's bookkeeping), **all filenames lowercased** — the Linux server is
-   case-sensitive and workshop mods ship mixed-case; without this, joins fail on
-   missing PBOs. The copy+lowercase re-runs every start, so mod updates stay fixed.
-3. `*.bikey` keys are copied into `keys/`.
+### Enabled — core & gameplay mods (in load order)
 
-Unit launch parameter (quoted, **no trailing semicolon**): `"-mod=@cf;@vppadmintools"`
+| Folder | Workshop ID | Mod | Notes |
+|---|---|---|---|
+| `@cf` | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036) | Community Framework | Base dependency for most of the below. |
+| `@vppadmintools` | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124) | VPPAdminTools | Requires CF. Admin teleport/spawn tooling; feeds `Sync-VPPCoordinates.ps1`. |
+| `@aibandits` | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769) | AI Bandits | Requires CF; ~400 MB. |
+| `@aibunleashed` | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844) | AIB_Unleashed | Squad tactics / stealth / breaching add-on, loads after `@aibandits`. Server-side only. |
+| `@aibvoices` | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) | AI Bandit Voices | `optional` in `mods.conf` — **removed from the workshop**, steamcmd may never fetch it. Client-side too (players must subscribe); with `verifySignatures = 2`, a missing `.bikey` fails signature checks for anyone running it. |
+| `@dayzdog` | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750) | DayZ-Dog (Hunterz) | CF only. Feeds AI Bandits groups' `dog` field (see `Build-AIBandits.ps1`). |
+| `@codelock` | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754) | Code Lock (Room Service) | Combination-lock replacement for base security. |
+
+### Enabled — DayZ-Expansion module family (in load order)
+
+Expansion isn't one mod — it's a suite of 16 separate Workshop items that load
+together. `mods.conf` groups the interdependent ones with inline `# Dependencies:`
+comments; that's reflected in the Notes column below.
+
+| Folder | Workshop ID | Mod | Notes |
+|---|---|---|---|
+| `@dabsframework` | [2545327648](https://steamcommunity.com/sharedfiles/filedetails/?id=2545327648) | Dabs Framework (dab / InclementD) | Framework — required by the whole Expansion family; must load first. |
+| `@expansion` | [2116151222](https://steamcommunity.com/sharedfiles/filedetails/?id=2116151222) | DayZ-Expansion | Base package — overgrown map POIs, kill feed, player list, grave crosses, street-light generators. Needs `@dabsframework` loaded first. |
+| `@expansionlicensed` | [2116157322](https://steamcommunity.com/sharedfiles/filedetails/?id=2116157322) | DayZ-Expansion-Licensed | Bohemia-licensed content pack (animations, economy, vehicles, etc.) — required by BaseBuilding, Vehicles, and Missions below. |
+| `@expansionbasebuilding` | [2792982513](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982513) | DayZ-Expansion-BaseBuilding | Territory system + modular base building. Depends on Licensed + Book. |
+| `@expansionbook` | [2572324799](https://steamcommunity.com/sharedfiles/filedetails/?id=2572324799) | DayZ-Expansion-Book | In-game stat/recipe/server-info book; integrates with Groups & Territory. Depends on Licensed. |
+| `@expansionvehicles` | [2291785437](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785437) | DayZ-Expansion-Vehicles | Helicopters, boats, cars, amphibious vehicles, keys, towing. Depends on Licensed. |
+| `@expansiongroups` | [2792983364](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983364) | DayZ-Expansion-Groups | Team/party system, shared HUD, pinging, map markers. Depends on Book. |
+| `@expansionmissions` | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | DayZ-Expansion-Missions | Dynamic mission framework — contamination zones, mission & player-triggered airdrops. Depends on Licensed. |
+| `@expansionspawnselection` | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | DayZ-Expansion-SpawnSelection | Map-based spawn point selection + custom starting loadouts. No extra deps. |
+| `@expansionchat` | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | DayZ-Expansion-Chat | Global / proximity / vehicle / admin / party chat channels. No extra deps. |
+| `@expansionmapassets` | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | DayZ-Expansion-Map-Assets | Decorative static-object + builder-item pack. No extra deps. |
+| `@expansionanimations` | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | DayZ-Expansion-Animations | Vehicle animations (guitar, boat, tractor, heli, bus). No extra deps. |
+| `@expansionquests` | [2828486817](https://steamcommunity.com/sharedfiles/filedetails/?id=2828486817) | DayZ-Expansion-Quests | MMO-style quest framework — collection/delivery/combat/exploration objectives. No extra deps. |
+| `@expansionpersonalstorage` | [2946236937](https://steamcommunity.com/sharedfiles/filedetails/?id=2946236937) | DayZ-Expansion-PersonalStorage | Private virtual inventory / storage cases (Tarkov-style stash). No extra deps. |
+| `@expansionweapons` | [2792985069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792985069) | DayZ-Expansion-Weapons | Extra firearms, optics, and grenades (crossbows, RPGs, tear gas, etc.). No extra deps. |
+| `@expansionnavigation` | [2792984722](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984722) | DayZ-Expansion-Navigation | Satellite map, 2D/3D markers, compass + GPS HUD, player position. No extra deps. |
+
+**Not used:** `@expansionbundle` ([2572331007](https://steamcommunity.com/sharedfiles/filedetails/?id=2572331007), DayZ-Expansion-Bundle — the all-in-one package) is
+intentionally excluded; this server runs the modular pieces above instead.
+
+### Disabled (commented out in `mods.conf`, kept for reference)
+
+| Folder | Workshop ID | Mod | Why disabled |
+|---|---|---|---|
+| `@knockknock` | [3638393043](https://steamcommunity.com/sharedfiles/filedetails/?id=3638393043) | Knock Knock AI Bandits | Bandits ambush from behind doors; disabled for now. |
+| `@basebuildingplus` | [1710977250](https://steamcommunity.com/sharedfiles/filedetails/?id=1710977250) | BaseBuildingPlus | Disabled 2026-07-11 — client version-mismatch kicks. |
+| `@bicycle` | [2971190303](https://steamcommunity.com/sharedfiles/filedetails/?id=2971190303) | DayZ-Bicycle (Hunterz) | Disabled 2026-07-12 — bicycle animations conflicted with `@expansionanimations`; kept Expansion's instead. |
+| `@survivoranimations` | [2918418331](https://steamcommunity.com/sharedfiles/filedetails/?id=2918418331) | Survivor Animations (Hunterz) | Dependency of `@bicycle` (must precede it); disabled with it. |
+
+**Removed entirely** (no longer in `mods.conf`): `@trader` (Trader / Dr_J0nes) — deprecated 2026-07-12; trading is handled by `@expansionmarket` (DayZ-Expansion-Market) instead, and its `profiles/Trader/*.txt` config was deleted.
+
+Each enabled mod is rsync-copied out of `steamapps/workshop/content/221100/<id>/` into
+its `@folder` in the server root (workshop copy stays pristine for steamcmd's
+bookkeeping), **all filenames lowercased** — the Linux server is case-sensitive and
+workshop mods ship mixed-case; without this, joins fail on missing PBOs. The
+copy+lowercase re-runs every start, so mod updates stay fixed. `*.bikey` keys are
+copied into `keys/`.
+
+**Keep every `@folder` in `mods.conf` lowercase** — `update.sh` always lowercases the
+on-disk folder, so a mixed-case entry (e.g. `@expansionCore`) makes the rendered
+`-mod=` line reference a directory that doesn't exist, hard-crashing the server at
+boot. This caused a crash-loop on 2026-07-11.
+
+Current unit launch parameter (quoted, **no trailing semicolon**), built by
+`Deploy-DayZServer.ps1` from the enabled lines above in order:
+
+```
+"-mod=@cf;@dabsframework;@expansioncore;@expansion;@expansionlicensed;@expansionbasebuilding;@expansionbook;@expansionvehicles;@expansiongroups;@expansionmissions;@expansionani;@expansionmarket;@expansionspawnselection;@expansionchat;@expansionmapassets;@expansionanimations;@expansionquests;@expansionpersonalstorage;@expansionweapons;@expansionnavigation;@vppadmintools;@aibandits;@aibunleashed;@aibvoices;@dayzdog;@codelock"
+```
 
 Admin access: Steam64 IDs in
 `profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt`
@@ -231,10 +279,11 @@ Admin access: Steam64 IDs in
 password per `profiles/VPPAdminTools/Permissions/credentials.txt` after first
 boot, or `vppDisablePassword = 1;` in `serverDZ.cfg`.
 
-Clients must run the same mods (`verifySignatures = 2`): subscribe to Community
-Framework + VPPAdminTools + AI Bandits on the workshop, enable all three in the
-launcher. AI Bandits ships custom NPC entity classes, so clients need it to render
-the bandits, not just the server.
+Clients must run the same mods (`verifySignatures = 2`): subscribe to every
+**enabled** mod above on the workshop and enable them all in the launcher, in the
+same order as `mods.conf`. AI Bandits and DayZ-Dog in particular ship custom NPC/
+entity classes, so clients need them installed to render bandits/dogs, not just
+the server.
 
 ### AI Bandits — config, tuning, and monitoring
 

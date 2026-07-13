@@ -7,6 +7,10 @@
     locations (server dir + systemd units). -Fix copies the payload into place (sudo
     for units), reloads systemd, and restarts the service unless -NoRestart.
 
+    Every run also pulls fresh VPP spawn-bookmark coordinates off the live box first
+    (Sync-VPPCoordinates.ps1) so newly captured bookmarks ship in this same deploy — see
+    that script for the backup-before-overwrite + no-op-when-unchanged behavior.
+
     Host portability: the systemd units in the payload are TEMPLATES with
     {{DEPLOY_USER}}/{{DEPLOY_GROUP}}/{{DEPLOY_HOME}} placeholders; per-host values
     come from `host.env` beside this script (or the -Deploy* params), and the units
@@ -45,8 +49,25 @@ param(
 # first run seeds host.env from the example.
 if (-not $Local) {
     $sshOpt = "ssh -o ConnectTimeout=10"
+
+    # VPP coordinates: the live box is authoritative for admin-captured spawn bookmarks (see
+    # Sync-VPPCoordinates.ps1's own docstring — roles are inverted from the rest of this deploy).
+    # Pull them down FIRST so anything captured in-game since the last sync ships in THIS
+    # deploy, instead of silently sitting stale until someone remembers to run the sync by hand.
+    # Report-only unless -Fix, matching this script's own read-only-by-default contract; -Fix
+    # also backs up the outgoing snapshot/vpp-coordinates.json before overwriting (see that
+    # script) and the refreshed files ride the rsync below like any other deploy payload.
+    $syncScript = Join-Path $PSScriptRoot "Sync-VPPCoordinates.ps1"
+    if (Test-Path $syncScript) {
+        $targetUser, $targetHost = $RemoteTarget -split '@', 2
+        Write-Host "--- VPP coordinates ---"
+        if ($Fix) { & $syncScript -RemoteHost $targetHost -RemoteUser $targetUser -NoLog:$NoLog -Execute }
+        else      { & $syncScript -RemoteHost $targetHost -RemoteUser $targetUser -NoLog:$NoLog }
+        Write-Host ""
+    }
+
     Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (Fix=$Fix)`n"
-    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=host.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
+    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=host.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "tooling rsync failed (exit $LASTEXITCODE)"; exit 1 }
     $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
@@ -165,27 +186,15 @@ $items = @(
        Dst = Join-Path $ServerDir "profiles/AI_Bandits/common/classification.json"; Sudo = $false; Exec = $false }
     @{ Src = "profiles/VPPAdminTools/VPPCoordinates/vpp-coordinates.json"
        Dst = Join-Path $ServerDir "profiles/VPPAdminTools/VPPCoordinates/vpp-coordinates.json"; Sudo = $false; Exec = $false }
-    # Dr Jones Trader config (full-file owned, PascalCase - case-sensitive on Linux). Read from
-    # $profile:Trader/. TraderConfig is the item catalog; TraderObjects places the NPCs (Sakhal
-    # coords); Variables = safezone/timers; Admins = vehicle-trade admin IDs.
-    @{ Src = "profiles/Trader/TraderConfig.txt"
-       Dst = Join-Path $ServerDir "profiles/Trader/TraderConfig.txt"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/Trader/TraderObjects.txt"
-       Dst = Join-Path $ServerDir "profiles/Trader/TraderObjects.txt"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/Trader/TraderVariables.txt"
-       Dst = Join-Path $ServerDir "profiles/Trader/TraderVariables.txt"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/Trader/TraderAdmins.txt"
-       Dst = Join-Path $ServerDir "profiles/Trader/TraderAdmins.txt"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/AI_Bandits/maps/dayzOffline.sakhal/DynamicAIB.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/maps/dayzOffline.sakhal/DynamicAIB.json"; Sudo = $false; Exec = $false }
+    # Sakhal has NO per-map DynamicAIB.json: its dynamic spawns come ENTIRELY from VPP
+    # (classification.json + vpp-coordinates.json above), mirrored in by the builder at prestart.
+    # Only StaticAIB (fixed sentry NPCs) is per-map for Sakhal.
     @{ Src = "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json"
        Dst = Join-Path $ServerDir "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json"; Sudo = $false; Exec = $false }
-    # Chernarus: third-party mod-native full-file (scalespeeder), copied verbatim by the builder's
-    # native passthrough - dormant until the server runs dayzOffline.chernarusplus. See SOURCE.md.
-    @{ Src = "profiles/AI_Bandits/maps/dayzOffline.chernarusplus/DynamicAIB.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/maps/dayzOffline.chernarusplus/DynamicAIB.json"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/VPPAdminTools/ItemPresets.json"
-       Dst = Join-Path $ServerDir "profiles/VPPAdminTools/ItemPresets.json"; Sudo = $false; Exec = $false }
+    # Chernarus: PARKED — kept in the repo but intentionally NOT deployed (its $items ship line was
+    # removed 2026-07-12). It's a working compose-schema config (scalespeeder coordinates + shared
+    # common templates), dormant until someone runs dayzOffline.chernarusplus. To reactivate:
+    # re-add its ship line here and switch map.env. See maps/dayzOffline.chernarusplus/PARKED.md.
     # KnockKnock settings are NOT a full-file item: it's the mod's own generated config, so
     # we PATCH only chanceToSpawn via config-overrides.json (survives mod updates). See the
     # Apply-ConfigOverrides step below.

@@ -66,7 +66,7 @@
             "weapon": "SVD",
             "attachments": [
                 "Mag_SVD_10Rnd",
-                "GhillieAtt_Mossy",
+                "GhillieAtt_Winter",
                 "PSO11Optic"
             ]
         }
@@ -140,18 +140,7 @@
                 "loot": [
                     "Rag",
                     "Rag",
-                    "Rag",
-                    "BandageDressing",
-                    "BandageDressing",
-                    "Apple",
-                    "TunaCan",
-                    "WaterBottle",
-                    "SaltySticks",
-                    "PeachesCan",
-                    "Ammo_762x39",
-                    "Ammo_762x39",
-                    "Morphine",
-                    "Mag_AKM_30Rnd"
+                    "Rag"
                 ]
             }
         },
@@ -212,18 +201,8 @@
                 "loot": [
                     "Rag",
                     "Rag",
-                    "BandageDressing",
-                    "BandageDressing",
-                    "Morphine",
-                    "Epinephrine",
-                    "SalineBagIV",
-                    "TetracyclineAntibiotics",
-                    "Ammo_762x39",
-                    "Ammo_762x39",
-                    "Ammo_762x39",
-                    "TacticalBaconCan",
                     "CombatKnife",
-                    "Mag_AKM_30Rnd"
+                    "Rag"
                 ]
             }
         },
@@ -245,7 +224,6 @@
                 ],
                 "masks": [],
                 "vests": [
-                    "HuntingVest",
                     "PoliceVest"
                 ],
                 "backpacks": [
@@ -289,15 +267,6 @@
                     "Rag",
                     "Rag",
                     "Rag",
-                    "Apple",
-                    "Apple",
-                    "Pear",
-                    "Plum",
-                    "SodaCan_Cola",
-                    "SodaCan_Pipsi",
-                    "PeachesCan",
-                    "BandageDressing",
-                    "Matchbox",
                     "SaltySticks"
                 ]
             }
@@ -344,17 +313,7 @@
                 "gloves": [],
                 "armband": [],
                 "loot": [
-                    "Rag",
-                    "Rag",
-                    "Rag",
-                    "BandageDressing",
-                    "Ammo_9x18",
-                    "Ammo_9x19",
-                    "PainkillerTablets",
-                    "Flashlight",
-                    "SodaCan_Pipsi",
-                    "Apple",
-                    "Mag_CZ75_15Rnd"
+                    "Rag"
                 ]
             }
         },
@@ -396,13 +355,8 @@
                     "Rag",
                     "Rag",
                     "Rag",
-                    "Rag",
-                    "Rag",
-                    "Plum",
-                    "Apple",
-                    "Nails",
-                    "VitaminBottle",
-                    "Stone"
+                    "SmallStone",
+                    "SmallStone"
                 ]
             }
         },
@@ -440,11 +394,8 @@
                 "loot": [
                     "Rag",
                     "Rag",
-                    "Apple",
-                    "Mag_STANAGCoupled_30Rnd",
-                    "Mag_STANAGCoupled_30Rnd",
-                    "AmmoBox_556x45_20Rnd",
-                    "ACOGOptic"
+                    "SmallStone",
+                    "SmallStone"
                 ]
             }
         },
@@ -470,13 +421,13 @@
                 ],
                 "bodywear": [
                     "HuntingJacket_Brown",
-                    "QuiltedJacket_Green",
+                    "HuntingJacket_Winter",
                     "BomberJacket_Brown"
                 ],
                 "belts": [],
                 "pants": [
                     "HunterPants_Brown",
-                    "Jeans_BlueDark"
+                    "HunterPants_Winter"
                 ],
                 "shoes": [
                     "CombatBoots_Black"
@@ -484,12 +435,7 @@
                 "gloves": [],
                 "armband": [],
                 "loot": [
-                    "Rag",
-                    "Rag",
-                    "BandageDressing",
-                    "Mag_SVD_10Rnd",
-                    "GhillieAtt_Mossy",
-                    "PSO11Optic"
+                    "Rag"
                 ]
             }
         }
@@ -530,6 +476,7 @@
         "scavenger": {
             "loadout": "pistol",
             "weapon": [
+                "Predefined_CZ75",
                 "Predefined_HuntingKnife",
                 "Predefined_Machete",
                 "Predefined_BaseballBat"
@@ -584,6 +531,24 @@
             "grenadechance": 0,
             "dog": 0,
             "faction": "Guards"
+        },
+        "hermit": {
+            "loadout": "melee",
+            "weapon": [],
+            "size": 1,
+            "accuracy": 100,
+            "grenadechance": 0,
+            "dog": 1,
+            "faction": "Bandits"
+        },
+        "sniper": {
+            "loadout": "sniper",
+            "weapon": "Predefined_SVD",
+            "size": 1,
+            "accuracy": 70,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
         }
     },
     "sniperTemplates": {

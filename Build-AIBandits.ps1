@@ -18,16 +18,24 @@
   StaticAIB has no shared layer worth factoring, so it's a straight per-map copy
   (maps/<mission>/StaticAIB.json -> the flat StaticAIB.json), with an empty-but-valid fallback.
 
-  Run by prestart.sh before each server start with the active mission. Report-only by default;
-  writes under -Fix. FAIL-SOFT: a bad group is logged (WARN) and skipped, never aborting the
-  build — and prestart wraps the call in `|| true` so it can NEVER block server boot. A map with
-  no per-map file gets an EMPTY file (no bandits), never another map's coordinates.
+  Run by prestart.sh before each server start with the active mission (real ServerDir, real
+  -Fix — that write is the one the mod actually reads, and it lives ONLY on the box, regenerated
+  fresh every boot; it is never shipped and never persists locally). FAIL-SOFT: a bad group is
+  logged (WARN) and skipped, never aborting the build — and prestart wraps the call in `|| true`
+  so it can NEVER block server boot. A map with no per-map file gets an EMPTY file (no bandits),
+  never another map's coordinates.
+
+  For a LOCAL look at what would be built (e.g. -ServerDir './deploy' to preview against this
+  repo), don't use -Fix — that writes inside deploy/profiles/AI_Bandits/, which looks like a
+  shipped source but isn't (confusing). Use -PreviewOut <path> instead: writes the composed
+  DynamicAIB JSON to that exact file, any location you choose, regardless of -Fix.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ServerDir,
     [string]$Mission,
-    [Alias('Apply')][switch]$Fix
+    [Alias('Apply')][switch]$Fix,
+    [string]$PreviewOut   # also write the composed DynamicAIB JSON here (any path) - for local inspection only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +52,7 @@ if (-not $Mission) {
     if (-not $Mission) { $Mission = 'dayzOffline.chernarusplus' }
 }
 
-$stats = [ordered]@{ Groups = 0; Snipers = 0; Overlaid = 0; Created = 0; Removed = 0; Unmatched = 0; Warn = 0 }
+$stats = [ordered]@{ Groups = 0; Snipers = 0; Overlaid = 0; Created = 0; CreatedBase = 0; Removed = 0; Warn = 0 }
 function Show-Warn($m) { $script:stats.Warn++; Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function Show-Info($m) { Write-Host $m }
 function Read-Json($path) { Get-Content -Raw -LiteralPath $path | ConvertFrom-Json }
@@ -106,11 +114,12 @@ if (-not (Test-Path $commonPath)) {
     # Sync-VPPCoordinates.ps1. The authored maps/*.json on disk is NEVER rewritten - we only
     # mutate the parsed $groupsSpec before composing. Match is by the FULL VPP name (RawName
     # == group .name) - placements are named for their VPP bookmark. CoordinateOnly updates
-    # ONLY the coords; Classified also overrides template + size. The composed set MIRRORS the
-    # VPP bookmarks for this map (a 3-way sync), so a deleted bookmark can't leave a stale group
-    # with lingering waypoints:
-    #   * VPP entry, no group   -> CREATE  (Classified only: its name carries type+size+pos.
-    #                              CoordinateOnly can't be built - no type to compose - reported.)
+    # ONLY the coords; Classified also overrides template + size. VPP is the sole source of
+    # truth: every bookmark for this map ends up as a group, no hand-authored entry required.
+    # The composed set MIRRORS the VPP bookmarks for this map (a 3-way sync), so a deleted
+    # bookmark can't leave a stale group with lingering waypoints:
+    #   * VPP entry, no group   -> CREATE  (Classified: category gives it a real template+size.
+    #                              CoordinateOnly/bare <Map>_<Name>: created as a base 'holdout'.)
     #   * VPP entry + group     -> UPDATE  (coords always; Classified also overrides template+size)
     #   * group, no VPP entry   -> REMOVE  (dropped from this build's output)
     # IN MEMORY only - the authored maps/*.json on disk is never written, so REMOVE just excludes
@@ -158,7 +167,19 @@ if (-not (Test-Path $commonPath)) {
                     $script:stats.Created++
                 }
                 else {
-                    $script:stats.Unmatched++              # CoordinateOnly with no group -> nothing to build
+                    # CoordinateOnly (bare <Map>_<Name>) with no authored group: VPP is the sole
+                    # source, so this becomes a base 'holdout' group unconditionally - not a
+                    # configurable/guessed fallback. Give the bookmark a category token (e.g.
+                    # rename S_Vostok to S_Scav_Vostok) to make it something other than a holdout.
+                    $new = [pscustomobject]@{
+                        name     = $r.RawName
+                        template = 'holdout'
+                        pos      = $r.Pos
+                    }
+                    $groupsSpec += $new
+                    $byName[$r.RawName] = $new
+                    [void]$keep.Add([string]$r.RawName)
+                    $script:stats.CreatedBase++
                 }
             }
             # REMOVE extras: any authored group not backed by a VPP bookmark this build.
@@ -167,12 +188,13 @@ if (-not (Test-Path $commonPath)) {
                 $script:stats.Removed++
             }
             $groupsSpec = @($groupsSpec | Where-Object { $_.name -and $keep.Contains([string]$_.name) })
-            Show-Info "DynamicAIB[$Mission]: VPP mirror -> $($stats.Overlaid) updated, $($stats.Created) created, $($stats.Removed) removed, $($stats.Unmatched) coord-only unmatched."
+            Show-Info "DynamicAIB[$Mission]: VPP mirror -> $($stats.Overlaid) updated, $($stats.Created) created, $($stats.CreatedBase) created as base holdouts, $($stats.Removed) removed."
         }
     }
 
     if (-not $native) {
         $groupLocations = @()
+        $templateByName = @{}   # name -> template, for the preview table only (never written to the composed JSON)
         foreach ($g in $groupsSpec) {
             try {
                 # A placement may reference a global groupTemplate and inherit its fields; any field
@@ -208,6 +230,7 @@ if (-not (Test-Path $commonPath)) {
                     weaponpool    = @($e.weapon)
                     npcproperties = $kit.npcproperties
                 }
+                $templateByName[$e.name] = if ($g.template) { $g.template } else { '(none)' }
                 $script:stats.Groups++
             } catch { Show-Warn "group '$($g.name)': $($_.Exception.Message) - skipped." }
         }
@@ -254,10 +277,24 @@ if (-not (Test-Path $commonPath)) {
             PredefinedWeapons = @($common.weapons)
         }
 
+        # Always show the composed result, not just counts - this IS the dry run: a report-only
+        # run must be enough to judge the outcome without needing -Fix or a deploy to see it.
+        if ($groupLocations.Count) {
+            $groupLocations |
+                ForEach-Object { [pscustomobject]@{ Name = $_.name; Template = $templateByName[$_.name]; Faction = $_.faction; Size = @($_.npcclasses).Count; Pos = @($_.waypoints)[0] } } |
+                Sort-Object Name | Format-Table -AutoSize | Out-Host
+        }
         Show-Info "DynamicAIB[$Mission]: $($stats.Groups) group(s), $($stats.Snipers) sniper(s), $($stats.Warn) warning(s)$(if (-not $Fix) { ' (report-only)' })."
+        $json = $null
+        if ($Fix -or $PreviewOut) { $json = $out | ConvertTo-Json -Depth 100 }
         if ($Fix) {
             New-Item -ItemType Directory -Force -Path (Split-Path $outPath) | Out-Null
-            ($out | ConvertTo-Json -Depth 100) | Set-Content -LiteralPath $outPath -Encoding utf8
+            $json | Set-Content -LiteralPath $outPath -Encoding utf8
+        }
+        if ($PreviewOut) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $PreviewOut) | Out-Null
+            $json | Set-Content -LiteralPath $PreviewOut -Encoding utf8
+            Show-Info "DynamicAIB[$Mission]: preview written to $PreviewOut"
         }
     }
 }

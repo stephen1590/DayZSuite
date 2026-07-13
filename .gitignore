@@ -5,9 +5,13 @@
 
 # Local run logs / transcripts
 /logs/
+backups/
+# Local-only build previews (Sync-VPPCoordinates.ps1 -Build) — disposable, never shipped
+/preview/
 
 # OS / editor cruft
 .DS_Store
 Thumbs.db
 
 .claude/
+CLAUDE.md

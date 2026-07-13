@@ -31,10 +31,22 @@
     deploy/profiles/VPPAdminTools/VPPCoordinates/ :
         TeleportLocation.snapshot.json   verbatim copy from the box (audit / fidelity)
         vpp-coordinates.json             normalised records the generator consumes
+    -Execute backs up whatever was previously pulled into a backups/ subdirectory (timestamped,
+    never a same-dir .bak sibling) before overwriting — skipped when the fetch is byte-identical
+    to the last pull, so an unchanged box never grows the backup pile.
+
+    ONE-COMMAND CHAIN: add -Build to also run Build-AIBandits.ps1 against deploy/ right after the
+    pull, once per mission under deploy/profiles/AI_Bandits/maps/ — a single invocation pulls the
+    live bookmarks AND shows you every map's composed DynamicAIB, instead of two scripts run by
+    hand. This ALWAYS writes a real, inspectable file per mission under ./preview/AI_Bandits/ (a
+    plain top-level folder, never shipped, never confused with deploy/'s real sources) — that is
+    the whole point of -Build: you asked to SEE the output, not just a truncated console table.
+    The real file the mod reads never exists here at all; it's generated on the box at every
+    boot by prestart.sh and never persists even there between restarts.
 .EXAMPLE
-    ./Sync-VPPCoordinates.ps1            # dry-run: show the parsed table, write nothing
+    ./Sync-VPPCoordinates.ps1                     # dry-run: show the parsed table, write nothing
 .EXAMPLE
-    ./Sync-VPPCoordinates.ps1 -Execute   # pull + save the snapshot and normalised list
+    ./Sync-VPPCoordinates.ps1 -Execute -Build     # pull + save, then write ./preview/AI_Bandits/*.json
 #>
 [CmdletBinding()]
 param(
@@ -47,6 +59,7 @@ param(
     [string]$ClassificationPath = (Join-Path $PSScriptRoot "deploy/profiles/AI_Bandits/common/classification.json"),
     [string]$OutDir = (Join-Path $PSScriptRoot "deploy/profiles/VPPAdminTools/VPPCoordinates"),
     [switch]$Execute,   # actually write the files (default is a dry-run)
+    [switch]$Build,     # chain: also run Build-AIBandits.ps1 against deploy/, writing ./preview/AI_Bandits/<mission>.json
     [switch]$NoLog
 )
 
@@ -152,13 +165,31 @@ if ($nonSpawn.Count) {
 # --- Write (only under -Execute). ----------------------------------------------------------
 $snapshotPath = Join-Path $OutDir "TeleportLocation.snapshot.json"
 $normPath     = Join-Path $OutDir "vpp-coordinates.json"
+$backupDir    = Join-Path $OutDir "backups"
 if ($Execute) {
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-    # Verbatim snapshot — exactly what the box returned, for audit and to diff drift later.
-    $raw.TrimEnd() | Set-Content -LiteralPath $snapshotPath -Encoding utf8
-    # Normalised list — every entry with its parsed fields + Conforms flag.
-    ($records | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $normPath -Encoding utf8
-    Write-Host "Wrote:`n  $snapshotPath`n  $normPath"
+    $prevRaw = if (Test-Path $snapshotPath) { (Get-Content -Raw -LiteralPath $snapshotPath).TrimEnd() } else { $null }
+    if ($null -ne $prevRaw -and $prevRaw -eq $raw.TrimEnd()) {
+        Write-Host "No change since the last pull — snapshot/vpp-coordinates.json left as-is (no backup needed)."
+    } else {
+        # Back up whatever was pulled last time before overwriting — a subdirectory, never a
+        # same-dir '.bak'/'fixed_' sibling, so the live snapshot/vpp-coordinates.json stay
+        # unambiguous. Skipped on a first-ever pull (nothing to back up yet).
+        if (Test-Path $snapshotPath) {
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+            $bstamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            Copy-Item -LiteralPath $snapshotPath -Destination (Join-Path $backupDir "TeleportLocation.snapshot.$bstamp.json") -Force
+            if (Test-Path $normPath) {
+                Copy-Item -LiteralPath $normPath -Destination (Join-Path $backupDir "vpp-coordinates.$bstamp.json") -Force
+            }
+            Write-Host "Backed up previous pull to $backupDir (*.$bstamp.json)"
+        }
+        # Verbatim snapshot — exactly what the box returned, for audit and to diff drift later.
+        $raw.TrimEnd() | Set-Content -LiteralPath $snapshotPath -Encoding utf8
+        # Normalised list — every entry with its parsed fields + Conforms flag.
+        ($records | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $normPath -Encoding utf8
+        Write-Host "Wrote:`n  $snapshotPath`n  $normPath"
+    }
 } else {
     Write-Host "Dry-run — nothing written. Re-run with -Execute to save to:`n  $snapshotPath`n  $normPath"
 }
@@ -176,4 +207,25 @@ if (-not $NoLog) {
         CoordinateOnly = $coordOnly.Count
         NonSpawn       = $nonSpawn.Count
     })
+}
+
+# --- Chain: build + WRITE a real preview per mission, outside deploy/ so it's never mistaken
+#     for a shipped source. This is the whole point of -Build - an actual file to open, not just
+#     a console table. -------------------------------------------------------------------------
+if ($Build) {
+    if (-not $Execute) { Write-Warning "-Build without -Execute previews the LAST pulled vpp-coordinates.json, not this fetch." }
+    $builder     = Join-Path $PSScriptRoot "Build-AIBandits.ps1"
+    $deployDir   = Join-Path $PSScriptRoot "deploy"
+    $mapsDir     = Join-Path $deployDir "profiles/AI_Bandits/maps"
+    $previewDir  = Join-Path $PSScriptRoot "preview/AI_Bandits"
+    if (-not (Test-Path $builder)) {
+        Write-Error "Build-AIBandits.ps1 not found next to this script - can't chain -Build."
+    } else {
+        $missions = @(Get-ChildItem -LiteralPath $mapsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+        if (-not $missions.Count) { Write-Warning "No per-map folders under $mapsDir - nothing to build." }
+        foreach ($m in $missions) {
+            Write-Host "`n--- Build-AIBandits: $m ---"
+            & $builder -ServerDir $deployDir -Mission $m -PreviewOut (Join-Path $previewDir "$m.DynamicAIB.json")
+        }
+    }
 }
