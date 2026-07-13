@@ -3,29 +3,29 @@ title: DayZ - Commie Lobby
 weight: 10
 ---
 
-# DayZ - *Commie Lobby*
+## DayZ - *Commie Lobby*
 
 A modded **DayZ** dedicated server running on an OVH VPS. Hostile AI, admin
 tooling, and a scheduled restart cycle keep the map fresh without wiping your
 progress.
 
-## Connect
+### Connect
 
-| | |
-|---|---|
-| **Server name** | [US-PNW] Commie Lobby (PVE) |
-| **Address** | `51.81.167.216:2301` |
-| **Query port** | `27016` |
-| **Host** | `cytonicmushroom.ddns.net` |
-| **Map** | Sakhal |
-| **Build** | Current stable - `forceSameBuild` is on |
+|                 |                                         |
+| --------------- | --------------------------------------- |
+| **Server name** | [US-PNW] Commie Lobby (PVE)             |
+| **Address**     | `51.81.167.216:2301`                    |
+| **Query port**  | `27016`                                 |
+| **Host**        | `cytonicmushroom.ddns.net`              |
+| **Map**         | Sakhal                                  |
+| **Build**       | Current stable - `forceSameBuild` is on |
 
 > [!NOTE]
-> **`forceSameBuild` is enabled**, so your DayZ client must be on the same stable
+> **`forceSameBuild` is enabled.** Your DayZ client must be on the same stable
 > build as the server. If DayZ just pushed an update, verify your game files before
 > connecting.
 
-## How to join
+### How to join
 
 {{% steps %}}
 
@@ -45,66 +45,62 @@ progress.
 
 {{% /steps %}}
 
-## Mods
+### Mods
 
-These run server-side; DayZ pulls whatever your client needs automatically when
+These run server-side - DayZ pulls whatever your client needs automatically when
 you connect.
 
-| Mod | Role | Workshop |
-|---|---|---|
-| **Community Framework (CF)** | Required framework dependency for the other mods | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036) |
-| **VPPAdminTools** | Server administration & moderation tools | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124) |
-| **AI Bandits** | Hostile roaming AI - patrols and ambushes | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769) |
-| **AIB Unleashed** | AI Bandits add-on (expanded AI) | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844) |
-| **AI Bandit Voices** | AI Bandits add-on - voice lines for the bandits | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
-| **Code Lock** | Combination locks for doors, gates, and stashes | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754) |
-| **DayZ-Dog** | Tameable companion dogs | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750) |
-
-> [!WARNING]
-> **AI Bandit Voices** is delisted from the Steam Workshop, so DayZ can't auto-subscribe
-> your client to it the way it does the other mods. It's currently unconfirmed whether
-> a client missing it can still connect - if you have trouble joining, this is the
-> first thing to ask about.
+| Mod                          | Role                                             | Workshop                                                                                   |
+| ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| **Community Framework (CF)** | Required framework dependency for the other mods | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036)            |
+| **VPPAdminTools**            | Server administration & moderation tools         | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124)            |
+| **AI Bandits**               | Hostile roaming AI - patrols and ambushes        | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769)            |
+| **AIB Unleashed**            | AI Bandits add-on (expanded AI)                  | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844)            |
+| **AI Bandit Voices**         | AI Bandits add-on - voice lines for the bandits  | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
+| **Code Lock**                | Combination locks for doors, gates, and stashes  | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754)            |
+| **DayZ-Dog**                 | Tameable companion dogs                          | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750)            |
 
 > [!NOTE]
 > **Knock Knock** (an AI Bandits add-on) is temporarily disabled - it'll be back soon.
 
-### DayZ-Expansion
+#### DayZ-Expansion
 
 A separate mod family - 16 pieces, each its own Workshop item, all required for **DayZ-Expansion**:
 
-| Mod | Role | Workshop | Status |
-|---|---|---|---|
-| **Dabs Framework** | Required framework dependency for DayZ-Expansion | [2545327648](https://steamcommunity.com/sharedfiles/filedetails/?id=2545327648) | Enabled |
-| **Expansion** | Base package - new points of interest, kill feed, player list, quality-of-life additions | [2116151222](https://steamcommunity.com/sharedfiles/filedetails/?id=2116151222) | Enabled |
-| **Licensed** | Licensed content pack required by several modules below | [2116157322](https://steamcommunity.com/sharedfiles/filedetails/?id=2116157322) | Enabled |
-| **BaseBuilding** | Territory system + expanded base building | [2792982513](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982513) | Enabled |
-| **Book** | In-game book - stats, recipes, server info | [2572324799](https://steamcommunity.com/sharedfiles/filedetails/?id=2572324799) | Enabled |
-| **Vehicles** | Extra vehicles - helicopters, boats, cars, amphibious rides | [2291785437](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785437) | Enabled |
-| **Groups** | Party/group system with a shared HUD and map pings | [2792983364](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983364) | Enabled |
-| **Missions** | Dynamic missions - contamination zones, airdrops | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | Enabled |
-| **SpawnSelection** | Pick your spawn point on the map after death | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | Enabled |
-| **Chat** | Extra chat channels (proximity, vehicle, party, admin) | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | Enabled |
-| **Map-Assets** | Decorative map objects | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
-| **Animations** | Extra vehicle animations | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | Enabled |
-| **Quests** | Quest system - collection, delivery, combat, and exploration objectives | [2828486817](https://steamcommunity.com/sharedfiles/filedetails/?id=2828486817) | Enabled |
-| **PersonalStorage** | Private virtual storage stash | [2946236937](https://steamcommunity.com/sharedfiles/filedetails/?id=2946236937) | Enabled |
-| **Weapons** | Extra firearms, optics, and grenades | [2792985069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792985069) | Enabled |
-| **Navigation** | Satellite map, GPS, compass, and marker HUD | [2792984722](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984722) | Enabled |
+| Mod                 | Role                                                                                     | Workshop                                                                        | Status  |
+| ------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- |
+| **Dabs Framework**  | Required framework dependency for DayZ-Expansion                                         | [2545327648](https://steamcommunity.com/sharedfiles/filedetails/?id=2545327648) | Enabled |
+| **Expansion**       | Base package - new points of interest, kill feed, player list, quality-of-life additions | [2116151222](https://steamcommunity.com/sharedfiles/filedetails/?id=2116151222) | Enabled |
+| **Licensed**        | Licensed content pack required by several modules below                                  | [2116157322](https://steamcommunity.com/sharedfiles/filedetails/?id=2116157322) | Enabled |
+| **BaseBuilding**    | Territory system + expanded base building                                                | [2792982513](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982513) | Enabled |
+| **Book**            | In-game book - stats, recipes, server info                                               | [2572324799](https://steamcommunity.com/sharedfiles/filedetails/?id=2572324799) | Enabled |
+| **Vehicles**        | Extra vehicles - helicopters, boats, cars, amphibious rides                              | [2291785437](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785437) | Enabled |
+| **Groups**          | Party/group system with a shared HUD and map pings                                       | [2792983364](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983364) | Enabled |
+| **Missions**        | Dynamic missions - contamination zones, airdrops                                         | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | Enabled |
+| **SpawnSelection**  | Pick your spawn point on the map after death                                             | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | Enabled |
+| **Chat**            | Extra chat channels (proximity, vehicle, party, admin)                                   | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | Enabled |
+| **Map-Assets**      | Decorative map objects                                                                   | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
+| **Animations**      | Extra vehicle animations                                                                 | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | Enabled |
+| **Quests**          | Quest system - collection, delivery, combat, and exploration objectives                  | [2828486817](https://steamcommunity.com/sharedfiles/filedetails/?id=2828486817) | Enabled |
+| **PersonalStorage** | Private virtual storage stash                                                            | [2946236937](https://steamcommunity.com/sharedfiles/filedetails/?id=2946236937) | Enabled |
+| **Weapons**         | Extra firearms, optics, and grenades                                                     | [2792985069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792985069) | Enabled |
+| **Navigation**      | Satellite map, GPS, compass, and marker HUD                                              | [2792984722](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984722) | Enabled |
 
 > [!NOTE]
-> **DayZ-Expansion-Bundle** (the all-in-one package) is intentionally not used - this server runs the 16 modular pieces above instead, so it won't show up in your subscribe prompt.
+> **DayZ-Expansion-Bundle** (the all-in-one package) is intentionally not used. This
+> server runs the 16 modular pieces above instead - it won't show up in your subscribe
+> prompt.
 
-## Gameplay notes
+### Gameplay notes
 
-- **AI Bandits** roam the whole map - patrols, ambushes, and dug-in groups spread
-  across settlements and points of interest rather than clustered in one place.
-  Don't treat any quiet stretch as safe. (See **Bandits** below for what you're up
+- **AI Bandits** roam the whole map. Patrols, ambushes, and dug-in groups spread
+  across settlements and points of interest - not clustered in one place. Don't
+  treat any quiet stretch as safe. (See **Bandits** below for what you're up
   against.)
-- **More bandits, more places** - bandit coverage was recently expanded:
-  more groups seeded at more locations across Sakhal - settlements, landmarks, and
-  chokepoints alike. The extra pressure comes from **more spawn points**, not bigger
-  packs, so the map feels lived-in (and dangerous) wherever you go.
+- **More bandits, more places** - bandit coverage recently expanded. More groups
+  seeded at more locations across Sakhal - settlements, landmarks, and chokepoints
+  alike. The extra pressure comes from **more spawn points**, not bigger packs.
+  The map feels lived-in - and dangerous - wherever you go.
 - The world persists (bases, vehicles, and stashed loot survive restarts via the
   central economy), so build like you mean to keep it.
 - **Accelerated day/night cycle** - a full day/night takes **4 hours real time**:
@@ -118,13 +114,13 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
   with you. (Some bandit groups run dogs too - a bark in the treeline isn't always
   friendly.)
 
-## Bandits - know what you're walking into
+### Bandits - know what you're walking into
 
 Not every bandit is the same fight. Roughly, from most to least dangerous:
 
-1. **Hardened raiders** - heavily armed and armored, move in large packs, lob
-   grenades, and shoot straight. The most valuable ground is guarded by these.
-   Don't engage without gear, backup, and a way out.
+1. **Hardened raiders** - heavily armed and armored. Move in large packs, lob
+   grenades, shoot straight. The most valuable ground is guarded by these. Don't
+   engage without gear, backup, and a way out.
 2. **Armed patrols** - rifle-carrying groups of moderate size. A serious threat in
    the open, but beatable with cover and a working firearm.
 3. **Settlement holdouts** - smaller armed bands squatting in populated areas.
@@ -141,7 +137,7 @@ Not every bandit is the same fight. Roughly, from most to least dangerous:
 > short on gear, they're the safest way to pick a fight (and grab some loot) without
 > getting instantly wiped.
 
-## Restarts
+### Restarts
 
 The server runs a **4-hour restart cycle** with in-game warnings counting down
 from **90 minutes to 1 minute** before each restart. Restarts are automatic and

@@ -3,33 +3,33 @@ title: Mumble
 weight: 20
 ---
 
-# Mumble
+## Mumble
 
 Low-latency voice chat for coordinating in-game (and everything else). Mumble is
-free and open source, with strong positional/low-latency audio — better for
+free and open source. It has strong positional/low-latency audio - better for
 gaming than most alternatives.
 
-## Connect
+### Connect
 
-| | |
-|---|---|
-| **Address** | `cytonicmushroom.ddns.net` (`51.81.167.216`) |
-| **Port** | `64738` (default) |
-| **Software** | Mumble server (Murmur) |
+|              |                                              |
+| ------------ | -------------------------------------------- |
+| **Address**  | `cytonicmushroom.ddns.net` (`51.81.167.216`) |
+| **Port**     | `64738` (default)                            |
+| **Software** | Mumble server (Murmur)                       |
 
-## How to join
+### How to join
 
 {{% steps %}}
 
 1. **Install the Mumble client**
 
-   Grab it from [mumble.info](https://www.mumble.info/downloads/) — Windows, macOS,
+   Grab it from [mumble.info](https://www.mumble.info/downloads/) - Windows, macOS,
    Linux, and mobile are all supported.
 
 1. **Run the audio & certificate wizards**
 
    On first launch Mumble walks you through microphone setup and generates a personal
-   certificate (keeps your identity between sessions — just accept the defaults).
+   certificate. That keeps your identity between sessions - just accept the defaults.
 
 1. **Add the server**
 
@@ -43,13 +43,13 @@ gaming than most alternatives.
 
 {{% /steps %}}
 
-## Tips
+### Tips
 
 > [!TIP]
-> Set a **push-to-talk** key (Settings → Shortcuts) unless your mic is very clean —
+> Set a **push-to-talk** key (Settings → Shortcuts) unless your mic is very clean -
 > it keeps background noise and keystrokes off the channel.
 
-- Move into whatever channel matches what you're doing; drag yourself between
+- Move into whatever channel matches what you're doing - drag yourself between
   channels freely.
-- If your audio is echoing or too quiet, re-run **Settings → Audio Wizard** — it
+- If your audio is echoing or too quiet, re-run **Settings → Audio Wizard** - it
   fixes most issues in a minute.
