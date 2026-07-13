@@ -15,6 +15,10 @@ function fail(statusCode: number, message: string): ActionError {
   return Object.assign(new Error(message), { statusCode });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface Action {
   /** Kicks players / interrupts play -> gated by the player guard. */
   destructive: boolean;
@@ -23,11 +27,28 @@ export interface Action {
   run(params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
-export function buildActions(dayz: DayzBridge): Record<string, Action> {
+export function buildActions(dayz: DayzBridge, warnSeconds: number): Record<string, Action> {
+  // Give connected players a chance to reach safety before an action that's about to
+  // disconnect them: broadcast, then wait. Skipped when nobody's on, or the count
+  // can't be verified (RCon down) -- don't block the action on a guess, the player
+  // guard upstream already made that call. This is what actually saves player data:
+  // whoever is still connected gets the warning time instead of being cut off mid-
+  // action; the server's own clean-exit path (see dayz-server.service ExecStop) does
+  // the rest once dayz-ctl's systemctl call runs.
+  async function warnAndWait(effect: string): Promise<void> {
+    if (warnSeconds <= 0) return;
+    const p = await dayz.players();
+    if (!p.count) return;
+    const text = sanitizeText(`[SERVER] ${effect} in ${warnSeconds}s - get to safety!`);
+    await dayz.ctl('broadcast', text);
+    await sleep(warnSeconds * 1000);
+  }
+
   const lifecycle = (verb: 'restart' | 'stop' | 'start', destructive: boolean, ok: string): Action => ({
     destructive,
     describe: `${verb} the DayZ server`,
     async run() {
+      if (destructive) await warnAndWait(verb === 'restart' ? 'Server restarting' : 'Server stopping');
       const r = await dayz.ctl(verb);
       if (r.code !== 0) throw fail(502, `${verb} failed: ${(r.stderr || r.stdout).trim()}`);
       return { message: ok };
@@ -64,6 +85,7 @@ export function buildActions(dayz: DayzBridge): Record<string, Action> {
         const mission = String(params.mission ?? '');
         // Shape check here; dayz-ctl re-validates against installed missions.
         if (!/^[A-Za-z0-9_.-]+$/.test(mission)) throw fail(400, 'invalid or missing "mission"');
+        await warnAndWait('Map changing, server restarting');
         const r = await dayz.ctl('set-map', mission);
         if (r.code === 2) throw fail(400, `unknown mission '${mission}' (not installed under mpmissions/)`);
         if (r.code !== 0) throw fail(502, `set-map failed: ${(r.stderr || r.stdout).trim()}`);

@@ -9,9 +9,11 @@
 #   * rebuilds (npm ci / install:components / build)
 #   * installs the shipped config.js + systemd unit verbatim, every run
 #   * creates the data dir once and NEVER clobbers it
+#   * seeds the invite-only RESTRICT_REGISTRATION decree once when enabled
+#     (RestrictRegistration), never overriding a later admin-panel change
 #   * re-renders customize/application_config.js every run (managed policy:
-#     registered-only file uploads, min password length) while preserving the
-#     generated-once loginSalt (carried forward from the previous file)
+#     guests may open/edit shared docs but cannot create anything new, min
+#     password length) while preserving the generated-once loginSalt
 set -euo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=/dev/null
@@ -64,6 +66,31 @@ $SUDO chmod 0750 "$DATA_DIR"
 # the data (0750). It does NOT get write access — CryptPad owns its data.
 $SUDO usermod -aG "$RUN_USER" "$SSH_USER"
 
+echo "== registration policy (invite-only = ${RESTRICT_REGISTRATION:-false}) =="
+# CryptPad has NO config.js key for invite-only registration — it is a runtime
+# "decree". We SEED it: append a RESTRICT_REGISTRATION line to the datastore's
+# decree log, in the exact on-disk shape CryptPad writes itself — a JSON array
+# [command, args, author, time] (loaded unauthenticated, so a seeded line is
+# honoured on boot). Seed ONLY when the flag is on AND no such decree exists yet,
+# so we never duplicate and never re-impose it over a later admin-panel change;
+# the admin panel is the live authority once the decree is present. The
+# bootstrap admin must already exist — Deploy-CryptPad.ps1 refuses the flag with
+# empty AdminKeys, so we can't lock everyone out here.
+DECREE_DIR="$DATA_DIR/data/decrees"
+DECREE_FILE="$DECREE_DIR/decree.ndjson"
+if [ "${RESTRICT_REGISTRATION:-false}" = "true" ]; then
+  $SUDO -u "$RUN_USER" mkdir -p "$DECREE_DIR"
+  if $SUDO test -f "$DECREE_FILE" && $SUDO grep -q '"RESTRICT_REGISTRATION"' "$DECREE_FILE"; then
+    echo 'RESTRICT_REGISTRATION already recorded — admin panel owns it now, left as-is'
+  else
+    printf '["RESTRICT_REGISTRATION",[true],"deploy-bootstrap",%s]\n' "$(date +%s%3N)" \
+      | $SUDO -u "$RUN_USER" tee -a "$DECREE_FILE" >/dev/null
+    echo 'seeded RESTRICT_REGISTRATION — new signups now require an invite link'
+  fi
+else
+  echo 'open registration (RestrictRegistration=false) — not managed here'
+fi
+
 echo '== config.js (shipped file) =='
 $SUDO install -o "$RUN_USER" -g "$RUN_USER" -m 0644 ./config.js "$APP_DIR/config/config.js"
 
@@ -72,8 +99,9 @@ echo '== application_config.js (managed policy; loginSalt preserved) =='
 # exist (changing it locks everyone out), so it is generated ONCE and then
 # preserved — carried forward by reading it back out of the previous file. The
 # rest is POLICY we re-apply on every deploy (so it stays managed here, never
-# hand-edited on the box). registeredOnlyTypes gains 'file' => only registered
-# users can UPLOAD files; guests can still open pads shared with them by link.
+# hand-edited on the box). Every creatable document type goes in
+# registeredOnlyTypes => guests can open/edit docs shared with them by link but
+# cannot CREATE anything new (uploads included); link access is unaffected.
 $SUDO -u "$RUN_USER" mkdir -p "$APP_DIR/customize"
 APPCFG="$APP_DIR/customize/application_config.js"
 SALT=
@@ -92,13 +120,24 @@ define(['/common/application_config_internal.js'], function (AppConfig) {
     AppConfig.loginSalt = '$SALT';
     AppConfig.minimumPasswordLength = 8;
 
-    // Registered-users-only file uploads. Adding 'file' to registeredOnlyTypes
-    // makes the File app show guests "You must be logged in to upload files",
-    // while pads shared by link still open for them.
-    AppConfig.registeredOnlyTypes = AppConfig.registeredOnlyTypes || [];
-    if (AppConfig.registeredOnlyTypes.indexOf('file') === -1) {
-        AppConfig.registeredOnlyTypes.push('file');
-    }
+    // Guest policy: open/edit documents shared with you by link, but create
+    // NOTHING new. Every creatable document type is marked "registered-only",
+    // so a guest who clicks "New" is sent to log in, while opening an existing
+    // document by its link is unaffected (link access never consults this list).
+    // The explicit list covers the known apps even if CryptPad renames its type
+    // index; the availablePadTypes pass adds any future types automatically.
+    // 'drive' and 'teams' are session areas, not documents, so we leave them.
+    var explicit = ['pad', 'sheet', 'doc', 'presentation', 'code', 'slide',
+                    'form', 'poll', 'kanban', 'whiteboard', 'file'];
+    var dynamic = (AppConfig.availablePadTypes || []).filter(function (t) {
+        return ['drive', 'teams'].indexOf(t) === -1;
+    });
+    AppConfig.registeredOnlyTypes = (AppConfig.registeredOnlyTypes || []).slice();
+    explicit.concat(dynamic).forEach(function (t) {
+        if (AppConfig.registeredOnlyTypes.indexOf(t) === -1) {
+            AppConfig.registeredOnlyTypes.push(t);
+        }
+    });
     return AppConfig;
 });
 EOF

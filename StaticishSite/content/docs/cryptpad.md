@@ -25,13 +25,15 @@ it. Free and open source.
 
 You can open and edit any document **shared with you by link** as a guest — no
 account needed. An account gets you a home drive that remembers your documents
-between sessions.
+between sessions; **registration is invite-only**, so ask the host for an invite
+link if you'd like one.
 
 > [!IMPORTANT]
-> **Uploading files requires an account.** Guests can view and edit shared
-> documents, but the File upload app is registered-users-only — if you try to
-> upload while logged out you'll be told to sign in first. Make an account (or
-> ask for one) and you're set.
+> **Creating documents requires an account.** Guests can open and edit anything
+> shared with them by link, but making something new — a fresh pad, sheet, or
+> file upload — is registered-users-only. Click **New** while logged out and
+> you'll be asked to sign in first. Make an account (or ask for one) and you're
+> set.
 
 ## Tips
 

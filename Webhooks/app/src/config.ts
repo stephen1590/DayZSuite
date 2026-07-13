@@ -27,6 +27,8 @@ export interface AppConfig {
   cooldownSeconds: Record<string, number>;
   /** Refuse destructive actions while players are online (unless {force:true}). */
   playerGuard: boolean;
+  /** Seconds to broadcast-warn and wait before a restart/stop/map action, if anyone's on. 0 = skip. */
+  restartWarningSeconds: number;
   /** Directory for the CSV audit trail. */
   auditDir: string;
   rateLimit: { max: number; windowMs: number };
@@ -55,6 +57,7 @@ export function loadConfig(): AppConfig {
     dayzCtl: raw.dayz?.ctl ?? '/usr/local/bin/dayz-ctl',
     cooldownSeconds: { default: 3, ...(raw.cooldownSeconds ?? {}) },
     playerGuard: raw.playerGuard ?? true,
+    restartWarningSeconds: Number(raw.dayz?.restartWarningSeconds ?? 15),
     auditDir: raw.auditDir ?? '/var/log/webhooks',
     rateLimit: {
       max: Number(raw.rateLimit?.max ?? 30),

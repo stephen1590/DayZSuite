@@ -60,6 +60,7 @@ foreach ($key in @('Server','SshUser','SiteName','AppDir','NodeMajor','NodeBin',
 if (-not $cfg.Dayz -or -not $cfg.Dayz.Unit -or -not $cfg.Dayz.ServerDir) {
     throw "Webhooks deploy config needs Dayz.Unit and Dayz.ServerDir."
 }
+$restartWarnSec = if ($cfg.Dayz.RestartWarningSeconds) { [int]$cfg.Dayz.RestartWarningSeconds } else { 15 }
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
@@ -86,7 +87,10 @@ New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 $appConfig = [ordered]@{
     host            = '127.0.0.1'
     port            = [int]$cfg.Port
-    dayz            = [ordered]@{ ctl = '/usr/local/bin/dayz-ctl' }
+    dayz            = [ordered]@{
+        ctl                   = '/usr/local/bin/dayz-ctl'
+        restartWarningSeconds = $restartWarnSec
+    }
     cooldownSeconds = $cfg.Cooldowns
     playerGuard     = [bool]$cfg.PlayerGuard
     auditDir        = $cfg.AuditDir
@@ -135,7 +139,7 @@ $target = "$($cfg.SshUser)@$($cfg.Server)"
 Write-Host "Target : $target (port $SshPort)   Node: $($cfg.NodeMajor).x   App: $($cfg.AppDir)" -ForegroundColor Cyan
 Write-Host "Public : https://$($cfg.Hostnames[0])   ->  127.0.0.1:$($cfg.Port)"
 Write-Host "DayZ   : unit '$($cfg.Dayz.Unit)'  dir $($cfg.Dayz.ServerDir)"
-Write-Host "Guard  : playerGuard=$($cfg.PlayerGuard)  vpp=$($cfg.Vpp.Enabled)  rules=$(@($cfg.Vpp.Rules).Count)"
+Write-Host "Guard  : playerGuard=$($cfg.PlayerGuard)  restartWarn=${restartWarnSec}s  vpp=$($cfg.Vpp.Enabled)  rules=$(@($cfg.Vpp.Rules).Count)"
 Write-Host "Staged : $stageDir" -ForegroundColor Cyan
 Get-ChildItem $stageDir | ForEach-Object { Write-Host ("         {0,-20} {1,8:n0} B" -f $_.Name, $_.Length) }
 

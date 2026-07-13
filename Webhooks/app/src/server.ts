@@ -13,7 +13,7 @@ import { registerSources } from './routes/sources.js';
 const cfg = loadConfig();
 const audit = makeAudit(cfg.auditDir);
 const dayz = makeDayz(cfg);
-const actions = buildActions(dayz);
+const actions = buildActions(dayz, cfg.restartWarningSeconds);
 const cooldowns = new Cooldowns();
 
 const app = Fastify({

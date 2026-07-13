@@ -84,6 +84,13 @@ $defaultStorageBytes = [int64]$cfg.DefaultStorageGb * 1024 * 1024 * 1024
 $AdminKeys   = @($cfg.AdminKeys) | Where-Object { $_ -and $_.Trim() }
 $adminKeysJs = ($AdminKeys | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join ",`n        "
 
+# Lock-out guard: restricting registration with no admin means nobody can ever
+# register (no admin left to mint invite links). Refuse before we ship that.
+$restrictReg = [bool]$cfg.RestrictRegistration
+if ($restrictReg -and $AdminKeys.Count -eq 0) {
+    throw "RestrictRegistration=true but AdminKeys is empty — that would lock everyone out (no admin to issue invite links). Register your admin first, add its key to AdminKeys, then set RestrictRegistration true."
+}
+
 # --- RENDER + STAGE ---------------------------------------------------------
 function Expand-File([string]$RelPath, [hashtable]$Vars) {
     $p = Join-Path $PSScriptRoot $RelPath
@@ -125,6 +132,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'deploy.env') -Value (
         '__SSH_USER__'   = $cfg.SshUser
         '__APP_DIR__'    = $cfg.AppDir
         '__DATA_DIR__'   = $cfg.DataDir
+        '__RESTRICT_REGISTRATION__' = $(if ($restrictReg) { 'true' } else { 'false' })
     })
 
 Copy-Item (Join-Path $PSScriptRoot 'remote/deploy.sh') (Join-Path $stageDir 'deploy.sh')
@@ -134,6 +142,7 @@ $target = "$($cfg.SshUser)@$($cfg.Server)"
 Write-Host "Target : $target (port $SshPort)   Ref: $($cfg.Ref)   Node: $($cfg.NodeMajor).x" -ForegroundColor Cyan
 Write-Host "Origins: main=$mainOrigin  sandbox=$sandboxOrigin"
 Write-Host "Admin  : $($AdminKeys.Count) key(s)   Quota: $($cfg.DefaultStorageGb) GB/user   Upload: $($cfg.MaxUploadMb) MB"
+Write-Host "Signups: $(if ($restrictReg) { 'invite-only (seeds RESTRICT_REGISTRATION decree)' } else { 'open registration' })"
 if ($AdminKeys.Count -eq 0) {
     Write-Host "         (no admin yet — register at $mainOrigin, copy Settings > Public Signing Key into deploy.config.json AdminKeys, redeploy)" -ForegroundColor DarkYellow
 }

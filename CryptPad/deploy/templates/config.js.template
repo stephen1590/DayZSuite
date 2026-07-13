@@ -23,9 +23,11 @@ module.exports = {
     // Settings -> "Public Signing Key", paste it into deploy.config.json, redeploy.
     // NOTE: the server reads adminKeys and defaultStorageLimit (below) from THIS
     // file, but invite-only registration and anonymous access are NOT config.js
-    // keys in CryptPad 2026.x — they are runtime "decrees" you toggle once in the
-    // admin panel; they are stored in __DATA_DIR__/data/decrees and survive every
-    // redeploy (this script never clobbers the data dir).
+    // keys in CryptPad 2026.x — they are runtime "decrees" stored in
+    // __DATA_DIR__/data/decrees (they survive every redeploy; this script never
+    // clobbers the data dir). Invite-only registration is seeded once by the
+    // deploy from RestrictRegistration in deploy.config.json; anonymous access is
+    // toggled in the admin panel.
     adminKeys: [
         __ADMIN_KEYS__
     ],

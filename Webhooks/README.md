@@ -40,10 +40,10 @@ There is no arbitrary-command path.
 
 | Action | Effect | Destructive? |
 |---|---|---|
-| `restart` / `stop` / `start` | `systemctl … dayz-server` | restart, stop |
+| `restart` / `stop` / `start` | warn (if anyone's on) → `systemctl … dayz-server` | restart, stop |
 | `status` | is the unit active? | no |
 | `players` | current online count (RCon) | no |
-| `map` | write `map.env` → restart (`{ "mission": "dayzOffline.enoch" }`) | yes |
+| `map` | warn (if anyone's on) → write `map.env` → restart (`{ "mission": "dayzOffline.enoch" }`) | yes |
 | `broadcast` | in-game message to all (`{ "message": "…" }`) | no |
 
 Every action maps to a verb in **`dayz-ctl`** — the single privileged script (below).
@@ -80,7 +80,18 @@ This service can reboot a game server from the public internet, so it is layered
 6. **Player guard.** Destructive actions refuse while players are online (or if the
    count can't be verified over RCon), unless the body says `{"force": true}` — the same
    conservative stance as the DayZ deploy's guard.
-7. **Audit everything.** Every decision (accepted / rejected / failed) is written to
+7. **Warn before yanking anyone offline.** Once a destructive action actually runs
+   (guard passed, or `force: true` overrode it), `restart` / `stop` / `map` first check
+   the live player count again — if anyone's connected, they get an in-game broadcast
+   and `Dayz.RestartWarningSeconds` (default 15s) to reach safety *before* `dayz-ctl`
+   is called. Skipped entirely when nobody's on. The actual data-safety comes from
+   `dayz-server.service`'s `ExecStop=kill -s INT` (the engine treats that as a clean
+   shutdown and saves, same as the native `messages.xml` schedule and VPP's manual
+   restart button) — the warning just means players aren't cut off without notice.
+   Default fits nginx's 30s `proxy_read_timeout` on this vhost with margin; raise it
+   past ~25s and bump that timeout too, or callers see a client-side timeout even
+   though the restart still completes.
+8. **Audit everything.** Every decision (accepted / rejected / failed) is written to
    journald (full JSON) **and** a fixed-column CSV ledger in `AuditDir`.
 
 > **Why the systemd unit is only lightly sandboxed:** the service's job is to `sudo`

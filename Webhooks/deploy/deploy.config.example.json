@@ -32,7 +32,14 @@
   // (/home/<SshUser>); Unit is the systemd unit name.
   "Dayz": {
     "Unit":      "dayz-server",
-    "ServerDir": "/home/${SshUser}/servers/dayz-server"
+    "ServerDir": "/home/${SshUser}/servers/dayz-server",
+    // Broadcast a warning and wait this long before restart/stop/map actually run,
+    // but only if someone's connected (RCon "players" > 0) -- nothing to warn
+    // otherwise. Default 15s comfortably fits nginx's 30s proxy_read_timeout on this
+    // vhost (deploy/nginx/webhooks.conf.template); push it past ~25s and bump that
+    // timeout too, or the caller sees a client-side timeout even though the action
+    // still completes server-side.
+    "RestartWarningSeconds": 15
   },
 
   // Per-action cooldown (seconds). "default" covers any action not named here.

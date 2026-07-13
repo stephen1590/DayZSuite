@@ -57,10 +57,7 @@ you connect.
 | **AI Bandits** | Hostile roaming AI - patrols and ambushes | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769) |
 | **AIB Unleashed** | AI Bandits add-on (expanded AI) | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844) |
 | **AI Bandit Voices** | AI Bandits add-on - voice lines for the bandits | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
-| **Dr Jones Trader** | Buy & sell at safezone trader NPCs | [1590841260](https://steamcommunity.com/sharedfiles/filedetails/?id=1590841260) |
 | **Code Lock** | Combination locks for doors, gates, and stashes | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754) |
-| **Survivor Animations** | Animation dependency (required by Bicycle) | [2918418331](https://steamcommunity.com/sharedfiles/filedetails/?id=2918418331) |
-| **Bicycle** | Rideable bicycles for getting around | [2971190303](https://steamcommunity.com/sharedfiles/filedetails/?id=2971190303) |
 | **DayZ-Dog** | Tameable companion dogs | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750) |
 
 > [!WARNING]
@@ -88,8 +85,8 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
 | **Missions** | Dynamic missions - contamination zones, airdrops | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | Enabled |
 | **SpawnSelection** | Pick your spawn point on the map after death | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | Enabled |
 | **Chat** | Extra chat channels (proximity, vehicle, party, admin) | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | Enabled |
-| **ap-Assets** | Decorative map objects | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
-| **Animations** | Extra vehicle animations | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | Disabled - Incompatible with Bicycle Animations |
+| **Map-Assets** | Decorative map objects | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
+| **Animations** | Extra vehicle animations | [2793893086](https://steamcommunity.com/sharedfiles/filedetails/?id=2793893086) | Enabled |
 | **Quests** | Quest system - collection, delivery, combat, and exploration objectives | [2828486817](https://steamcommunity.com/sharedfiles/filedetails/?id=2828486817) | Enabled |
 | **PersonalStorage** | Private virtual storage stash | [2946236937](https://steamcommunity.com/sharedfiles/filedetails/?id=2946236937) | Enabled |
 | **Weapons** | Extra firearms, optics, and grenades | [2792985069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792985069) | Enabled |
@@ -104,7 +101,7 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
   across settlements and points of interest rather than clustered in one place.
   Don't treat any quiet stretch as safe. (See **Bandits** below for what you're up
   against.)
-- **More bandits, more places** *(recent)* - bandit coverage was recently expanded:
+- **More bandits, more places** - bandit coverage was recently expanded:
   more groups seeded at more locations across Sakhal - settlements, landmarks, and
   chokepoints alike. The extra pressure comes from **more spawn points**, not bigger
   packs, so the map feels lived-in (and dangerous) wherever you go.
@@ -113,13 +110,10 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
 - **Accelerated day/night cycle** - a full day/night takes **4 hours real time**:
   **3 hours of daylight, 1 hour of night**. Plan supply runs and bandit-territory
   crossings around it - night falls faster than you'd expect.
-- **Traders** - NPC traders operate out of a **safezone** where you can buy and sell
-  gear for in-game currency. No fighting inside the zone. *(Vehicle/boat trading is
-  off for now.)*
+- **Traders** - buy and sell gear for in-game currency at **safezone** trader points
+  (part of the DayZ-Expansion market). No fighting inside the zone.
 - **Code locks** - lock doors, gates, and stashes with a combination code instead of
   a key. Don't forget the code.
-- **Bicycles** - pedal-powered transport, no fuel required. Quiet, cheap, and a lot
-  faster than walking the coast.
 - **Dogs** - tameable companion dogs are in the world. Befriend one and it'll travel
   with you. (Some bandit groups run dogs too - a bark in the treeline isn't always
   friendly.)
