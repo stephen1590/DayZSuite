@@ -11,7 +11,11 @@
             "flashlightDetectionRangeMeters": 100.0,
             "lootMinCount": 0,
             "lootMaxCount": 2,
-            "nightLightsEnabled": 0
+            "nightLightsEnabled": 0,
+            "stanceAccuracyStanding": 0.9,
+            "weatherSnowAccuracyMin": 0.9,
+            "woundedAccuracyMultiplier": 0.8,
+            "nightAccuracyPercent": 0.5
         },
         "profiles/ExpansionMod/Settings/SocialMediaSettings.json": {
             "NewsFeedTexts": [
