@@ -65,9 +65,10 @@
                     { "ClassName": "SteakKnife", "Quantity": -1, "Attachments": [] },
                     { "ClassName": "BandageDressing", "Quantity": -1, "Attachments": [] },
                     { "ClassName": "Chemlight_White", "Quantity": -1, "Attachments": [] },
-                    { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] }, 
-                    { "ClassName": "CZ61", "Quantity": -1, "Attachments": [] },
-                    { "ClassName": "Mag_CZ61_20Rnd", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "CZ61", "Quantity": -1, "Attachments": [
+                        { "ClassName": "Mag_CZ61_20Rnd", "Quantity": -1, "Attachments": [] }
+                    ] },
                     { "ClassName": "AmmoBox_9x19_25rnd", "Quantity": -1, "Attachments": [] }
                 ],
                 "StartingClothing.Backpacks": []
