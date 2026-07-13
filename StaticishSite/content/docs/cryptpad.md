@@ -5,10 +5,9 @@ weight: 30
 
 ## CryptPad
 
-Self-hosted **CryptPad** - end-to-end encrypted documents, spreadsheets, slides,
-kanban boards, and more, right in the browser. Everything is encrypted on your
-own machine before it's sent - the server stores your work but can never read
-it. Free and open source.
+Self-hosted **CryptPad** - end-to-end encrypted docs, spreadsheets, slides, and
+kanban boards in the browser. Everything encrypts on your machine before it's
+sent. The server stores your work but can never read it. Free and open source.
 
 ### Connect
 
@@ -18,29 +17,24 @@ it. Free and open source.
 | **Software** | CryptPad (self-hosted)                                               |
 
 > [!NOTE]
-> Still being wired up - the door may be locked for a little while yet. Once it's
-> live, reach it at the address above.
+> Not live yet - still being wired up. Once it is, reach it at the address above.
 
 ### Accounts & guests
 
 You can open and edit any document **shared with you by link** as a guest - no
 account needed. An account gets you a home drive that remembers your documents
-between sessions. **Registration is invite-only** - ask the host for an invite
-link if you'd like one.
+between sessions. **Registration is invite-only** - ask the host for an invite.
 
 > [!IMPORTANT]
 > **Creating documents requires an account.** Guests can open and edit anything
-> shared with them by link. Making something new - a fresh pad, sheet, or
-> file upload - is registered-users-only. Click **New** while logged out and
-> you'll be asked to sign in first. Make an account (or ask for one) and you're
-> set.
+> shared with them by link - but making something new (a pad, a sheet, a file
+> upload) is registered-users-only. Ask for an account and you're set.
 
 ### Tips
 
 > [!TIP]
-> CryptPad is E2E-encrypted. **If you lose your password there is no
-> reset** - no one, including the host, can recover your drive. Save it somewhere
-> safe.
+> **Lose your password and there is no reset.** CryptPad is E2E-encrypted - no
+> one, including the host, can recover your drive. Save it somewhere safe.
 
 - Share a document from the **Share** button - pick view-only or editable to
   control what guests can do with the link.

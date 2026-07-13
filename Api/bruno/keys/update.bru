@@ -1,0 +1,27 @@
+meta {
+  name: update
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/keys/update
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "config-astronaut",
+    "scope": "full",
+    "namespaces": [
+      "dayz"
+    ]
+  }
+}
+
+docs {
+  WIZARD ONLY: change a key's scope and/or namespaces in place
+  
+  Adjust a key on the fly WITHOUT rotating its secret - id, secret, and createdAt are untouched, so the caller keeps working. Provide scope and/or namespaces; at least one is required. Same validation as create.
+}

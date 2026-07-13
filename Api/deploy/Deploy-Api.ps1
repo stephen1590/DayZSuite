@@ -1,14 +1,14 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Stage-and-ship deploy for the Webhooks API (Fastify/Node). TLS/nginx is handled
-  SEPARATELY by ../../Provision-Tls.ps1 -Service Webhooks (the NginxService root).
+  Stage-and-ship deploy for the API service (Fastify/Node). TLS/nginx is handled
+  SEPARATELY by ../../Provision-Tls.ps1 -Service Api (the NginxService root).
 
 .DESCRIPTION
   Flow: render -> stage -> ship -> run.
 
     1. RENDER  config.json (from deploy.config.json), plus the templated
-               webhooks.service / deploy.env / dayz-ctl / webhooks.sudoers
+               api.service / deploy.env / dayz-ctl / api.sudoers
     2. STAGE   the full bundle + the app source (src/, package.json, tsconfig.json)
                into stage/app/ — real files you can review/diff
     3. SHIP    (-Apply) rsync stage/app/ to ~/.deploy/<SiteName>/app/ on the box
@@ -25,8 +25,8 @@
   deploy.sh and printed once.
 
 .EXAMPLE
-  ./Deploy-Webhooks.ps1            # dry run: render + stage for review
-  ./Deploy-Webhooks.ps1 -Apply     # ship + build + install + (re)start
+  ./Deploy-Api.ps1            # dry run: render + stage for review
+  ./Deploy-Api.ps1 -Apply     # ship + build + install + (re)start
 
 .NOTES
   Never hand-edit the live box. Change config/template/src and redeploy.
@@ -39,7 +39,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Shared code utils live at Dev/common (four levels up: deploy -> Webhooks ->
+# Shared code utils live at Dev/common (four levels up: deploy -> Api ->
 # NginxService -> UbuntuHost -> Dev).
 . (Join-Path $PSScriptRoot '../../../../common/Utils.ps1')
 # Deploy-config loader lives at the NginxService root (../.. from this deploy/).
@@ -55,12 +55,50 @@ $serviceDeployDir = if ($ConfigPath) {
 $cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir
 
 foreach ($key in @('Server','SshUser','SiteName','AppDir','NodeMajor','NodeBin','RunUser','Port','AuditDir')) {
-    if (-not $cfg[$key]) { throw "Webhooks deploy config is missing '$key'." }
+    if (-not $cfg[$key]) { throw "Api deploy config is missing '$key'." }
 }
 if (-not $cfg.Dayz -or -not $cfg.Dayz.Unit -or -not $cfg.Dayz.ServerDir) {
-    throw "Webhooks deploy config needs Dayz.Unit and Dayz.ServerDir."
+    throw "Api deploy config needs Dayz.Unit and Dayz.ServerDir."
 }
 $restartWarnSec = if ($cfg.Dayz.RestartWarningSeconds) { [int]$cfg.Dayz.RestartWarningSeconds } else { 15 }
+
+# Config-retrieval allowlist, baked into dayz-ctl as two tables. THIS is the mask:
+# only these are retrievable, only relative to ServerDir. Two entry shapes:
+#   { name, path }  -> a single file          -> CONFIG_MAP  "name<TAB>relpath"
+#   { group, dir }  -> a whole folder (its files, recursively, enumerated on the
+#                      box at read time)       -> CONFIG_DIRS "group<TAB>reldir"
+# Validate here; dayz-ctl re-checks every read. Absent = feature off.
+$allConfigs   = @($cfg.Configs) | Where-Object { $_ }
+$fileEntries  = @($allConfigs | Where-Object { $_.path })
+$dirEntries   = @($allConfigs | Where-Object { $_.dir -and -not $_.path })
+foreach ($c in $fileEntries) {
+    if ("$($c.name)" -notmatch '^[A-Za-z0-9_.-]+$') { throw "Api Configs: invalid file name '$($c.name)' (allowed: A-Z a-z 0-9 . _ -)." }
+    if ("$($c.path)" -match '^\s*/' -or "$($c.path)" -match '\.\.') { throw "Api Configs: '$($c.name)' path must be relative to ServerDir with no '..': $($c.path)." }
+}
+foreach ($c in $dirEntries) {
+    if (-not "$($c.group)".Trim()) { throw "Api Configs: folder entry for dir '$($c.dir)' needs a 'group' label." }
+    if ("$($c.group)" -match "`t|`n") { throw "Api Configs: group label must not contain tabs/newlines: '$($c.group)'." }
+    if ("$($c.dir)" -match '^\s*/' -or "$($c.dir)" -match '\.\.') { throw "Api Configs: folder 'dir' must be relative to ServerDir with no '..': $($c.dir)." }
+    foreach ($s in @($c.subfolders)) {
+        if ("$s" -match '^\s*/' -or "$s" -match '\.\.') { throw "Api Configs: subfolder must be relative to the dir with no '..': '$s' (in '$($c.group)')." }
+        if ("$s" -match "[,`t`n]") { throw "Api Configs: subfolder must not contain comma/tab/newline: '$s' (in '$($c.group)')." }
+    }
+}
+$configMap  = ($fileEntries | ForEach-Object { "$($_.name)`t$($_.path)" }) -join "`n"
+# CONFIG_DIRS: "group<TAB>reldir<TAB>subfolders". Files come from the dir root
+# (non-recursive) plus each named subfolder's root. Empty subfolders = root only.
+$configDirs = ($dirEntries | ForEach-Object {
+    $subs = if ($_.subfolders) { (@($_.subfolders | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) -join ',') } else { '' }
+    "$($_.group)`t$($_.dir)`t$subs"
+}) -join "`n"
+# Global ignore-filetype: extensions hidden from every FOLDER listing (single-file
+# entries are always shown). Normalized to a lowercase, dot-stripped comma list.
+foreach ($x in @($cfg.ConfigIgnoreExt)) {
+    if ("$x" -and "$x" -notmatch '^[.\sA-Za-z0-9]+$') { throw "Api ConfigIgnoreExt: '$x' is not a plain extension." }
+}
+$ignoreExt = if ($cfg.ConfigIgnoreExt) {
+    (@($cfg.ConfigIgnoreExt | ForEach-Object { "$_".Trim().TrimStart('.').ToLower() } | Where-Object { $_ }) -join ',')
+} else { '' }
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
@@ -94,6 +132,7 @@ $appConfig = [ordered]@{
     cooldownSeconds = $cfg.Cooldowns
     playerGuard     = [bool]$cfg.PlayerGuard
     auditDir        = $cfg.AuditDir
+    keysFile        = if ($cfg.KeysFile) { $cfg.KeysFile } else { '/var/lib/api/keys.json' }
     rateLimit       = [ordered]@{ max = [int]$cfg.RateLimit.Max; windowMs = [int]$cfg.RateLimit.WindowMs }
     vpp             = [ordered]@{ enabled = [bool]$cfg.Vpp.Enabled; rules = @($cfg.Vpp.Rules) }
 }
@@ -108,8 +147,8 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'deploy.env') -Value (
         '__AUDIT_DIR__'  = $cfg.AuditDir
     })
 
-Set-Content -NoNewline -Path (Join-Path $stageDir 'webhooks.service') -Value (
-    Expand-File 'templates/webhooks.service.template' @{
+Set-Content -NoNewline -Path (Join-Path $stageDir 'api.service') -Value (
+    Expand-File 'templates/api.service.template' @{
         '__NODE_BIN__'  = $cfg.NodeBin
         '__APP_DIR__'   = $cfg.AppDir
         '__RUN_USER__'  = $cfg.RunUser
@@ -120,10 +159,13 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
     Expand-File 'templates/dayz-ctl.template' @{
         '__UNIT__'       = $cfg.Dayz.Unit
         '__SERVER_DIR__' = $cfg.Dayz.ServerDir
+        '__CONFIG_MAP__'  = $configMap
+        '__CONFIG_DIRS__' = $configDirs
+        '__IGNORE_EXT__'  = $ignoreExt
     })
 
-Set-Content -NoNewline -Path (Join-Path $stageDir 'webhooks.sudoers') -Value (
-    Expand-File 'templates/webhooks.sudoers.template' @{ '__RUN_USER__' = $cfg.RunUser })
+Set-Content -NoNewline -Path (Join-Path $stageDir 'api.sudoers') -Value (
+    Expand-File 'templates/api.sudoers.template' @{ '__RUN_USER__' = $cfg.RunUser })
 
 Copy-Item (Join-Path $PSScriptRoot 'remote/deploy.sh') (Join-Path $stageDir 'deploy.sh')
 
@@ -139,6 +181,7 @@ $target = "$($cfg.SshUser)@$($cfg.Server)"
 Write-Host "Target : $target (port $SshPort)   Node: $($cfg.NodeMajor).x   App: $($cfg.AppDir)" -ForegroundColor Cyan
 Write-Host "Public : https://$($cfg.Hostnames[0])   ->  127.0.0.1:$($cfg.Port)"
 Write-Host "DayZ   : unit '$($cfg.Dayz.Unit)'  dir $($cfg.Dayz.ServerDir)"
+Write-Host "Configs: $(@($fileEntries).Count) file(s)$(if (@($fileEntries).Count) { ' (' + ((@($fileEntries) | ForEach-Object { $_.name }) -join ', ') + ')' }) + $(@($dirEntries).Count) folder(s)$(if (@($dirEntries).Count) { ' (' + ((@($dirEntries) | ForEach-Object { $_.dir }) -join ', ') + ')' })"
 Write-Host "Guard  : playerGuard=$($cfg.PlayerGuard)  restartWarn=${restartWarnSec}s  vpp=$($cfg.Vpp.Enabled)  rules=$(@($cfg.Vpp.Rules).Count)"
 Write-Host "Staged : $stageDir" -ForegroundColor Cyan
 Get-ChildItem $stageDir | ForEach-Object { Write-Host ("         {0,-20} {1,8:n0} B" -f $_.Name, $_.Length) }
@@ -168,7 +211,7 @@ if (-not $Apply) {
 
     Write-Host ""
     Write-Host "Done. Provision TLS if you haven't yet:" -ForegroundColor Green
-    Write-Host "  ../../Provision-Tls.ps1 -Service Webhooks -Apply" -ForegroundColor Green
+    Write-Host "  ../../Provision-Tls.ps1 -Service Api -Apply" -ForegroundColor Green
     Write-Host "The deploy printed your HMAC secret + VPP URL once (also in the log above) —" -ForegroundColor Green
     Write-Host "copy them into your caller / VPP now; they are not stored in the repo." -ForegroundColor Green
 }
@@ -179,7 +222,7 @@ if (-not $NoLog) {
     Write-CsvLog -Path (Join-Path $logDir 'deploy.csv') -Row ([PSCustomObject]@{
         timestamp = (Get-Date).ToUniversalTime().ToString('o')
         mode      = if ($Apply) { 'apply' } else { 'dryrun' }
-        service   = 'Webhooks'
+        service   = 'Api'
         server    = $cfg.Server
         appdir    = $cfg.AppDir
     })

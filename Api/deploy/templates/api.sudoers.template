@@ -1,6 +1,6 @@
-# Sudoers grant for the webhook service — installed to /etc/sudoers.d/webhooks
+# Sudoers grant for the API service — installed to /etc/sudoers.d/api
 # (mode 0440, validated with `visudo -c` by deploy.sh). Rendered from this template
-# by Deploy-Webhooks.ps1 (__RUN_USER__ = the service account).
+# by Deploy-Api.ps1 (__RUN_USER__ = the service account).
 #
 # The service account may run EXACTLY ONE program as root, with no password: the
 # dayz-ctl allowlist script. It has no other sudo rights. Do not widen this — every

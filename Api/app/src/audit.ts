@@ -1,6 +1,6 @@
 // Audit trail. Every decision the service makes (accepted, rejected, failed) is
 // recorded two ways:
-//   * a structured JSON line to stdout  -> captured by journald (`journalctl -u webhooks`)
+//   * a structured JSON line to stdout  -> captured by journald (`journalctl -u api`)
 //   * a fixed-column CSV row            -> a durable who/what/when ledger
 //
 // The CSV columns are FIXED (variable detail is JSON-encoded into one `detail`
@@ -19,6 +19,8 @@ function csvCell(value: string): string {
 export interface AuditContext {
   ip: string;
   url: string;
+  /** Who signed the request: 'wizard' or a derived key id. Folded into the detail JSON. */
+  key?: string;
 }
 
 export type Audit = (
@@ -32,7 +34,7 @@ export function makeAudit(auditDir: string): Audit {
   let csvPath: string | null = null;
   try {
     mkdirSync(auditDir, { recursive: true });
-    csvPath = join(auditDir, 'webhooks.csv');
+    csvPath = join(auditDir, 'api.csv');
     if (!existsSync(csvPath)) {
       appendFileSync(csvPath, COLUMNS.join(',') + '\n');
     }
@@ -49,7 +51,8 @@ export function makeAudit(auditDir: string): Audit {
       action,
       ip: ctx.ip,
       path: ctx.url,
-      detail: JSON.stringify(detail),
+      // key first so attribution survives even if an action result also has a 'key'.
+      detail: JSON.stringify(ctx.key ? { key: ctx.key, ...detail } : detail),
     };
     process.stdout.write(JSON.stringify({ audit: row }) + '\n');
     if (csvPath) {

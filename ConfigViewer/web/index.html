@@ -1,0 +1,586 @@
+<!--
+  Config Viewer — a dependency-free, single-file front end for the DayZ config API.
+
+  It talks ONLY to the same-origin /api/ path, which this site's nginx vhost
+  reverse-proxies to the API service (localhost:3100). The browser signs every
+  request itself (HMAC-SHA256 over the empty body, Web Crypto) with the derived
+  key the user pastes in, exactly the way the API verifies it. No build step, no
+  external scripts, no CDN — everything needed is inline.
+
+  Auth model: paste the Key ID + secret from an OBSERVE-scoped key minted via the
+  Keys API (/keys/create). Credentials are kept in a cookie on this device so a
+  refresh doesn't ask again; the cookie is destroyed the first time the API
+  rejects them (401), which bounces you back to the login card.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Config Viewer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --fg: #1c2128; --muted: #6b7684;
+    --border: #d7dce2; --accent: #2f6feb; --accent-fg: #fff;
+    --pre-bg: #0d1117; --pre-fg: #d4d9e0; --danger: #b3261e; --ok: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --card: #161b22; --fg: #e6edf3; --muted: #8b949e;
+      --border: #30363d; --accent: #4f8cff; --accent-fg: #fff;
+      --pre-bg: #010409; --pre-fg: #c9d1d9; --danger: #ff7b72; --ok: #3fb950;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px; max-width: 460px; margin: 8vh auto 0;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .card p.hint { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 5px; }
+  input, select {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    font: inherit; font-weight: 600; padding: 9px 16px; border: 0;
+    border-radius: 8px; background: var(--accent); color: var(--accent-fg);
+    cursor: pointer; margin-top: 18px;
+  }
+  button.ghost {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    margin: 0; padding: 6px 12px; font-size: 13px;
+  }
+  button:disabled { opacity: .55; cursor: default; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .row label { margin: 0; }
+  .row select { width: auto; min-width: 170px; flex: 1; }
+  /* file picker: subfolders are <optgroup> headers so they stand out from the files
+     under them (native bold/greyed on every browser; accent colour where supported). */
+  select optgroup { font-weight: 700; font-style: normal; color: var(--accent); }
+  select optgroup option { font-weight: 400; color: var(--fg); }
+  .msg { font-size: 13px; margin-top: 14px; min-height: 1em; }
+  .msg.err { color: var(--danger); }
+  .msg.ok  { color: var(--ok); }
+  .meta { color: var(--muted); font-size: 13px; word-break: break-all; margin: 0; }
+  .bar { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; }
+  .bar .spacer { flex: 1; }
+  .badge {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .05em; border: 1px solid var(--border); border-radius: 6px;
+    padding: 2px 8px;
+  }
+  #copy { min-width: 78px; margin: 0; }
+  /* color-coded category chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px; font: inherit;
+    font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+    cursor: pointer; background: var(--card); color: var(--fg);
+    border: 1px solid var(--border);
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--muted)); flex: none; }
+  .chip:hover { border-color: var(--c, var(--accent)); }
+  .chip.active { border-color: var(--c, var(--accent)); background: var(--cbg, transparent); }
+  .chip.active .dot { box-shadow: 0 0 0 3px var(--cbg, transparent); }
+  /* token colours — tuned for the always-dark code surface (--pre-bg) */
+  .t-key { color: #79c0ff; }
+  .t-str { color: #a5d6ff; }
+  .t-num { color: #f0883e; }
+  .t-kw  { color: #ff7b72; }
+  .t-com { color: #8b949e; font-style: italic; }
+  .t-tag { color: #7ee787; }
+  pre {
+    background: var(--pre-bg); color: var(--pre-fg); padding: 16px;
+    border-radius: 10px; overflow: auto; font-size: 13px; line-height: 1.55;
+    max-height: 68vh; margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  /* tab nav (shown only once authed) */
+  nav#tabs { display: flex; gap: 4px; }
+  .tab {
+    font: inherit; font-weight: 600; font-size: 13px; padding: 6px 14px; margin: 0;
+    border: 1px solid var(--border); border-radius: 8px; background: transparent;
+    color: var(--muted); cursor: pointer;
+  }
+  .tab.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  /* Swagger UI host — the bundle ships its own (light) styles, so give it a white
+     surface so it renders normally even under the page's dark theme. */
+  #swagger { margin-top: 8px; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .hidden { display: none !important; }
+</style>
+
+<header>
+  <h1>Config Viewer</h1>
+  <span class="sub">read-only view of the live server configs</span>
+  <nav id="tabs" class="hidden" role="tablist">
+    <button id="tabConfigs" class="tab active" type="button">Configs</button>
+    <button id="tabApi" class="tab" type="button">API</button>
+  </nav>
+  <span class="spacer"></span>
+  <button id="signout" class="ghost hidden">Sign out</button>
+</header>
+
+<main>
+  <!-- Login card -->
+  <section id="login" class="card">
+    <h2>Enter your API key</h2>
+    <p class="hint">
+      Paste a Key&nbsp;ID and secret minted with the Keys API. An <strong>observe</strong>
+      key views configs and runs the read-only API calls; a broader-scoped key also unlocks
+      the write endpoints in the <strong>API</strong> tab. Credentials stay in a cookie on
+      this device and are cleared automatically if the server rejects them.
+    </p>
+    <form id="loginForm" autocomplete="off">
+      <label for="keyId">Key ID</label>
+      <input id="keyId" name="keyId" spellcheck="false" autocapitalize="off" placeholder="e.g. config-viewer">
+      <label for="secret">Secret</label>
+      <input id="secret" name="secret" type="password" spellcheck="false" placeholder="64-character hex secret">
+      <button id="connect" type="submit">Connect</button>
+      <div id="loginMsg" class="msg"></div>
+    </form>
+  </section>
+
+  <!-- Viewer -->
+  <section id="viewer" class="hidden">
+    <div id="groups" class="chips"><span class="meta">Loading…</span></div>
+    <div class="row">
+      <label for="file">Config</label>
+      <select id="file" disabled><option value="">—</option></select>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+    <div id="viewerMsg" class="msg"></div>
+    <div id="pane" class="hidden">
+      <div class="bar">
+        <span id="meta" class="meta"></span>
+        <span class="spacer"></span>
+        <span id="lang" class="badge"></span>
+        <button id="copy" class="ghost" type="button">Copy</button>
+      </div>
+      <pre id="content"></pre>
+    </div>
+  </section>
+
+  <!-- API tab: vendored Swagger UI, gated behind the same login. Every request is
+       rewritten onto this origin's /api proxy and HMAC-signed by the interceptor with
+       the cached key — what actually runs depends on the key's scope. -->
+  <section id="apitab" class="hidden">
+    <p class="meta">Live API explorer — calls are signed with your key and sent through
+      this site's <code>/api</code> proxy.</p>
+    <div id="swagger"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const API = '/api';              // same-origin; nginx proxies to the config API
+  const COOKIE = 'cfgview';
+  const enc = new TextEncoder();
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    login: $('login'), loginForm: $('loginForm'), keyId: $('keyId'),
+    secret: $('secret'), connect: $('connect'), loginMsg: $('loginMsg'),
+    viewer: $('viewer'), groups: $('groups'), file: $('file'), refresh: $('refresh'),
+    viewerMsg: $('viewerMsg'), pane: $('pane'), meta: $('meta'),
+    lang: $('lang'), content: $('content'), copy: $('copy'),
+    signout: $('signout'),
+    tabs: $('tabs'), tabConfigs: $('tabConfigs'), tabApi: $('tabApi'),
+    apitab: $('apitab'), swagger: $('swagger'),
+  };
+
+  let currentRaw = '';               // raw text of the config on screen (for Copy)
+  let grouped = new Map();           // category -> [{ name, label }] for the two-step picker
+  // distinct colors assigned to categories by order (stable while the config is)
+  const PALETTE = ['#e5484d', '#e5822d', '#d9a520', '#7cc63a', '#26c281',
+                   '#22b8cf', '#4d7cff', '#9b5cf0', '#e15ac0', '#7d8794'];
+  function hexToRgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  // --- syntax highlighting (dependency-free) -------------------------------
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  }
+  function detectLang(path) {
+    const p = (path || '').toLowerCase();
+    if (p.endsWith('.json')) return 'json';
+    if (p.endsWith('.xml')) return 'xml';
+    if (p.endsWith('.cfg') || p.endsWith('.conf') || p.endsWith('.ini')) return 'ini';
+    return 'text';
+  }
+  // Every highlighter runs on ALREADY-ESCAPED text and only inserts our own
+  // <span> tags, so config content can never inject markup.
+  function hlJson(s) {
+    return s.replace(
+      /("(?:[^"\\]|\\.)*")(\s*:)|("(?:[^"\\]|\\.)*")|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+      (m, key, colon, str, kw, num) => {
+        if (key !== undefined) return `<span class="t-key">${key}</span>${colon}`;
+        if (str !== undefined) return `<span class="t-str">${str}</span>`;
+        if (kw  !== undefined) return `<span class="t-kw">${kw}</span>`;
+        if (num !== undefined) return `<span class="t-num">${num}</span>`;
+        return m;
+      });
+  }
+  function hlIni(s) {
+    return s.replace(
+      /("(?:[^"\\]|\\.)*")|((?:#|\/\/)[^\n]*)|(-?\b\d+(?:\.\d+)?\b)/g,
+      (m, str, com, num) => {
+        if (str !== undefined) return `<span class="t-str">${str}</span>`;
+        if (com !== undefined) return `<span class="t-com">${com}</span>`;
+        if (num !== undefined) return `<span class="t-num">${num}</span>`;
+        return m;
+      });
+  }
+  function hlXml(s) {
+    // s is escaped: '<' is '&lt;', '>' is '&gt;'. Comments first, then tags.
+    return s
+      .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="t-com">$1</span>')
+      .replace(/(&lt;\/?)([\w:.-]+)((?:(?!&gt;)[\s\S])*?)(\/?&gt;)/g,
+        (m, open, name, attrs, close) => {
+          const a = attrs.replace(/([\w:.-]+)(=)("(?:[^"\\]|\\.)*")/g,
+            '<span class="t-key">$1</span>$2<span class="t-str">$3</span>');
+          return `<span class="t-tag">${open}${name}</span>${a}<span class="t-tag">${close}</span>`;
+        });
+  }
+  function highlight(raw, lang) {
+    const esc = escapeHtml(raw);
+    if (lang === 'json') return hlJson(esc);
+    if (lang === 'ini')  return hlIni(esc);
+    if (lang === 'xml')  return hlXml(esc);
+    return esc;
+  }
+
+  // --- credential cookie ---------------------------------------------------
+  // Not HttpOnly by necessity: the browser must read the secret to sign. It is
+  // scoped tight (Secure + SameSite=Strict) and holds a read-only observe key.
+  function saveCred(c) {
+    const v = encodeURIComponent(JSON.stringify(c));
+    document.cookie = `${COOKIE}=${v};Path=/;Secure;SameSite=Strict;Max-Age=2592000`;
+  }
+  function loadCred() {
+    const m = document.cookie.match(/(?:^|;\s*)cfgview=([^;]+)/);
+    if (!m) return null;
+    try { const c = JSON.parse(decodeURIComponent(m[1])); return c && c.id && c.secret ? c : null; }
+    catch { return null; }
+  }
+  function clearCred() {
+    document.cookie = `${COOKIE}=;Path=/;Secure;SameSite=Strict;Max-Age=0`;
+  }
+
+  // --- signing + API call --------------------------------------------------
+  async function sign(secret, bytes) {
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = await crypto.subtle.sign('HMAC', key, bytes);
+    const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return 'sha256=' + hex;
+  }
+
+  // All calls are bodyless reads: sign the empty body, pass the key id + sig.
+  // Throws an Error with .status set; status 401 is the "destroy the cookie" case.
+  async function apiPost(path, cred) {
+    const sig = await sign(cred.secret, new Uint8Array(0));
+    const res = await fetch(API + path, {
+      method: 'POST',
+      headers: { 'X-Key-Id': cred.id, 'X-Signature-256': sig },
+    });
+    let data = {};
+    try { data = await res.json(); } catch { /* non-JSON error body */ }
+    if (!res.ok) {
+      const err = new Error(data.message || data.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // Central failure handling: a 401 means the credentials are no good — destroy
+  // the cookie and drop back to login (the requested "kill on first auth fail").
+  function handle(err) {
+    if (err.status === 401) {
+      clearCred();
+      showLogin('Credentials rejected — please enter them again.');
+      return true;
+    }
+    return false;
+  }
+
+  // --- views ---------------------------------------------------------------
+  function showLogin(msg) {
+    el.viewer.classList.add('hidden');
+    el.apitab.classList.add('hidden');
+    el.tabs.classList.add('hidden');
+    el.signout.classList.add('hidden');
+    el.login.classList.remove('hidden');
+    el.loginMsg.className = 'msg err';
+    el.loginMsg.textContent = msg || '';
+    el.secret.value = '';
+  }
+
+  function showViewer() {
+    el.login.classList.add('hidden');
+    el.signout.classList.remove('hidden');
+    el.tabs.classList.remove('hidden');
+    el.pane.classList.add('hidden');   // no config shown until one is picked
+    showTab(tabFromHash());            // honour a deep link like /…#api on load
+  }
+
+  // --- tabs ----------------------------------------------------------------
+  // The URL hash (#configs / #api) is the single source of truth for the active tab,
+  // so a tab is directly linkable and back/forward navigates between them. Clicks set
+  // the hash; a hashchange listener (below) applies it. showTab itself only renders —
+  // it never writes the hash, so there is no feedback loop.
+  function tabFromHash() {
+    return location.hash.replace(/^#/, '') === 'api' ? 'api' : 'configs';
+  }
+
+  function showTab(name) {
+    const api = name === 'api';
+    el.viewer.classList.toggle('hidden', api);
+    el.apitab.classList.toggle('hidden', !api);
+    el.tabConfigs.classList.toggle('active', !api);
+    el.tabApi.classList.toggle('active', api);
+    if (api) initSwagger();
+  }
+
+  // Lazy-load the vendored Swagger UI only when the API tab is first opened, so config
+  // viewing stays instant. The interceptor rewrites every call onto THIS origin's /api
+  // proxy (the spec's own servers are cross-origin, blocked by connect-src 'self') and
+  // HMAC-signs the exact body bytes with the cached key — the scheme the API verifies.
+  let swaggerReady = false;
+  function initSwagger() {
+    if (swaggerReady) return;
+    swaggerReady = true;
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'vendor/swagger-ui/swagger-ui.css';
+    document.head.appendChild(css);
+    const s = document.createElement('script');
+    s.src = 'vendor/swagger-ui/swagger-ui-bundle.js';
+    s.onload = () => {
+      window.SwaggerUIBundle({
+        url: 'openapi.yaml',
+        domNode: el.swagger,
+        presets: [window.SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout',
+        deepLinking: false,
+        tryItOutEnabled: true,
+        requestInterceptor: async (req) => {
+          // Leave Swagger's OWN spec fetch alone — it loads openapi.yaml from this
+          // origin's webroot (static). Only the API calls below get proxied + signed.
+          if (req.loadSpec) return req;
+          // Route through this origin's /api proxy regardless of the spec's servers.
+          try {
+            const u = new URL(req.url, location.origin);
+            req.url = location.origin + '/api' + u.pathname + u.search;
+          } catch { /* already same-origin relative */ }
+          // Sign the EXACT bytes Swagger will send.
+          const cred = loadCred();
+          if (cred) {
+            const body = req.body == null ? ''
+              : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+            req.headers['X-Key-Id'] = cred.id;
+            req.headers['X-Signature-256'] = await sign(cred.secret, enc.encode(body));
+          }
+          return req;
+        },
+      });
+    };
+    s.onerror = () => { el.swagger.innerHTML = '<p class="meta">Could not load the API explorer bundle.</p>'; };
+    document.body.appendChild(s);
+  }
+
+  // Bucket the configs by category and fill the CATEGORY dropdown. The files
+  // themselves go into a second dropdown once a category is picked, so neither
+  // list is ever long — even for a folder with hundreds of files.
+  function populate(items) {
+    grouped = new Map();
+    for (const it of items) {
+      const c = (typeof it === 'string') ? { group: 'General', name: it, label: it } : it;
+      if (!c || !c.name) continue;
+      const g = c.group || 'General';
+      if (!grouped.has(g)) grouped.set(g, []);
+      grouped.get(g).push(c);
+    }
+    el.groups.innerHTML = '';
+    resetFiles();
+    if (!grouped.size) { el.groups.innerHTML = '<span class="meta">No configs exposed</span>'; return; }
+    let i = 0;
+    for (const [g, list] of grouped) {
+      const color = PALETTE[i++ % PALETTE.length];
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.style.setProperty('--c', color);
+      chip.style.setProperty('--cbg', hexToRgba(color, 0.16));
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      chip.appendChild(dot);
+      chip.appendChild(document.createTextNode(`${g} (${list.length})`));
+      chip.onclick = () => selectGroup(g, chip);
+      el.groups.appendChild(chip);
+    }
+  }
+
+  function selectGroup(g, chip) {
+    for (const c of el.groups.children) c.classList.toggle('active', c === chip);
+    fillFiles(g);
+  }
+
+  function resetFiles() {
+    el.file.innerHTML = '<option value="">—</option>';
+    el.file.disabled = true;
+    el.pane.classList.add('hidden');
+  }
+
+  // A category chip was clicked -> fill the FILE dropdown with just its files, grouped
+  // by SUBFOLDER. A config's label is its path within the category's folder (e.g.
+  // "db/globals.xml"), so the part before the last "/" is its subfolder. Those become
+  // <optgroup> headers and each option shows only the filename — the folder structure
+  // stands out as headers instead of being buried in inline path text.
+  function fillFiles(g) {
+    const list = grouped.get(g) || [];
+    el.file.innerHTML = '';
+    el.pane.classList.add('hidden');
+    const f0 = document.createElement('option');
+    f0.value = '';
+    f0.textContent = list.length ? 'Select a config…' : '—';
+    el.file.appendChild(f0);
+
+    const bySub = new Map();            // subfolder ('' = top level) -> [{ name, file }]
+    for (const c of list) {
+      const label = c.label || c.name;
+      const slash = label.lastIndexOf('/');
+      const sub = slash >= 0 ? label.slice(0, slash) : '';
+      const file = slash >= 0 ? label.slice(slash + 1) : label;
+      if (!bySub.has(sub)) bySub.set(sub, []);
+      bySub.get(sub).push({ name: c.name, file });
+    }
+
+    const addOption = (parent, item) => {
+      const o = document.createElement('option');
+      o.value = item.name;
+      o.textContent = item.file;
+      parent.appendChild(o);
+    };
+
+    // Top-level files sit directly under the picker; each subfolder is a labelled
+    // optgroup (sorted), so a category with nested folders reads as clear sections.
+    for (const item of bySub.get('') || []) addOption(el.file, item);
+    for (const sub of [...bySub.keys()].filter(Boolean).sort()) {
+      const og = document.createElement('optgroup');
+      og.label = sub;
+      for (const item of bySub.get(sub)) addOption(og, item);
+      el.file.appendChild(og);
+    }
+    el.file.disabled = list.length === 0;
+  }
+
+  async function loadList(cred) {
+    el.viewerMsg.className = 'msg';
+    el.viewerMsg.textContent = 'Loading configs…';
+    try {
+      const { configs } = await apiPost('/dayz/configs', cred);
+      populate(configs || []);
+      el.viewerMsg.textContent = '';
+    } catch (err) {
+      if (handle(err)) return;
+      el.viewerMsg.className = 'msg err';
+      el.viewerMsg.textContent = 'Could not load list: ' + err.message;
+    }
+  }
+
+  async function loadConfig(cred, name) {
+    el.pane.classList.add('hidden');
+    el.viewerMsg.className = 'msg';
+    el.viewerMsg.textContent = 'Loading ' + name + '…';
+    try {
+      const r = await apiPost('/dayz/config?name=' + encodeURIComponent(name), cred);
+      el.viewerMsg.textContent = '';
+      currentRaw = r.content ?? '';
+      const lang = detectLang(r.path || name);
+      el.meta.textContent = r.path || name;
+      el.lang.textContent = lang;
+      el.content.innerHTML = highlight(currentRaw, lang);   // escaped inside highlight()
+      el.pane.classList.remove('hidden');
+    } catch (err) {
+      if (handle(err)) return;
+      el.viewerMsg.className = 'msg err';
+      el.viewerMsg.textContent = 'Could not load ' + name + ': ' + err.message;
+    }
+  }
+
+  // --- wire up -------------------------------------------------------------
+  function start(cred) {
+    showViewer();
+    el.file.onchange = () => { if (el.file.value) loadConfig(cred, el.file.value); };
+    el.refresh.onclick = () => loadList(cred);
+    loadList(cred);
+  }
+
+  el.loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = el.keyId.value.trim();
+    const secret = el.secret.value.trim();
+    if (!id || !secret) { showLogin('Both the Key ID and secret are required.'); return; }
+    const cred = { id, secret };
+    el.connect.disabled = true;
+    el.loginMsg.className = 'msg';
+    el.loginMsg.textContent = 'Checking…';
+    try {
+      await apiPost('/dayz/configs', cred);   // probe: valid creds?
+      saveCred(cred);
+      start(cred);
+    } catch (err) {
+      if (err.status === 401) showLogin('Those credentials were rejected.');
+      else { el.loginMsg.className = 'msg err'; el.loginMsg.textContent = 'Error: ' + err.message; }
+    } finally {
+      el.connect.disabled = false;
+    }
+  });
+
+  el.signout.addEventListener('click', () => { clearCred(); showLogin('Signed out.'); });
+  // Tab buttons just set the hash; hashchange (below) does the actual switch, so a
+  // click and a pasted /…#api link take the exact same path.
+  el.tabConfigs.addEventListener('click', () => { location.hash = 'configs'; });
+  el.tabApi.addEventListener('click', () => { location.hash = 'api'; });
+  // Follow the hash on back/forward or a hand-edited URL — but only once authed, since
+  // the tabs (and the views they toggle) don't exist on the login card.
+  window.addEventListener('hashchange', () => {
+    if (!el.tabs.classList.contains('hidden')) showTab(tabFromHash());
+  });
+
+  // Copy the RAW config text (not the highlighted markup) to the clipboard.
+  let copyTimer;
+  el.copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(currentRaw); el.copy.textContent = 'Copied'; }
+    catch { el.copy.textContent = 'Copy failed'; }
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { el.copy.textContent = 'Copy'; }, 1400);
+  });
+
+  // Boot: reuse a stored credential if we have one, else ask.
+  if (!window.crypto || !crypto.subtle) {
+    showLogin('This browser has no Web Crypto (needs HTTPS) — cannot sign requests.');
+  } else {
+    const cred = loadCred();
+    if (cred) start(cred); else showLogin();
+  }
+})();
+</script>

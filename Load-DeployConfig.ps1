@@ -11,7 +11,7 @@
 
   Import-DeployConfig merges the two (service keys win) and then resolves
   ${Key} references in every string value against the merged config, so a value
-  like "hooks.${BaseDomain}" or "localhost:${Port}" keeps its primitive in ONE
+  like "api.${BaseDomain}" or "localhost:${Port}" keeps its primitive in ONE
   place and cannot drift. The returned hashtable has exactly the keys the deploy
   scripts already expect (Server, SshUser, SiteName, Hostnames, TemplateVars, ...).
 

@@ -5,16 +5,16 @@ bookToc: false
 
 ## Personal Projects
 
-A labyrinth of things I run and build - watch the eyes, some of them watch back.
+The services I host, documented - connection details and how to join.
 
-This is where I document the **services I host**: game servers and voice.
+Watch the eyes. Some of them watch back.
 
 > [!NOTE]
-> Use the sidebar (or the search box) to navigate. New services get added under
-> **Game Servers**.
+> Use the sidebar or the search box. New services land under **Game Servers**.
 
 ### Services
 
 - **[Game Servers]({{< relref "/docs/game-servers" >}})** - dedicated game servers. Currently [DayZ]({{< relref "/docs/game-servers/dayz" >}}).
-- **[Mumble]({{< relref "/docs/mumble" >}})** - voice server for coordinating.
+- **[Mumble]({{< relref "/docs/mumble" >}})** - voice chat for coordinating.
 - **[CryptPad]({{< relref "/docs/cryptpad" >}})** - end-to-end encrypted docs (coming soon).
+- **[API]({{< relref "/docs/api" >}})** - signed HTTP control for the DayZ server.

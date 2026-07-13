@@ -1,16 +1,25 @@
 // The command API: POST /dayz/:action — the authenticated way to TRIGGER a server
-// action. This is the path a real caller (an admin page, a Discord bot, CLI/cron)
-// uses. Every request must carry a valid HMAC-SHA256 signature over the raw body.
+// action. This is the 'dayz' NAMESPACE of the API (other services get their own
+// /<service>/* module). A real caller (an admin page, a Discord bot, CLI/cron) uses
+// it. Every request must carry a valid HMAC-SHA256 signature over the raw body —
+// keyed with the wizard secret, or (X-Key-Id header) a derived key minted via
+// /keys/create. A derived key must hold the 'dayz' namespace, and an "observe" key
+// can only run read-only actions.
 //
-// Pipeline:  signature -> action exists -> player guard (destructive) ->
-//            cooldown -> run -> audit.
+// Pipeline:  signature -> action exists -> namespace -> capability -> player guard
+//            (destructive) -> cooldown -> run -> audit (attributed to wizard/key id).
 import type { FastifyInstance } from 'fastify';
 import type { AppConfig } from '../config.js';
 import type { Action } from '../actions.js';
 import type { DayzBridge } from '../dayz.js';
 import type { Cooldowns } from '../guard.js';
 import type { Audit } from '../audit.js';
-import { verifyHmac } from '../auth.js';
+import type { KeyStore } from '../keys.js';
+import { namespaceAllowed } from '../namespaces.js';
+import { authenticateRequest } from '../auth-request.js';
+
+// The namespace this route module serves. One string, in one place.
+const NAMESPACE = 'dayz';
 
 interface Deps {
   cfg: AppConfig;
@@ -18,30 +27,29 @@ interface Deps {
   dayz: DayzBridge;
   cooldowns: Cooldowns;
   audit: Audit;
+  keyStore: KeyStore;
 }
 
-// Raw body captured by the content-type parser in server.ts, for HMAC verification.
-type WithRaw = { rawBody?: Buffer };
-
 export function registerCommands(app: FastifyInstance, deps: Deps): void {
-  const { cfg, actions, dayz, cooldowns, audit } = deps;
+  const { cfg, actions, dayz, cooldowns, audit, keyStore } = deps;
 
-  // Discoverability for operators (no secrets): what can be triggered?
-  app.get('/actions', async () => ({
+  // Discoverability for operators (no secrets): what dayz actions can be triggered?
+  // Lives under /dayz because it describes THIS namespace's allowlist.
+  app.get('/dayz/actions', async () => ({
     actions: Object.fromEntries(
       Object.entries(actions).map(([name, a]) => [name, { destructive: a.destructive, describe: a.describe }]),
     ),
   }));
 
   app.post('/dayz/:action', async (req, reply) => {
-    const ctx = { ip: req.ip, url: req.url };
     const name = (req.params as { action: string }).action;
 
-    // 1. Authenticate over the exact bytes we received.
-    const raw = (req as WithRaw).rawBody ?? Buffer.alloc(0);
-    const sig = req.headers['x-signature-256'] as string | undefined;
-    if (!verifyHmac(raw, sig, cfg.secret)) {
-      audit('reject:bad_signature', name, ctx);
+    // 1. Authenticate (shared helper: wizard secret or an X-Key-Id derived key).
+    const auth = authenticateRequest(req, keyStore, cfg.secret);
+    const key = auth.key;
+    const ctx = { ip: req.ip, url: req.url, key: auth.identity };
+    if (!auth.authed) {
+      audit('reject:bad_signature', name, ctx, auth.claimedKey ? { claimed: auth.claimedKey } : {});
       return reply.code(401).send({ ok: false, error: 'bad_signature' });
     }
 
@@ -52,7 +60,37 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
       return reply.code(404).send({ ok: false, error: 'unknown_action', message: `no action '${name}'` });
     }
 
+    // 2b. Namespace reach. Everything under this route is the 'dayz' namespace; a
+    //     derived key must hold it (or '*'). Wizard (key undefined) reaches all.
+    //     This is what stops a key minted for another service reaching DayZ.
+    if (key && !namespaceAllowed(key.namespaces, NAMESPACE)) {
+      audit('reject:namespace', name, ctx);
+      return reply.code(403).send({
+        ok: false,
+        error: 'forbidden_namespace',
+        message: `key '${key.id}' cannot reach the '${NAMESPACE}' namespace`,
+      });
+    }
+
+    // 2c. Capability. "observe" keys are for dashboards/bots that watch — they can
+    //     never change server state, no matter what they sign.
+    if (key && key.scope === 'observe' && !action.readOnly) {
+      audit('reject:scope', name, ctx);
+      return reply.code(403).send({
+        ok: false,
+        error: 'forbidden_scope',
+        message: `key '${key.id}' has scope 'observe' — '${name}' is not a read-only action`,
+      });
+    }
+
+    // Action params: the signed JSON body, plus — for NON-destructive actions only —
+    // URL query params (body wins on a clash). The query string is NOT covered by the
+    // HMAC signature, so destructive actions must ignore it: a captured signed request
+    // could otherwise be replayed with e.g. a different ?mission=. For reads
+    // (/dayz/log?lines=200) the worst a tampered query changes is how much log comes
+    // back. `force` stays body-only for the same reason.
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const params = action.destructive ? body : { ...(req.query as Record<string, unknown>), ...body };
     const force = body.force === true;
 
     // 3. Player guard (destructive only). A null count = "cannot verify" = refuse,
@@ -96,7 +134,7 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
 
     // 5. Run + audit.
     try {
-      const result = await action.run(body);
+      const result = await action.run(params);
       audit('ok', name, ctx, result);
       return reply.send({ ok: true, action: name, ...result });
     } catch (e) {

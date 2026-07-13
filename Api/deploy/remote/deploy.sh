@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Webhooks app deploy — runs ON the server, from the shipped stage directory.
-# Shipped there (with deploy.env, config.json, webhooks.service, dayz-ctl,
-# webhooks.sudoers, and the app source) by ../Deploy-Webhooks.ps1 -Apply. This file
+# API-service app deploy — runs ON the server, from the shipped stage directory.
+# Shipped there (with deploy.env, config.json, api.service, dayz-ctl,
+# api.sudoers, and the app source) by ../Deploy-Api.ps1 -Apply. This file
 # is STATIC: no values live here — they come from ./deploy.env (rendered from
 # deploy.config.json).
 #
@@ -59,10 +59,10 @@ echo '== install deps + build =='
 if [ -f "$APP_DIR/package-lock.json" ]; then INSTALL='npm ci'; else INSTALL='npm install --no-audit --no-fund'; fi
 $SUDO -u "$RUN_USER" -H bash -c "cd '$APP_DIR' && $INSTALL && npm run build && npm prune --omit=dev"
 
-echo '== config + secrets (/etc/webhooks) =='
-$SUDO mkdir -p /etc/webhooks
-$SUDO install -o root -g "$RUN_USER" -m 0640 ./config.json /etc/webhooks/config.json
-SECRETS=/etc/webhooks/secrets.env
+echo '== config + secrets (/etc/api) =='
+$SUDO mkdir -p /etc/api
+$SUDO install -o root -g "$RUN_USER" -m 0640 ./config.json /etc/api/config.json
+SECRETS=/etc/api/secrets.env
 if $SUDO test -f "$SECRETS"; then
   echo 'secrets.env exists — keeping the existing HMAC secret + VPP token'
 else
@@ -83,24 +83,24 @@ echo '== privilege bridge (/usr/local/bin/dayz-ctl) + sudoers =='
 $SUDO install -o root -g root -m 0755 ./dayz-ctl /usr/local/bin/dayz-ctl
 # Validate the sudoers fragment in isolation BEFORE installing it — a bad file in
 # /etc/sudoers.d can lock out sudo entirely.
-$SUDO install -o root -g root -m 0440 ./webhooks.sudoers /etc/sudoers.d/webhooks
-if ! $SUDO visudo -cf /etc/sudoers.d/webhooks >/dev/null; then
-  $SUDO rm -f /etc/sudoers.d/webhooks
+$SUDO install -o root -g root -m 0440 ./api.sudoers /etc/sudoers.d/api
+if ! $SUDO visudo -cf /etc/sudoers.d/api >/dev/null; then
+  $SUDO rm -f /etc/sudoers.d/api
   echo 'ERROR: sudoers fragment failed validation — removed it.' >&2
   exit 1
 fi
 
 echo '== systemd unit =='
-$SUDO install -o root -g root -m 0644 ./webhooks.service /etc/systemd/system/webhooks.service
+$SUDO install -o root -g root -m 0644 ./api.service /etc/systemd/system/api.service
 $SUDO systemctl daemon-reload
-$SUDO systemctl enable webhooks
-$SUDO systemctl restart webhooks
+$SUDO systemctl enable api
+$SUDO systemctl restart api
 sleep 2
-$SUDO systemctl --no-pager --full status webhooks || true
+$SUDO systemctl --no-pager --full status api || true
 
 echo
 echo '== done =='
 echo 'Secrets are NOT printed here (this output is logged). Retrieve them ON THE BOX with:'
-echo '    sudo cat /etc/webhooks/secrets.env'
+echo '    sudo cat /etc/api/secrets.env'
 echo '  - HMAC_SECRET: sign command requests   X-Signature-256: sha256=<hmac-sha256(secret, raw-body)>'
-echo '  - VPP_TOKEN  : put in the VPP webhook URL  https://hooks.<domain>/sources/vpp/<VPP_TOKEN>'
+echo '  - VPP_TOKEN  : put in the VPP webhook URL  https://api.<domain>/sources/vpp/<VPP_TOKEN>'

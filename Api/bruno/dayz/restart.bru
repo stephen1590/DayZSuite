@@ -1,0 +1,23 @@
+meta {
+  name: restart
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/dayz/restart
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "force": false
+  }
+}
+
+docs {
+  DESTRUCTIVE. Refuses while players are online (409) unless force is true.
+  When it proceeds with players on, they get a 15s in-game warning first -
+  expect the response to take that long.
+}

@@ -1,0 +1,76 @@
+docs {
+  Collection-level pre-request script: signs EVERY request with HMAC-SHA256 over the
+  exact body bytes (X-Signature-256), the way the API verifies it (see ../app/src/auth.ts).
+
+  The secret is NEVER stored in this collection. It comes from the gitignored .env
+  file at the collection root - copy .env.example to .env and fill it in (values live
+  on the box: sudo cat /etc/api/secrets.env).
+
+  WHICH credential signs is chosen by the selected Bruno ENVIRONMENT:
+    - "prod"    -> wizard (signs with HMAC_SECRET from .env)
+    - "testing" -> your derived key (API_KEY_ID + API_KEY_SECRET from .env, minted via
+                   keys/create). /dayz + /sysload requests carry X-Key-Id and sign with
+                   that key. /keys management still uses the wizard (the server only
+                   accepts key ops from it), so a derived key is ignored on /keys paths.
+
+  All secret VALUES live only in the gitignored .env; the environment files map them
+  via {{process.env.NAME}} and hold no secrets themselves.
+
+  Public endpoints need no secret at all: the script skips signing for every GET
+  (index, healthz, dayz/actions, dayz/server-info) and for the /sources/ VPP feed
+  (URL-token auth), so you can test those with an empty .env.
+}
+
+script:pre-request {
+  // Public / non-HMAC endpoints need no signature, so don't demand a secret for them
+  // (otherwise you can't test e.g. GET /dayz/server-info without a key configured):
+  //   - every GET is public (index, healthz, dayz/actions, dayz/server-info)
+  //   - the VPP source (/sources/) authenticates by its URL token, not HMAC
+  var method = String((typeof req.getMethod === 'function' ? req.getMethod() : 'POST') || 'POST').toUpperCase();
+  if (method === 'GET' || String(req.getUrl()).indexOf('/sources/') !== -1) {
+    return;
+  }
+
+  var cryptojs = require('crypto-js');
+
+  // Resolve a value from the gitignored .env at the collection root. Two mechanisms
+  // because Bruno versions differ: bru.getProcessEnvVars() when it exists, otherwise
+  // the environment file's {{process.env.NAME}} mapping (see environments/*.bru)
+  // resolved via bru.interpolate. NOTE: the CLI has no getProcessEnvVars(), so every
+  // .env value MUST be mapped in the environment file for this to reach it. Returns
+  // '' when unset or unresolved (never a raw '{{...}}' placeholder).
+  var penv = (typeof bru.getProcessEnvVars === 'function') ? bru.getProcessEnvVars() : null;
+  function envVal(name) {
+    if (penv && penv[name]) return String(penv[name]);
+    var v = String(bru.getEnvVar(name) || '');
+    if (v.indexOf('{{') !== -1 && typeof bru.interpolate === 'function') v = bru.interpolate(v);
+    return (!v || v.indexOf('{{') !== -1) ? '' : v;
+  }
+
+  // Which credential signs is chosen by the SELECTED ENVIRONMENT (environments/*.bru):
+  //   prod     -> maps only HMAC_SECRET        -> signs with the wizard
+  //   testing  -> also maps API_KEY_ID/SECRET  -> signs with that derived key
+  // /keys management always uses the wizard (the server only accepts key ops from it),
+  // so a derived key is ignored on those paths.
+  var kid = envVal('API_KEY_ID');
+  var ksec = envVal('API_KEY_SECRET');
+  var useDerived = kid && ksec && String(req.getUrl()).indexOf('/keys/') === -1;
+
+  var secret = useDerived ? ksec : envVal('HMAC_SECRET');
+  if (!secret) {
+    throw new Error('No signing secret. For the wizard, set HMAC_SECRET in bruno/.env (sudo cat /etc/api/secrets.env on the box). For a derived key, set API_KEY_ID + API_KEY_SECRET and select the "testing" environment.');
+  }
+  if (useDerived) req.setHeader('X-Key-Id', kid);
+
+  // Sign the EXACT bytes that go on the wire. For JSON bodies Bruno hands the script
+  // a parsed object, so re-set the body to the exact string we signed - signature
+  // and payload can then never disagree on whitespace.
+  var raw = '';
+  var b = req.getBody();
+  if (b !== undefined && b !== null && b !== '') {
+    raw = typeof b === 'string' ? b : JSON.stringify(b);
+    req.setBody(raw);
+  }
+  var sig = cryptojs.HmacSHA256(raw, secret).toString();
+  req.setHeader('X-Signature-256', 'sha256=' + sig);
+}

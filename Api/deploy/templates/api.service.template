@@ -1,5 +1,5 @@
-# Webhooks systemd unit — RENDERED by ../Deploy-Webhooks.ps1 from this template.
-# Do NOT hand-edit /etc/systemd/system/webhooks.service; change this template and
+# API-service systemd unit — RENDERED by ../Deploy-Api.ps1 from this template.
+# Do NOT hand-edit /etc/systemd/system/api.service; change this template and
 # re-run the deploy.
 #
 # SANDBOXING NOTE: this service's whole job is to escalate to root via `sudo dayz-ctl`
@@ -9,7 +9,7 @@
 # sudoers allowlist + dayz-ctl's validation, not systemd confinement. We still apply
 # the confinement that is compatible with sudo.
 [Unit]
-Description=Webhooks API (authenticated bridge to allowlisted server actions)
+Description=API service (authenticated bridge to allowlisted server actions)
 After=network-online.target
 Wants=network-online.target
 
@@ -19,8 +19,8 @@ User=__RUN_USER__
 Group=__RUN_USER__
 WorkingDirectory=__APP_DIR__
 Environment=NODE_ENV=production
-Environment=WEBHOOKS_CONFIG=/etc/webhooks/config.json
-EnvironmentFile=/etc/webhooks/secrets.env
+Environment=API_CONFIG=/etc/api/config.json
+EnvironmentFile=/etc/api/secrets.env
 ExecStart=__NODE_BIN__ __APP_DIR__/dist/server.js
 Restart=always
 RestartSec=2
@@ -34,6 +34,9 @@ PrivateTmp=true
 ProtectControlGroups=true
 ProtectKernelModules=true
 ReadWritePaths=__AUDIT_DIR__
+# /var/lib/api — the derived-API-key store (config.json keysFile lives under it).
+# systemd creates it owned by the service user; keep in step with KeysFile.
+StateDirectory=api
 LimitNOFILE=65536
 
 [Install]

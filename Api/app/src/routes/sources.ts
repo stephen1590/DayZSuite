@@ -4,7 +4,9 @@
 // ({ content, embeds: [...] }) to a URL whenever an in-game event fires (player join,
 // admin action, ...). It cannot set an HMAC header, so it authenticates the only way
 // a Discord-style sender can: a secret token baked into the URL path
-// (/sources/vpp/<token>) — treat that URL like a password.
+// (/dayz/sources/vpp/<token>) — treat that URL like a password. It lives under the
+// 'dayz' namespace because it is a DayZ-specific feed (its token auth is separate
+// from the derived-key namespace scoping on the /dayz command API).
 //
 // By default this endpoint only RECEIVES and audits the event feed. Turning a VPP
 // event into an action is opt-in via `vpp.rules` (substring match -> action) in the
@@ -42,8 +44,8 @@ function flattenText(body: DiscordPayload): string {
 export function registerSources(app: FastifyInstance, deps: Deps): void {
   const { cfg, actions, audit } = deps;
 
-  app.post('/sources/vpp/:token', async (req, reply) => {
-    const ctx = { ip: req.ip, url: '/sources/vpp/***' }; // never log the token
+  app.post('/dayz/sources/vpp/:token', async (req, reply) => {
+    const ctx = { ip: req.ip, url: '/dayz/sources/vpp/***' }; // never log the token
     const token = (req.params as { token: string }).token;
 
     // Disabled or wrong token -> 404 (don't confirm the endpoint exists).

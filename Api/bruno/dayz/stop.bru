@@ -1,0 +1,23 @@
+meta {
+  name: stop
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/dayz/stop
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "force": false
+  }
+}
+
+docs {
+  DESTRUCTIVE. Stops the unit (systemd will NOT restart it - a stop is a clean
+  exit only when triggered via this path, use start to bring it back). Player
+  guard + 15s warning apply as with restart.
+}

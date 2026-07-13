@@ -1,5 +1,5 @@
 # NginxService — one repo for the shared nginx/TLS engine + all nested services.
-# Per-subproject .gitignore files also exist (StaticishSite/, Webhooks/app/);
+# Per-subproject .gitignore files also exist (StaticishSite/, Api/app/);
 # this root file is the single place for host-level secrets and cross-cutting
 # generated output. Committable *.example.ps1 siblings stay tracked.
 
@@ -7,6 +7,9 @@
 /host.config.env
 **/deploy/deploy.config.json
 **/secrets.env
+# Bruno collection credentials (Api/bruno/.env — .env.example stays tracked)
+**/.env
+**/customView.bru
 
 # ── Rendered runtime config (generated from *.template) ──
 **/config.json
@@ -25,6 +28,10 @@
 /StaticishSite/resources/
 /StaticishSite/.hugo_build.lock
 /StaticishSite/bin/
+
+# ── Config Viewer (provisioned by Deploy-ConfigViewer.ps1: vendored Swagger UI + staged API spec) ──
+/ConfigViewer/web/vendor/
+/ConfigViewer/web/openapi.yaml
 
 # ── Editor / OS / agent cruft ──
 .claude/

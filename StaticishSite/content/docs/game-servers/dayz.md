@@ -5,7 +5,7 @@ weight: 10
 
 ## DayZ - *Commie Lobby*
 
-A modded **DayZ** dedicated server running on an OVH VPS. Hostile AI, admin
+A modded **DayZ** dedicated server running on a dedicated box. Hostile AI, admin
 tooling, and a scheduled restart cycle keep the map fresh without wiping your
 progress.
 
@@ -101,10 +101,10 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
   seeded at more locations across Sakhal - settlements, landmarks, and chokepoints
   alike. The extra pressure comes from **more spawn points**, not bigger packs.
   The map feels lived-in - and dangerous - wherever you go.
-- The world persists (bases, vehicles, and stashed loot survive restarts via the
-  central economy), so build like you mean to keep it.
-- **Accelerated day/night cycle** - a full day/night takes **4 hours real time**:
-  **3 hours of daylight, 1 hour of night**. Plan supply runs and bandit-territory
+- **The world persists** - bases, vehicles, and stashed loot survive restarts
+  (central economy). Build like you mean to keep it.
+- **Accelerated day/night cycle** - a full day/night takes **6 hours real time**:
+  **3 pars daylight, 1 part night**. Plan supply runs and bandit-territory
   crossings around it - night falls faster than you'd expect.
 - **Traders** - buy and sell gear for in-game currency at **safezone** trader points
   (part of the DayZ-Expansion market). No fighting inside the zone.
@@ -139,7 +139,7 @@ Not every bandit is the same fight. Roughly, from most to least dangerous:
 
 ### Restarts
 
-The server runs a **4-hour restart cycle** with in-game warnings counting down
+The server runs a **6-hour restart cycle** with in-game warnings counting down
 from **90 minutes to 1 minute** before each restart. Restarts are automatic and
 quick.
 

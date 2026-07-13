@@ -21,13 +21,13 @@ NginxService/                 ← the shared nginx + Let's Encrypt layer
 │   └── deploy/ …             Hugo site at the apex  cytonicmushroom.ddns.net
 ├── CryptPad/                 ← nested: it is served by nginx
 │   └── deploy/ …             CryptPad at  pad.  +  pad-sandbox.
-└── Webhooks/                 ← nested: it is served by nginx
-    └── deploy/ …             Webhook API at  hooks.  (drives the DayZ server)
+└── Api/                      ← nested: it is served by nginx
+    └── deploy/ …             command/observability API at  api.  (drives the DayZ server)
 ```
 
-> The **Webhooks** service is served *here* but its actions land on the **DayZ
+> The **Api** service is served *here* but its actions land on the **DayZ
 > server, which lives outside** this folder. That crossing is one-directional and
-> declared in its config - see [Webhooks/README.md](Webhooks/README.md).
+> declared in its config - see [Api/README.md](Api/README.md).
 
 > **Rule:** if a service is inside `NginxService/`, it sits behind nginx.
 > **DayZ Server** is *not* here - it is UDP, not proxied, and keeps its own
@@ -71,8 +71,8 @@ would do. Add the apply flag to actually touch the box.
 | StaticishSite | payload (site content) | `StaticishSite/deploy/Deploy-Site.ps1`       | `-Push`    |
 | CryptPad      | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service CryptPad`      | `-Apply`   |
 | CryptPad      | payload (app build)    | `CryptPad/deploy/Deploy-CryptPad.ps1`        | `-Apply`   |
-| Webhooks      | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service Webhooks`      | `-Apply`   |
-| Webhooks      | payload (app build)    | `Webhooks/deploy/Deploy-Webhooks.ps1`        | `-Apply`   |
+| Api           | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service Api`           | `-Apply`   |
+| Api           | payload (app build)    | `Api/deploy/Deploy-Api.ps1`                  | `-Apply`   |
 
 The two services share **nothing** but the nginx daemon itself:
 

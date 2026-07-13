@@ -1,10 +1,10 @@
-// Runtime configuration for the webhook service.
+// Runtime configuration for the API service.
 //
 // Two sources, deliberately split:
 //   * config.json  — non-secret settings (port, cooldowns, VPP rules). Rendered
-//                    from deploy.config.ps1 by Deploy-Webhooks.ps1; safe to read.
+//                    from deploy.config.json by Deploy-Api.ps1; safe to read.
 //   * environment  — the SECRETS (HMAC signing secret, VPP URL token). Generated
-//                    ONCE on the box by deploy.sh into /etc/webhooks/secrets.env
+//                    ONCE on the box by deploy.sh into /etc/api/secrets.env
 //                    and injected by systemd (EnvironmentFile). They never live in
 //                    the PowerShell config or the repo.
 import { readFileSync } from 'node:fs';
@@ -31,6 +31,8 @@ export interface AppConfig {
   restartWarningSeconds: number;
   /** Directory for the CSV audit trail. */
   auditDir: string;
+  /** Server-side store for derived API keys (minted via /keys/create). */
+  keysFile: string;
   rateLimit: { max: number; windowMs: number };
   /** HMAC-SHA256 shared secret for the /dayz command API (from env). */
   secret: string;
@@ -43,7 +45,7 @@ export interface AppConfig {
 }
 
 export function loadConfig(): AppConfig {
-  const path = process.env.WEBHOOKS_CONFIG ?? '/etc/webhooks/config.json';
+  const path = process.env.API_CONFIG ?? '/etc/api/config.json';
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
 
   const secret = process.env.HMAC_SECRET ?? '';
@@ -58,7 +60,8 @@ export function loadConfig(): AppConfig {
     cooldownSeconds: { default: 3, ...(raw.cooldownSeconds ?? {}) },
     playerGuard: raw.playerGuard ?? true,
     restartWarningSeconds: Number(raw.dayz?.restartWarningSeconds ?? 15),
-    auditDir: raw.auditDir ?? '/var/log/webhooks',
+    auditDir: raw.auditDir ?? '/var/log/api',
+    keysFile: raw.keysFile ?? '/var/lib/api/keys.json',
     rateLimit: {
       max: Number(raw.rateLimit?.max ?? 30),
       windowMs: Number(raw.rateLimit?.windowMs ?? 60_000),

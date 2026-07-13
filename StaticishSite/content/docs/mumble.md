@@ -5,9 +5,8 @@ weight: 20
 
 ## Mumble
 
-Low-latency voice chat for coordinating in-game (and everything else). Mumble is
-free and open source. It has strong positional/low-latency audio - better for
-gaming than most alternatives.
+Low-latency voice chat for coordinating in-game (and everything else). Free and
+open source, with positional audio - better for gaming than most alternatives.
 
 ### Connect
 

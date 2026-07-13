@@ -1,0 +1,25 @@
+meta {
+  name: vpp-event
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/dayz/sources/vpp/{{process.env.VPP_TOKEN}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "content": "Test event from Bruno",
+    "embeds": []
+  }
+}
+
+docs {
+  Simulates VPPAdminTools' outbound Discord-shaped event feed. Auth is the secret
+  token in the URL (VPP_TOKEN in .env), not HMAC - the signature header the
+  collection script adds is ignored here. Expect 204; the event lands in the
+  audit log (journalctl -u api / /var/log/api/api.csv). Wrong token = 404.
+}

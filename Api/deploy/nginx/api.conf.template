@@ -1,5 +1,5 @@
-# Webhooks — nginx reverse proxy. Rendered by ../../Provision-Tls.ps1 -Service
-# Webhooks. Do NOT hand-edit the deployed copy — change this template and re-run
+# API service — nginx reverse proxy. Rendered by ../../Provision-Tls.ps1 -Service
+# Api. Do NOT hand-edit the deployed copy — change this template and re-run
 # provisioning. The Node app listens on 127.0.0.1 only (__UPSTREAM__); this vhost is
 # the ONLY way in, so TLS, the body cap, and access logs all apply on the way through.
 #

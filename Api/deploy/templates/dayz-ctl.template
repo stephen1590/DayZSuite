@@ -1,17 +1,69 @@
 #!/usr/bin/env bash
 # dayz-ctl — the ONE privileged action script. Installed at /usr/local/bin/dayz-ctl
-# and callable by the webhooks service ONLY as `sudo dayz-ctl <verb> [arg]`
-# (see webhooks.sudoers). This is the entire privilege surface of the webhook API:
+# and callable by the API service ONLY as `sudo dayz-ctl <verb> [arg...]`
+# (see api.sudoers). This is the entire privilege surface of the API:
 # a closed verb set, every argument re-validated here regardless of what the caller
-# claims to have checked. Rendered from this template by Deploy-Webhooks.ps1
+# claims to have checked. Rendered from this template by Deploy-Api.ps1
 # (__UNIT__ / __SERVER_DIR__ filled in) — never hand-edit the installed copy.
 set -euo pipefail
 
 UNIT='__UNIT__'
 SERVER_DIR='__SERVER_DIR__'
 RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (deploy.config.json Configs)
+CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
+IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 
 die() { echo "dayz-ctl: $*" >&2; exit 1; }
+
+# Emit the full set of retrievable configs, one file per line, TAB-separated:
+#   group <TAB> name <TAB> relpath <TAB> label
+# Sources: explicit files (CONFIG_MAP "name<TAB>relpath", grouped "General") and
+# every real file under each allowlisted folder (CONFIG_DIRS "group<TAB>reldir").
+# `find -type f` does NOT follow symlinks, so nothing outside a folder is listed.
+# This is the ONE authority for what may be read: a config request must name a
+# relpath this function produced, so no caller-invented path can ever escape.
+emit_allowed() {
+  if [ -n "$CONFIG_MAP" ]; then
+    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel; do
+      [ -n "$_name" ] || continue
+      printf 'General\t%s\t%s\t%s\n' "$_name" "$_rel" "$_name"
+    done
+  fi
+  if [ -n "$CONFIG_DIRS" ]; then
+    # Each line: group<TAB>reldir<TAB>subfolders(comma-sep). Files come from the
+    # ROOT of reldir (non-recursive) plus the root of each named subfolder — you
+    # pick exactly which folders' files appear; nothing recurses into a mission's
+    # persistence tree unless you name that subfolder. Per-location cap (1000) is a
+    # silent backstop against a pathologically large directory.
+    printf '%s\n' "$CONFIG_DIRS" | while IFS=$'\t' read -r _grp _dir _subs; do
+      { [ -n "$_grp" ] && [ -n "$_dir" ]; } || continue
+      {
+        printf '%s\n' "$_dir"
+        [ -n "$_subs" ] && printf '%s\n' "$_subs" | tr ',' '\n' | while IFS= read -r _s; do
+          [ -n "$_s" ] && printf '%s/%s\n' "$_dir" "$_s"
+        done
+      } | while IFS= read -r _loc; do
+        [ -n "$_loc" ] || continue
+        _ld="$SERVER_DIR/$_loc"
+        [ -d "$_ld" ] || continue
+        find "$_ld" -maxdepth 1 -type f 2>/dev/null | LC_ALL=C sort | {
+          _n=0
+          while IFS= read -r _f; do
+            if [ -n "$IGNORE_EXT" ]; then
+              _e="${_f##*.}"
+              case ",$IGNORE_EXT," in *",${_e,,},"*) continue ;; esac   # global ignore-filetype
+            fi
+            _n=$((_n + 1))
+            [ "$_n" -le 1000 ] || break
+            printf '%s\t%s\t%s\t%s\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
+          done
+        } || true
+      done
+    done
+  fi
+  return 0
+}
 
 verb="${1:-}"
 arg="${2:-}"
@@ -53,7 +105,149 @@ case "$verb" in
     exec systemctl restart "$UNIT"
     ;;
 
+  log)
+    # log <rpt|adm> <lines> — tail the NEWEST server log. This verb exists because
+    # the service user cannot traverse into the game user's home (0750), so reads
+    # cross the same sudo bridge as everything else. Lines are capped at 500 — a
+    # hard limit, deliberately not configurable. No caller input ever forms the
+    # path: the file is always ls -t's newest match in the fixed profiles dir.
+    # Output: line 1 = the file's path, rest = the tail (the service splits on that).
+    lines="${3:-100}"
+    [ "$arg" = rpt ] || [ "$arg" = adm ] || die "log type must be rpt or adm"
+    case "$lines" in ''|*[!0-9]*) die "log lines must be a number" ;; esac
+    [ "$lines" -ge 1 ] || die "log lines must be >= 1"
+    [ "$lines" -le 500 ] || lines=500
+    ext=RPT; [ "$arg" != adm ] || ext=ADM
+    file="$(ls -t "$SERVER_DIR/profiles/"*."$ext" 2>/dev/null | head -1)"
+    [ -n "$file" ] || { echo "dayz-ctl: no .$ext logs under profiles/" >&2; exit 2; }
+    printf '%s\n' "$file"
+    exec tail -n "$lines" "$file"
+    ;;
+
+  config-list)
+    # Emit "group<TAB>name<TAB>label" for every retrievable config: explicit files
+    # PLUS every file under each allowlisted folder. No caller input reaches this —
+    # it is pure enumeration of the rendered allowlist. The `configs` action turns
+    # it into grouped choices for the UI. Hard-capped at 3000 lines so the reply
+    # can never overflow the API's 1MB read buffer (retrieval still works for names
+    # past the cap — `config` matches the full set, not this truncated list).
+    emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4}' | head -n 3000 || true
+    ;;
+
+  config)
+    # config <name> — print ONE allowlisted config file. The NAME must EXACTLY match
+    # one emit_allowed produced (an explicit file, or a real file under an allowlisted
+    # folder). The caller never forms a path: a name not in the enumerated set — any
+    # '..' trick included — simply doesn't match. Output: line 1 = the resolved
+    # relpath, the rest = the file's contents.
+    [ -n "$arg" ] || die "config needs a name"
+    case "$arg" in *..*) die "invalid config name" ;; esac
+    case "$arg" in *[!A-Za-z0-9_./-]*) die "invalid config name" ;; esac
+    rel="$(emit_allowed | awk -F'\t' -v n="$arg" '$2==n{print $3; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: unknown config: $arg" >&2; exit 2; }
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: config file not present: $rel" >&2; exit 2; }
+    # Defence in depth: the resolved real path must stay under the server dir
+    # (guards against a symlink slipped into an allowlisted folder).
+    base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$real" in "$base"/*) ;; *) die "config resolved outside the server dir" ;; esac
+    sz="$(wc -c < "$file")"
+    [ "$sz" -le 786432 ] || { echo "dayz-ctl: config too large ($sz bytes): $rel" >&2; exit 3; }
+    printf '%s\n' "$rel"
+    # Backstop: mask values of well-known secret keys even though the default
+    # allowlist excludes secret-bearing files. Handles cfg (key = "v";) and JSON
+    # ("key": "v") styles, case-insensitively.
+    sed -E 's/((passwordadmin|password|token|secret|apikey|api_key)"?[[:space:]]*[:=][[:space:]]*")[^"]*/\1REDACTED/Ig' "$file"
+    ;;
+
+  info)
+    # info — one privileged snapshot behind the `status` and `sysload` actions:
+    # unit properties, the RUNNING mission + mod list (display names from each
+    # mod's meta.cpp), the scheduled-restart deadline from messages.xml, and the
+    # on-disk sizes the service user cannot stat itself (profiles/, persistence).
+    # Takes NO arguments — nothing to validate, no caller-influenced paths.
+    # Output: KEY=VALUE lines, then one 'MOD=<folder>\t<name>' line per mod.
+    state="$(systemctl is-active "$UNIT" || true)"
+    printf 'STATE=%s\n' "$state"
+
+    ts="$(systemctl show "$UNIT" -p ActiveEnterTimestamp --value || true)"
+    since=0
+    if [ -n "$ts" ] && [ "$ts" != "n/a" ]; then
+      since="$(date -d "$ts" +%s 2>/dev/null || echo 0)"
+    fi
+    printf 'SINCE=%s\n' "$since"
+
+    pid="$(systemctl show "$UNIT" -p MainPID --value || true)"
+    case "$pid" in ''|*[!0-9]*) pid=0 ;; esac
+    printf 'PID=%s\n' "$pid"
+
+    for pair in MemoryCurrent:MEM_BYTES TasksCurrent:TASKS CPUUsageNSec:CPU_NSEC NRestarts:NRESTARTS; do
+      prop="${pair%%:*}"; key="${pair##*:}"
+      val="$(systemctl show "$UNIT" -p "$prop" --value || true)"
+      case "$val" in ''|*[!0-9]*) val=0 ;; esac   # "[not set]" when the unit is down
+      printf '%s=%s\n' "$key" "$val"
+    done
+
+    # Mission + mod line: prefer the RUNNING process cmdline (the truth of what is
+    # loaded); fall back to map.env / the installed unit file when the unit is down.
+    modline=''
+    mission=''
+    if [ "$pid" -gt 0 ] && [ -r "/proc/$pid/cmdline" ]; then
+      while IFS= read -r -d '' a; do
+        case "$a" in
+          -mod=*)     modline="${a#-mod=}" ;;
+          -mission=*) mission="$(basename "${a#-mission=}")" ;;
+        esac
+      done < "/proc/$pid/cmdline"
+    fi
+    if [ -z "$mission" ] && [ -f "$SERVER_DIR/map.env" ]; then
+      mission="$(sed -n 's/^DAYZ_MISSION=//p' "$SERVER_DIR/map.env" | head -1)"
+    fi
+    if [ -z "$modline" ]; then
+      modline="$(systemctl cat "$UNIT" 2>/dev/null | sed -n 's/.*"-mod=\([^"]*\)".*/\1/p' | head -1 || true)"
+    fi
+    case "$mission" in */*|*..*) mission='' ;; esac   # defensive before any path use
+    printf 'MISSION=%s\n' "$mission"
+
+    # Scheduled restart: the native messages.xml scheduler stops the server
+    # <deadline> minutes after start (systemd Restart=always completes the cycle).
+    deadline="$(awk '
+      /<message>/               { d=0; s=0 }
+      /<deadline>/              { line=$0; gsub(/[^0-9]/, "", line); d=line }
+      /<shutdown>1<\/shutdown>/ { s=1 }
+      /<\/message>/             { if (s && d) { print d; exit } }
+    ' "$SERVER_DIR/messages.xml" 2>/dev/null || true)"
+    printf 'DEADLINE_MIN=%s\n' "${deadline:-0}"
+
+    logb="$(du -sb "$SERVER_DIR/profiles" 2>/dev/null | cut -f1 || true)"
+    printf 'LOG_DIR_BYTES=%s\n' "${logb:-0}"
+    stob=''
+    if [ -n "$mission" ] && [ -d "$SERVER_DIR/mpmissions/$mission/storage_1" ]; then
+      stob="$(du -sb "$SERVER_DIR/mpmissions/$mission/storage_1" 2>/dev/null | cut -f1 || true)"
+    fi
+    printf 'STORAGE_BYTES=%s\n' "${stob:-0}"
+
+    if [ -n "$modline" ]; then
+      # %s\n, not %s: read skips a final entry that lacks a trailing newline.
+      printf '%s\n' "$modline" | tr ';' '\n' | while IFS= read -r m; do
+        [ -n "$m" ] || continue
+        name=''
+        case "$m" in
+          */*|*..*) : ;;   # never follow a path-shaped entry
+          *)
+            meta="$SERVER_DIR/$m/meta.cpp"
+            if [ -f "$meta" ]; then
+              name="$(sed -n 's/.*name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$meta" | head -1 | tr -d '\r')"
+            fi
+            ;;
+        esac
+        printf 'MOD=%s\t%s\n' "$m" "${name:-$m}"
+      done
+    fi
+    ;;
+
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log config config-list info)"
     ;;
 esac

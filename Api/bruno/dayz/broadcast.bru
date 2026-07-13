@@ -1,0 +1,22 @@
+meta {
+  name: broadcast
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/dayz/broadcast
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "message": "Test message from Bruno"
+  }
+}
+
+docs {
+  In-game message to all connected players. Text is reduced to printable ASCII and
+  capped at 200 chars server-side.
+}

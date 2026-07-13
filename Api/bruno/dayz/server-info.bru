@@ -1,0 +1,21 @@
+meta {
+  name: server-info
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/dayz/server-info
+  body: none
+  auth: none
+}
+
+docs {
+  PUBLIC current-server-info for the site panel (no auth)
+  
+  Unauthenticated on purpose: it returns exactly the status action's payload
+  (plus generatedAt), every field of which the Steam server browser already
+  publishes - name, map, player count, full mod list. Cached server-side for
+  10s; CORS `*`; GET only. Not an allowlisted action name, so the signed
+  command pipeline is untouched.
+}

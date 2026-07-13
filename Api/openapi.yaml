@@ -1,0 +1,537 @@
+# OpenAPI spec for the Api service - the SOURCE OF TRUTH for the HTTP surface.
+# app/src/actions.ts is the runtime allowlist; when the two disagree, actions.ts
+# wins and this file is stale - fix it in the same change.
+#
+# Consumed by:
+#   * bruno/spec-to-bru.mjs  - scaffolds missing .bru request files from this spec
+#   * Bruno GUI              - Import Collection -> OpenAPI V3 also works directly
+#
+# Adding an endpoint: add the action in actions.ts (+ dayz-ctl verb if privileged),
+# document it here, run `node bruno/spec-to-bru.mjs`, tune the generated .bru.
+openapi: 3.0.3
+info:
+  title: servermander-api
+  version: 2.0.0
+  description: |
+    Authenticated control-plane API for the box. Each SERVICE lives under its own
+    path namespace - today that is DayZ (/dayz/*: allowlisted server actions plus
+    read-only observability like log tail and host stats), with more to follow.
+    Generic/host endpoints (/healthz, /sysload) and key management (/keys/*) sit at
+    the root, outside any namespace. See README.md for the
+    security model - the short version: every /dayz command is HMAC-signed over
+    the exact raw body (wizard secret or a namespace-scoped derived key),
+    destructive actions are player-guarded and warn players in-game before acting,
+    and the service's entire root capability is one sudo-gated script with a
+    closed verb set.
+servers:
+  - url: https://api.cytonicmushroom.ddns.net
+    description: production (nginx TLS -> localhost Node)
+  - url: http://127.0.0.1:3100
+    description: on-box direct (bypasses nginx)
+
+components:
+  securitySchemes:
+    HmacSignature:
+      type: apiKey
+      in: header
+      name: X-Signature-256
+      description: |
+        `sha256=<hex>` where <hex> = HMAC-SHA256 over the EXACT raw request body
+        bytes (empty string for bodyless requests). Keyed with the WIZARD secret
+        (HMAC_SECRET in /etc/api/secrets.env on the box), or - when an X-Key-Id
+        header names a derived key minted via /keys/create - that key's secret.
+        A derived key is (capability x namespaces): it must hold the namespace of
+        the path it calls (e.g. 'dayz' for /dayz/*, or '*'), else 403
+        forbidden_namespace; and scope "observe" can only run read-only actions,
+        else 403 forbidden_scope. /keys/* management always requires the wizard (no
+        X-Key-Id). Constant-time compared. Query strings are NOT covered by the
+        signature - destructive actions therefore ignore them; only read-only
+        actions accept query params.
+  schemas:
+    Error:
+      type: object
+      properties:
+        ok: { type: boolean, example: false }
+        error: { type: string, example: action_failed }
+        message: { type: string }
+    CooldownError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+      properties:
+        retryAfter: { type: integer, description: seconds until allowed again }
+    Sysload:
+      type: object
+      properties:
+        ok: { type: boolean }
+        action: { type: string, example: sysload }
+        uptimeSec: { type: integer }
+        cpu:
+          type: object
+          properties:
+            cores: { type: integer }
+            load1: { type: number }
+            load5: { type: number }
+            load15: { type: number }
+            busyPct: { type: number, nullable: true, description: sampled over 250ms }
+        memoryMb:
+          type: object
+          properties:
+            total: { type: integer }
+            available: { type: integer, description: 'kernel MemAvailable, not MemFree' }
+            usedPct: { type: number, nullable: true }
+        swapMb:
+          type: object
+          properties:
+            total: { type: integer }
+            used: { type: integer }
+        diskRootGb:
+          type: object
+          properties:
+            total: { type: number }
+            free: { type: number }
+            usedPct: { type: number, nullable: true }
+        dayz:
+          type: object
+          nullable: true
+          description: the dayz-server unit's own footprint; null when the sudo bridge errors (dayzError says why)
+          properties:
+            state: { type: string, example: active }
+            mainPid: { type: integer, nullable: true }
+            memoryMb: { type: number, description: systemd MemoryCurrent }
+            tasks: { type: integer }
+            cpuTimeSec: { type: integer, description: cumulative CPU time since unit start }
+            unitRestarts: { type: integer, description: systemd NRestarts since boot }
+            logDirMb: { type: number, description: profiles/ on-disk size }
+            persistenceMb: { type: number, description: active mission storage_1/ size }
+    ServerInfo:
+      type: object
+      description: the current-server-info snapshot behind /dayz/status and GET /dayz/server-info
+      properties:
+        status: { type: string, example: active }
+        since: { type: string, format: date-time, nullable: true }
+        uptimeSeconds: { type: integer, nullable: true }
+        uptimeHuman: { type: string, nullable: true, example: '3h 42m' }
+        players: { type: integer, nullable: true, description: null = RCon unverifiable }
+        map: { type: string, nullable: true, example: dayzOffline.sakhal }
+        modCount: { type: integer }
+        mods:
+          type: array
+          description: load order preserved
+          items:
+            type: object
+            properties:
+              folder: { type: string, example: '@cf' }
+              name: { type: string, example: 'Community Framework' }
+        restart:
+          type: object
+          nullable: true
+          description: from the messages.xml shutdown schedule; null when none is configured or the unit is down
+          properties:
+            everyMinutes: { type: integer, example: 360 }
+            nextAt: { type: string, format: date-time }
+            inSeconds: { type: integer }
+            inHuman: { type: string, example: '2h 5m' }
+            estimated: { type: boolean, description: anchored to unit start; mission load shifts it by a minute or two }
+
+  responses:
+    BadSignature:
+      description: missing/invalid X-Signature-256
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Guarded:
+      description: |
+        player guard (players_online / players_unverifiable - pass {"force": true}
+        to override) or per-action cooldown (retryAfter says how long to wait)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CooldownError' }
+
+paths:
+  /:
+    get:
+      summary: 'whole-API discovery: every endpoint + the dayz action allowlist (public, no auth)'
+      description: >-
+        The one place to see the entire surface. `endpoints` is auto-collected from
+        the live route table (new endpoints/namespaces appear here for free), and
+        `actions.dayz` expands the single POST /dayz/:action route into its named
+        actions. Per-namespace action detail also lives at GET /dayz/actions.
+      responses:
+        '200':
+          description: service, namespaces, endpoints (method+path), and per-namespace actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string, example: servermander-api }
+                  namespaces: { type: array, items: { type: string }, example: [dayz] }
+                  endpoints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        method: { type: string, example: POST }
+                        path: { type: string, example: /dayz/:action }
+                  actions:
+                    type: object
+                    description: per-namespace action allowlists (name -> destructive/readOnly/describe)
+
+  /healthz:
+    get:
+      summary: liveness probe
+      responses:
+        '200':
+          description: service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean } }
+
+  /dayz/actions:
+    get:
+      summary: 'list the DayZ actions and their destructive flag (public discovery)'
+      responses:
+        '200':
+          description: the allowlist
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        destructive: { type: boolean }
+                        describe: { type: string }
+
+  /dayz/status:
+    post:
+      summary: 'server info: state, uptime, players, map, mod list, next scheduled restart'
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200':
+          description: the current-server-info snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerInfo' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '502': { description: dayz-ctl info failed }
+
+  /dayz/server-info:
+    get:
+      summary: PUBLIC current-server-info for the site panel (no auth)
+      description: |
+        Unauthenticated on purpose: it returns exactly the status action's payload
+        (plus generatedAt), every field of which the Steam server browser already
+        publishes - name, map, player count, full mod list. Cached server-side for
+        10s; CORS `*`; GET only. Not an allowlisted action name, so the signed
+        command pipeline is untouched.
+      responses:
+        '200':
+          description: the status payload plus generatedAt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerInfo' }
+        '502': { description: bridge unavailable (details withheld on the public surface) }
+
+  /dayz/players:
+    post:
+      summary: online player count via BattlEye RCon
+      description: '`players` is the parsed count (null = unverifiable), `raw` is BattlEye''s full reply including the per-player table.'
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200': { description: count + raw RCon reply }
+        '401': { $ref: '#/components/responses/BadSignature' }
+
+  /sysload:
+    post:
+      summary: 'ROOT host load: cpu, memory, disk, uptime + the dayz-server unit footprint'
+      description: >-
+        Host-level, not a DayZ action - lives at the root, outside any namespace.
+        Authenticated (wizard or ANY derived key; no namespace/capability gate, since
+        it is read-only host data), but not public like server-info because it exposes
+        host internals. The dayz block is null if the sudo bridge errors.
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200':
+          description: host stats + the dayz unit block (dayz null if the sudo bridge errors)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sysload' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+
+  /dayz/log:
+    post:
+      summary: tail of the newest DayZ server log
+      description: Read-only, so query params are accepted (unsigned). Body params of the same names win.
+      security: [{ HmacSignature: [] }]
+      parameters:
+        - name: lines
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+          description: hard-capped at 500 server-side
+        - name: type
+          in: query
+          schema: { type: string, enum: [rpt, adm], default: rpt }
+      responses:
+        '200':
+          description: 'file = which log was read (RPT rotates every restart), tail = the lines'
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '404': { description: no logs of that type on the box }
+
+  /dayz/configs:
+    post:
+      summary: list the config files available to retrieve
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200': { description: 'configs = [{ group, name, label }] — the allowlisted files (single files + expanded folder contents), grouped for display; pass name to /dayz/config' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+
+  /dayz/config:
+    post:
+      summary: retrieve one allowlisted config file (read-only)
+      description: >-
+        Read-only, so query params are accepted (unsigned); a body param of the same
+        name wins. Only names from /dayz/configs are readable, always from a path
+        under the DayZ server dir, and well-known secret keys are redacted server-side.
+      security: [{ HmacSignature: [] }]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_./-]+$' }
+          description: one of the names from /dayz/configs (may be a path for folder-exposed files)
+      responses:
+        '200': { description: 'name, path (relative to the server dir), and content of the file' }
+        '400': { description: invalid or missing name }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '404': { description: unknown config name }
+        '413': { description: config file too large to retrieve }
+
+  /dayz/broadcast:
+    post:
+      summary: in-game message to all players
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 200, description: 'reduced to printable ASCII, capped at 200 chars' }
+            example: { message: 'Test message from Bruno' }
+      responses:
+        '200': { description: broadcast sent }
+        '400': { description: empty message after sanitising }
+        '401': { $ref: '#/components/responses/BadSignature' }
+
+  /dayz/start:
+    post:
+      summary: start the dayz-server unit
+      description: not destructive - no one is on a stopped server
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200': { description: start issued }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '502': { description: systemctl failed }
+
+  /dayz/restart:
+    post:
+      summary: 'DESTRUCTIVE: restart the dayz-server unit'
+      description: |
+        Player-guarded. When it proceeds with players online, they get an in-game
+        broadcast and Dayz.RestartWarningSeconds (default 15s) before the restart -
+        expect the response to take that long. Clean shutdown -> engine saves.
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force: { type: boolean, default: false, description: override the player guard }
+            example: { force: false }
+      responses:
+        '200': { description: restart issued }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '409': { $ref: '#/components/responses/Guarded' }
+        '502': { description: systemctl failed }
+
+  /dayz/stop:
+    post:
+      summary: 'DESTRUCTIVE: stop the dayz-server unit'
+      description: player-guarded + warn like restart; use start to bring it back
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force: { type: boolean, default: false }
+            example: { force: false }
+      responses:
+        '200': { description: stop issued }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '409': { $ref: '#/components/responses/Guarded' }
+        '502': { description: systemctl failed }
+
+  /dayz/map:
+    post:
+      summary: 'DESTRUCTIVE: switch the active mission and restart'
+      description: |
+        mission is validated against installed mpmissions/ on the box. Read from
+        the SIGNED body only - a ?mission= query param is deliberately ignored.
+        Installed: dayzOffline.chernarusplus, dayzOffline.enoch, dayzOffline.sakhal.
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mission]
+              properties:
+                mission: { type: string, pattern: '^[A-Za-z0-9_.-]+$' }
+                force: { type: boolean, default: false }
+            example: { mission: 'dayzOffline.chernarusplus', force: false }
+      responses:
+        '200': { description: 'map set, server restarting' }
+        '400': { description: invalid or not-installed mission }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '409': { $ref: '#/components/responses/Guarded' }
+
+  /keys/create:
+    post:
+      summary: 'WIZARD ONLY: mint a derived API key for another platform'
+      description: |
+        The wizard key (generated at deploy, never handed out) mints per-platform
+        keys - a Discord bot, a dashboard, cron. Derived keys live server-side
+        (/var/lib/api/keys.json), survive wizard rotation, and are individually
+        revocable. The secret is returned ONCE in this response and never again.
+        An X-Key-Id header is rejected here - derived keys cannot mint keys.
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$', description: 'name the platform, e.g. discord-bot ("wizard" is reserved)' }
+                scope:
+                  type: string
+                  enum: [full, observe]
+                  default: full
+                  description: 'capability. observe = read-only actions only (status/players/sysload/log/configs/config)'
+                namespaces:
+                  type: array
+                  items: { type: string, enum: ['*', dayz] }
+                  default: [dayz]
+                  description: >-
+                    which service domains the key may reach. '*' = all (present and
+                    future). Defaults to [dayz] (the only service today). Independent
+                    of scope: a key is (capability x namespaces).
+            example: { id: 'discord-bot', scope: 'observe', namespaces: [dayz] }
+      responses:
+        '200': { description: 'id, scope, namespaces, and the secret - shown once, store it now' }
+        '400': { description: 'bad id shape, bad scope, or bad namespaces' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '403': { description: X-Key-Id sent - key management is wizard-only }
+        '409': { description: id already exists (revoke first to reissue) }
+
+  /keys/list:
+    post:
+      summary: 'WIZARD ONLY: list derived keys (metadata, never secrets)'
+      security: [{ HmacSignature: [] }]
+      responses:
+        '200': { description: 'keys: [{ id, scope, namespaces, createdAt }]' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '403': { description: X-Key-Id sent - key management is wizard-only }
+
+  /keys/update:
+    post:
+      summary: "WIZARD ONLY: change a key's scope and/or namespaces in place"
+      description: >-
+        Adjust a key on the fly WITHOUT rotating its secret - id, secret, and
+        createdAt are untouched, so the caller keeps working. Provide scope and/or
+        namespaces; at least one is required. Same validation as create.
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                scope: { type: string, enum: [full, observe] }
+                namespaces: { type: array, items: { type: string, enum: ['*', dayz] } }
+            example: { id: 'config-astronaut', scope: 'full', namespaces: [dayz] }
+      responses:
+        '200': { description: 'updated id, scope, namespaces (secret unchanged)' }
+        '400': { description: 'bad scope, bad namespaces, or nothing to update' }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '403': { description: X-Key-Id sent - key management is wizard-only }
+        '404': { description: no such key }
+
+  /keys/revoke:
+    post:
+      summary: 'WIZARD ONLY: revoke a derived key'
+      description: requests signed with the revoked key 401 immediately
+      security: [{ HmacSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+            example: { id: 'discord-bot' }
+      responses:
+        '200': { description: revoked }
+        '401': { $ref: '#/components/responses/BadSignature' }
+        '403': { description: X-Key-Id sent - key management is wizard-only }
+        '404': { description: no such key }
+
+  /dayz/sources/vpp/{token}:
+    post:
+      summary: VPP event-feed ingress (Discord-shaped webhook sender)
+      description: |
+        Auth = the secret token in the URL (VPP_TOKEN), NOT HMAC - Discord-style
+        senders can't set headers. Wrong token or feed disabled -> 404 (endpoint
+        existence is not confirmed). Events are audited; opt-in Vpp.Rules can map
+        event text to an action.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string }
+                embeds:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      title: { type: string }
+                      description: { type: string }
+            example: { content: 'Test event from Bruno', embeds: [] }
+      responses:
+        '204': { description: received and audited }
+        '404': { description: wrong token or vpp disabled }

@@ -1,0 +1,33 @@
+meta {
+  name: create
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/keys/create
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "config-astronaut",
+    "scope": "observe",
+    "namespaces": ["dayz"]
+  }
+}
+
+docs {
+  WIZARD ONLY: mint a derived API key for another platform
+  
+  The wizard key (generated at deploy, never handed out) mints per-platform
+  keys - a Discord bot, a dashboard, cron. Derived keys live server-side
+  (/var/lib/api/keys.json), survive wizard rotation, and are individually
+  revocable. The secret is returned ONCE in this response and never again.
+  An X-Key-Id header is rejected here - derived keys cannot mint keys.
+  
+  A key is (capability x namespaces): scope full|observe, and namespaces =
+  which services it can reach (["dayz"] or ["*"]). Omitting namespaces
+  defaults to ["dayz"] - the only service today.
+}
