@@ -50,8 +50,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$RemoteHost = "servermander.ovh",                  # main copy (OVH Ubuntu VPS)
-    [string]$RemoteUser = "ubuntu",
+    [string]$RemoteHost,                                        # dev-machine-local — see deployer.env, or -RemoteHost
+    [string]$RemoteUser = "ubuntu",                             # override via deployer.env's DEPLOY_REMOTE_USER if it differs
     [string]$RemotePath = "/home/ubuntu/servers/dayz-server",  # dayz-server root on the box
     # TeleportLocation.json location under the server root (VPP writes it here).
     [string]$TeleportRel = "profiles/VPPAdminTools/ConfigurablePlugins/TeleportManager/TeleportLocation.json",
@@ -66,6 +66,7 @@ param(
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
 . (Join-Path $PSScriptRoot "../../common/Utils.ps1")
 
+Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
 Assert-DZHost @{ RemoteHost = $RemoteHost; RemoteUser = $RemoteUser; RemotePath = $RemotePath }
 
 # Classification vocab drives the parse: which single-letter map prefixes, category tokens,

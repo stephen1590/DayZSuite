@@ -49,6 +49,20 @@ function ConvertTo-InvariantString($v) {
     return [string]$v
 }
 
+# Canonical form for comparing/reporting a JSON patch value. Scalars keep the culture-
+# invariant string (so 0.82 never drifts to 0,82). Arrays/objects use compact JSON:
+# a plain [string] cast collapses an array of objects to ' ', so two DIFFERENT object
+# arrays (e.g. a loadout list, or the SocialMedia NewsFeed) compare equal and the patch
+# is silently skipped as "already set". Empty [] round-trips to '[]', so this stays idempotent.
+function ConvertTo-CompareKey($v) {
+    if ($null -eq $v) { return '' }
+    if ($v -is [string] -or $v -is [bool] -or $v -is [int] -or $v -is [long] -or
+        $v -is [double] -or $v -is [single] -or $v -is [decimal]) {
+        return ConvertTo-InvariantString $v
+    }
+    return (ConvertTo-Json $v -Depth 100 -Compress)
+}
+
 # Enumerate every real override in the manifest as flat jobs. Each job is fail-soft on
 # its own; ordering (common before mission-specific) makes the mission layer win.
 function Get-Jobs($manifest, [string]$serverDir) {
@@ -135,9 +149,10 @@ function Set-JsonKey($root, [string]$dotted, $value, [string]$label) {
     }
     $leaf = $parts[-1]
     if ($null -eq $cur.PSObject.Properties[$leaf]) { Show-Warn "$label : key '$dotted' not found"; return $false }
-    $want = ConvertTo-InvariantString $value
-    if ((ConvertTo-InvariantString $cur.$leaf) -eq $want) { Show-Same "$label : $dotted already '$want'"; return $false }
-    Show-Change "$label : $dotted  '$($cur.$leaf)' -> '$want'"; $cur.$leaf = $value; return $true
+    $want = ConvertTo-CompareKey $value
+    $have = ConvertTo-CompareKey $cur.$leaf
+    if ($have -eq $want) { Show-Same "$label : $dotted already '$want'"; return $false }
+    Show-Change "$label : $dotted  '$have' -> '$want'"; $cur.$leaf = $value; return $true
 }
 
 # --- main -----------------------------------------------------------------------

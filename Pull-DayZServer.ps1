@@ -25,8 +25,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$RemoteHost = "servermander.ovh",                  # main copy (OVH Ubuntu VPS)
-    [string]$RemoteUser = "ubuntu",
+    [string]$RemoteHost,                                        # dev-machine-local — see deployer.env, or -RemoteHost
+    [string]$RemoteUser = "ubuntu",                             # override via deployer.env's DEPLOY_REMOTE_USER if it differs
     [string]$RemotePath = "/home/ubuntu/servers/dayz-server",  # absolute path to dayz-server on the server
     [string]$LocalPath  = "/home/meshy/servers/dayz-server",
     [switch]$Execute,                # actually transfer (default is a dry-run)
@@ -37,6 +37,7 @@ param(
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
 . (Join-Path $PSScriptRoot "../../common/Utils.ps1")
 
+Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
 Assert-DZHost @{ RemoteHost = $RemoteHost; RemoteUser = $RemoteUser; RemotePath = $RemotePath }
 if (-not (Test-Path $LocalPath)) { Write-Error "LocalPath not found: $LocalPath"; exit 2 }
 

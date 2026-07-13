@@ -43,6 +43,15 @@
         },
         "dayzOffline.chernarusplus": {},
         "dayzOffline.enoch": {},
-        "dayzOffline.sakhal": {}
+        "dayzOffline.sakhal": {
+            "_readme": "Fresh-spawn loadout (Expansion SpawnSettings.json). PATCH only these fields so the rest of the file (SpawnLocations, cooldowns, clothing pools) stays whatever the box + map/inventory sync manages, and an Expansion update that rewrites the baseline is inherited. UpperGear = knife + heatpack only (no rags/apple); Backpacks emptied so fresh spawns carry no bag. Re-applied by prestart every start. Sakhal-scoped (only live map; heatpack is for its cold) - promote the knife/backpack bits to mpmissions.common if more maps go live.",
+            "expansion/settings/SpawnSettings.json": {
+                "StartingGear.UpperGear": [
+                    { "ClassName": "SteakKnife", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] }
+                ],
+                "StartingClothing.Backpacks": []
+            }
+        }
     }
 }

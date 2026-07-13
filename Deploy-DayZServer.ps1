@@ -18,6 +18,11 @@
     any host. host.env is per-host and NOT part of the payload (like map.env); absent
     => built-in defaults (ubuntu, the VPS). Copy host.env.example on each new host.
 
+    Two separate local, gitignored files: host.env describes the SERVER (lives there,
+    rendered into what runs there). deployer.env describes where to REACH the server
+    (dev-machine-local; only read when NOT -Local; never rsynced over). Never conflate
+    the two — see deployer.env.example.
+
     Full output goes to a timestamped transcript in ./logs plus a CSV summary; -NoLog disables both.
 .EXAMPLE
     ./Deploy-DayZServer.ps1                   # THE deploy (default = remote): drift report on the VPS
@@ -31,15 +36,27 @@ param(
     [switch]$NoLog,
     [switch]$Force,                                         # deploy even with players online / unverifiable count
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
-    [string]$RemoteTarget = "ubuntu@servermander.ovh",
+    [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
+    [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
     [string]$RemoteDir    = "dayz-tooling",
-    [string]$HostEnv    = (Join-Path $PSScriptRoot "host.env"),
+    [string]$HostEnv     = (Join-Path $PSScriptRoot "host.env"),
+    [string]$DeployerEnv = (Join-Path $PSScriptRoot "deployer.env"),
     [string]$DeployUser,
     [string]$DeployGroup,
     [string]$DeployHome,
     [string]$ServerDir,
     [string]$UnitPath   = "/etc/systemd/system/dayz-server.service"
 )
+
+# deployer.env is dev-machine-local config (which box to reach) — the opposite of host.env
+# (which describes the server itself) and never rsynced there (see the --exclude below).
+# Read it early, only filling params not already given explicitly on the command line.
+if ((-not $PSBoundParameters.ContainsKey('RemoteHost') -or -not $PSBoundParameters.ContainsKey('RemoteUser')) -and (Test-Path $DeployerEnv)) {
+    foreach ($line in Get-Content $DeployerEnv) {
+        if (-not $PSBoundParameters.ContainsKey('RemoteHost') -and $line -match '^\s*DEPLOY_REMOTE_HOST\s*=\s*(.+?)\s*$') { $RemoteHost = $Matches[1] }
+        if (-not $PSBoundParameters.ContainsKey('RemoteUser') -and $line -match '^\s*DEPLOY_REMOTE_USER\s*=\s*(.+?)\s*$') { $RemoteUser = $Matches[1] }
+    }
+}
 
 # --- Remote is the DEFAULT: there is no local server install anymore (meshroom is
 # tooling-only since 2026-07-06); the VPS is the one deployment. A bare run rsyncs
@@ -48,6 +65,11 @@ param(
 # Remote's own logs/ and host.env are excluded from --delete, so they survive; the
 # first run seeds host.env from the example.
 if (-not $Local) {
+    if (-not $RemoteHost) {
+        Write-Error "DEPLOY_REMOTE_HOST is not set. Copy deployer.env.example to deployer.env (dev-machine-local, gitignored — never host.env, that's server config) and set it, or pass -RemoteHost explicitly. -Local skips this if you're running directly on the server."
+        exit 2
+    }
+    $RemoteTarget = "${RemoteUser}@${RemoteHost}"
     $sshOpt = "ssh -o ConnectTimeout=10"
 
     # VPP coordinates: the live box is authoritative for admin-captured spawn bookmarks (see
@@ -59,15 +81,14 @@ if (-not $Local) {
     # script) and the refreshed files ride the rsync below like any other deploy payload.
     $syncScript = Join-Path $PSScriptRoot "Sync-VPPCoordinates.ps1"
     if (Test-Path $syncScript) {
-        $targetUser, $targetHost = $RemoteTarget -split '@', 2
         Write-Host "--- VPP coordinates ---"
-        if ($Fix) { & $syncScript -RemoteHost $targetHost -RemoteUser $targetUser -NoLog:$NoLog -Execute }
-        else      { & $syncScript -RemoteHost $targetHost -RemoteUser $targetUser -NoLog:$NoLog }
+        if ($Fix) { & $syncScript -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
+        else      { & $syncScript -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
         Write-Host ""
     }
 
     Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (Fix=$Fix)`n"
-    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=host.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
+    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=host.env --exclude=deployer.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "tooling rsync failed (exit $LASTEXITCODE)"; exit 1 }
     $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
@@ -85,14 +106,14 @@ if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried .
 . $utils
 
 # --- Per-host values: built-in defaults (the VPS) <- host.env <- explicit -Deploy* params ---
-# DEPLOY_SERVER_PASSWORD/DEPLOY_ADMIN_PASSWORD have NO built-in default (unlike
-# user/group/home) — they are secrets and must never be baked into this tracked
-# script. serverDZ.cfg carries them only as {{...}} placeholders; see the hard-fail
-# check below.
-$hv = [ordered]@{ DEPLOY_USER = 'ubuntu'; DEPLOY_GROUP = 'ubuntu'; DEPLOY_HOME = '/home/ubuntu'; DEPLOY_SERVER_PASSWORD = $null; DEPLOY_ADMIN_PASSWORD = $null }
+# DEPLOY_SERVER_PASSWORD/DEPLOY_ADMIN_PASSWORD/DEPLOY_STEAM_ACCOUNT have NO built-in default
+# (unlike user/group/home) — they identify a real account/secret and must never be baked into
+# this tracked script. serverDZ.cfg/update.sh carry them only as {{...}} placeholders; see the
+# hard-fail check below.
+$hv = [ordered]@{ DEPLOY_USER = 'ubuntu'; DEPLOY_GROUP = 'ubuntu'; DEPLOY_HOME = '/home/ubuntu'; DEPLOY_SERVER_PASSWORD = $null; DEPLOY_ADMIN_PASSWORD = $null; DEPLOY_STEAM_ACCOUNT = $null }
 if (Test-Path $HostEnv) {
     foreach ($line in Get-Content $HostEnv) {
-        if ($line -match '^\s*(DEPLOY_USER|DEPLOY_GROUP|DEPLOY_HOME|DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD)\s*=\s*(.+?)\s*$') { $hv[$Matches[1]] = $Matches[2] }
+        if ($line -match '^\s*(DEPLOY_USER|DEPLOY_GROUP|DEPLOY_HOME|DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD|DEPLOY_STEAM_ACCOUNT)\s*=\s*(.+?)\s*$') { $hv[$Matches[1]] = $Matches[2] }
     }
 }
 if ($DeployUser)  { $hv.DEPLOY_USER  = $DeployUser }
@@ -101,8 +122,13 @@ if ($DeployHome)  { $hv.DEPLOY_HOME  = $DeployHome }
 $DeployUser = $hv.DEPLOY_USER; $DeployGroup = $hv.DEPLOY_GROUP; $DeployHome = $hv.DEPLOY_HOME
 $DeployServerPassword = $hv.DEPLOY_SERVER_PASSWORD
 $DeployAdminPassword  = $hv.DEPLOY_ADMIN_PASSWORD
+$DeploySteamAccount   = $hv.DEPLOY_STEAM_ACCOUNT
 if (-not $DeployServerPassword -or -not $DeployAdminPassword) {
     Write-Error "DEPLOY_SERVER_PASSWORD / DEPLOY_ADMIN_PASSWORD not set in $HostEnv. serverDZ.cfg's join/admin passwords are host-local secrets, never in the tracked payload. Copy host.env.example to host.env and fill both in, then re-run."
+    exit 2
+}
+if (-not $DeploySteamAccount) {
+    Write-Error "DEPLOY_STEAM_ACCOUNT not set in $HostEnv. update.sh needs the Steam account that owns DayZ (anonymous login fails), never baked into the tracked payload. Copy host.env.example to host.env and fill it in, then re-run."
     exit 2
 }
 if (-not $ServerDir) { $ServerDir = "$DeployHome/servers/dayz-server" }
@@ -159,7 +185,7 @@ Write-Host "Mod chain (deploy/mods.conf, $($enabledMods.Count) enabled): $ModLin
 # Render=$true items are systemd unit TEMPLATES: their {{DEPLOY_*}} placeholders are
 # substituted with this host's values before hashing and deploying.
 $items = @(
-    @{ Src = "update.sh";           Dst = Join-Path $ServerDir "update.sh";    Sudo = $false; Exec = $true  }
+    @{ Src = "update.sh";           Dst = Join-Path $ServerDir "update.sh";    Sudo = $false; Exec = $true; Render = $true }
     # The registry ships next to update.sh so on-box (manual) update runs read the same set.
     @{ Src = "mods.conf";           Dst = Join-Path $ServerDir "mods.conf";   Sudo = $false; Exec = $false }
     @{ Src = "prestart.sh";         Dst = Join-Path $ServerDir "prestart.sh";  Sudo = $false; Exec = $true  }
@@ -225,7 +251,8 @@ foreach ($i in $items) {
             Replace('{{DEPLOY_GROUP}}', $DeployGroup).
             Replace('{{DEPLOY_MODLINE}}', $ModLine).
             Replace('{{DEPLOY_SERVER_PASSWORD}}', $DeployServerPassword).
-            Replace('{{DEPLOY_ADMIN_PASSWORD}}', $DeployAdminPassword)
+            Replace('{{DEPLOY_ADMIN_PASSWORD}}', $DeployAdminPassword).
+            Replace('{{DEPLOY_STEAM_ACCOUNT}}', $DeploySteamAccount)
         $tmp = [IO.Path]::GetTempFileName()
         [IO.File]::WriteAllText($tmp, $rendered)
         $src = $tmp

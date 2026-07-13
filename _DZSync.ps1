@@ -1,6 +1,5 @@
-# Shared helpers for Push-DayZServer.ps1 / Pull-DayZServer.ps1 — dot-source, not a run target.
-# ONE place for the exclude categories so push and pull can't drift (see postmortem #1:
-# two copies of the same rule is how the update.sh shebang bug hid for so long).
+# Shared helpers for Pull-DayZServer.ps1 / Sync-VPPCoordinates.ps1 — dot-source, not a run
+# target. ONE place for the exclude categories and deployer.env resolution so callers can't drift.
 
 # Runtime logs / crash dumps — noise, never synced in either direction.
 $DZ_LOG_EXCLUDES = @(
@@ -30,12 +29,34 @@ $DZ_HEAVY_EXCLUDES = @(
     "--exclude=backups/"
 )
 
+# RemoteHost/RemoteUser are dev-machine-local (which box to reach) — never host.env content,
+# see Deploy-DayZServer.ps1's deployer.env for the same idea. Fills in whichever of the two
+# the CALLER didn't pass explicitly, from deployer.env beside the script. A no-op if both were
+# already given, or if deployer.env doesn't have that key — Assert-DZHost below catches
+# anything still unset (in practice, just a missing host; RemoteUser has its own "ubuntu"
+# param default so it's never actually blank).
+function Resolve-DZDeployerEnv {
+    param(
+        [string]$ScriptRoot,
+        [ref]$RemoteHost,
+        [ref]$RemoteUser,
+        [hashtable]$BoundParameters
+    )
+    if ($BoundParameters.ContainsKey('RemoteHost') -and $BoundParameters.ContainsKey('RemoteUser')) { return }
+    $deployerEnv = Join-Path $ScriptRoot "deployer.env"
+    if (-not (Test-Path $deployerEnv)) { return }
+    foreach ($line in Get-Content $deployerEnv) {
+        if (-not $BoundParameters.ContainsKey('RemoteHost') -and $line -match '^\s*DEPLOY_REMOTE_HOST\s*=\s*(.+?)\s*$') { $RemoteHost.Value = $Matches[1] }
+        if (-not $BoundParameters.ContainsKey('RemoteUser') -and $line -match '^\s*DEPLOY_REMOTE_USER\s*=\s*(.+?)\s*$') { $RemoteUser.Value = $Matches[1] }
+    }
+}
+
 # Fail early if the host fields were blanked out.
 function Assert-DZHost {
     param([hashtable]$Fields)   # name -> value
     foreach ($k in $Fields.Keys) {
         if (-not $Fields[$k]) {
-            Write-Error "Set -$k — host info not configured. Edit the param defaults or pass it on the command line."
+            Write-Error "Set -$k — host info not configured. Copy deployer.env.example to deployer.env and set DEPLOY_REMOTE_HOST there, or pass -$k on the command line."
             exit 2
         }
     }

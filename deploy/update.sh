@@ -15,7 +15,7 @@ set -euo pipefail
 SERVER="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SERVERS="$(dirname -- "$SERVER")"                  # ~/servers
 STEAMCMD="$SERVERS/steamcmd/steamcmd.sh"
-STEAM_ACCOUNT=robotsd3stroyjpn                     # account that OWNS DayZ (anonymous fails); same on every host
+STEAM_ACCOUNT={{DEPLOY_STEAM_ACCOUNT}}              # account that OWNS DayZ (anonymous fails); rendered from host.env by Deploy-DayZServer.ps1
 WORKSHOP="$SERVER/steamapps/workshop/content/221100"
 
 # Isolated HOME: the desktop Steam client shares ~/.local/share/Steam and clobbers

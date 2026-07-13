@@ -3,6 +3,11 @@
 # (Deploy-DayZServer.ps1 also rsync-excludes it between hosts).
 /host.env
 
+# Dev-machine-local deploy target — deployer.env.example is the tracked template;
+# deployer.env holds DEPLOY_REMOTE_HOST/DEPLOY_REMOTE_USER for THIS checkout. Never
+# shipped to the server (rsync-excluded, same as host.env) and never committed.
+/deployer.env
+
 # Local run logs / transcripts
 /logs/
 backups/
@@ -15,3 +20,7 @@ Thumbs.db
 
 .claude/
 CLAUDE.md
+
+# Agent-facing operational notes (postmortems, real host/account details) — reference-only,
+# never shipped. Public docs live in README.md / docs/.
+/.internal/
