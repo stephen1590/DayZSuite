@@ -48,6 +48,8 @@
             "expansion/settings/SpawnSettings.json": {
                 "StartingGear.UpperGear": [
                     { "ClassName": "SteakKnife", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "BandageDressing", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "Chemlight_White", "Quantity": -1, "Attachments": [] },
                     { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] }
                 ],
                 "StartingClothing.Backpacks": []

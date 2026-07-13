@@ -35,6 +35,15 @@
     never a same-dir .bak sibling) before overwriting — skipped when the fetch is byte-identical
     to the last pull, so an unchanged box never grows the backup pile.
 
+    FALLBACK + DEFAULT: a normal run overwrites vpp-coordinates.json ONLY when the pull yields
+    USABLE spawn data (>=1 classified or coordinate-only bookmark). If the box file is missing,
+    empty, unreadable, or holds only ordinary bookmarks, the run does NOT clobber good coords or
+    abort a deploy - it falls back to the committed vpp-coordinates.default.json baseline. Seed or
+    refresh that baseline explicitly, OUTSIDE the deploy sync, with -SetDefault:
+
+        -SetDefault -Execute   pull live coords and WRITE them to vpp-coordinates.default.json
+                               (refuses to bless an empty default)
+
     ONE-COMMAND CHAIN: add -Build to also run Build-AIBandits.ps1 against deploy/ right after the
     pull, once per mission under deploy/profiles/AI_Bandits/maps/ — a single invocation pulls the
     live bookmarks AND shows you every map's composed DynamicAIB, instead of two scripts run by
@@ -47,6 +56,8 @@
     ./Sync-VPPCoordinates.ps1                     # dry-run: show the parsed table, write nothing
 .EXAMPLE
     ./Sync-VPPCoordinates.ps1 -Execute -Build     # pull + save, then write ./preview/AI_Bandits/*.json
+.EXAMPLE
+    ./Sync-VPPCoordinates.ps1 -SetDefault -Execute # bless current live coords as the fallback baseline
 #>
 [CmdletBinding()]
 param(
@@ -60,6 +71,7 @@ param(
     [string]$OutDir = (Join-Path $PSScriptRoot "deploy/profiles/VPPAdminTools/VPPCoordinates"),
     [switch]$Execute,   # actually write the files (default is a dry-run)
     [switch]$Build,     # chain: also run Build-AIBandits.ps1 against deploy/, writing ./preview/AI_Bandits/<mission>.json
+    [switch]$SetDefault, # ad-hoc, OUTSIDE the deploy sync: bless the current live coords as vpp-coordinates.default.json (the fallback used when a normal pull yields no usable data). Needs -Execute to write.
     [switch]$NoLog
 )
 
@@ -89,17 +101,27 @@ $remoteFile = "$RemotePath/$TeleportRel"
 #     ssh/2>&1 would otherwise fold into the string stream. ------------------------------
 Write-Host "Fetching VPP teleport locations from ${target}:$remoteFile"
 $raw = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$remoteFile'" } | Out-String
-if ($LASTEXITCODE -ne 0 -or -not $raw.Trim()) {
-    Write-Error "Could not read $remoteFile on $target (ssh exit $LASTEXITCODE). Is the path right and the host reachable?"
-    exit 1
-}
 
-try { $doc = $raw | ConvertFrom-Json } catch {
-    Write-Error "Fetched content is not valid JSON: $_"
-    exit 1
+# Soft-fail by design: a missing / empty / invalid pull is NOT fatal. $pullOk drives the write
+# dispatch below - a normal run with no usable data falls back to vpp-coordinates.default.json
+# instead of clobbering good coords or aborting the deploy. $locs stays empty so the classifier
+# below no-ops.
+$pullOk = $true
+$doc = $null
+$locs = @()
+if ($LASTEXITCODE -ne 0 -or -not $raw.Trim()) {
+    Write-Warning "Could not read $remoteFile on $target (ssh exit $LASTEXITCODE) — no live data this run."
+    $pullOk = $false
+} else {
+    try { $doc = $raw | ConvertFrom-Json } catch {
+        Write-Warning "Fetched content is not valid JSON — no live data this run: $_"
+        $pullOk = $false
+    }
 }
-$locs = @($doc.m_TeleportLocations)
-if (-not $locs.Count) { Write-Warning "No m_TeleportLocations found in the file — nothing to parse." }
+if ($pullOk) {
+    $locs = @($doc.m_TeleportLocations)
+    if (-not $locs.Count) { Write-Warning "No m_TeleportLocations in the file — no live data this run."; $pullOk = $false }
+}
 
 # --- Classify each entry by splitting on '_' and testing fields against the vocab. --------
 #   Classified     : <Map>_<Cat>_<Name...>  (Map/Cat/Size all known) -> coords + template + size
@@ -141,9 +163,17 @@ $records = foreach ($l in $locs) {
     }
 }
 
+$records    = @($records)
 $classified = @($records | Where-Object { $_.Kind -eq 'Classified' })
 $coordOnly  = @($records | Where-Object { $_.Kind -eq 'CoordinateOnly' })
 $nonSpawn   = @($records | Where-Object { $_.Kind -eq 'NonSpawn' })
+
+# A pull that parsed but has zero SPAWN records (empty file, or only ordinary bookmarks) is not
+# usable spawn data - treat it like a failed pull so the dispatch below falls back to the default.
+if ($pullOk -and (($classified.Count + $coordOnly.Count) -eq 0)) {
+    Write-Warning "Pull has no spawn points (0 classified/coordinate-only of $($records.Count) bookmark(s)) — no usable spawn data this run."
+    $pullOk = $false
+}
 
 # --- Report the three buckets. -------------------------------------------------------------
 Write-Host ("`nParsed {0} location(s): {1} classified, {2} coordinate-only, {3} non-spawn.`n" -f `
@@ -163,36 +193,90 @@ if ($nonSpawn.Count) {
     Write-Host ('  ' + (($nonSpawn.RawName | Sort-Object) -join ', ') + "`n")
 }
 
-# --- Write (only under -Execute). ----------------------------------------------------------
+# --- Write. Three paths: (1) -SetDefault blesses the live coords as the committed baseline;
+#     (2) normal + usable pull refreshes the working vpp-coordinates.json; (3) normal + no usable
+#     pull falls back to vpp-coordinates.default.json so a deploy never ships empty. ------------
 $snapshotPath = Join-Path $OutDir "TeleportLocation.snapshot.json"
 $normPath     = Join-Path $OutDir "vpp-coordinates.json"
+$defaultPath  = Join-Path $OutDir "vpp-coordinates.default.json"
 $backupDir    = Join-Path $OutDir "backups"
-if ($Execute) {
-    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-    $prevRaw = if (Test-Path $snapshotPath) { (Get-Content -Raw -LiteralPath $snapshotPath).TrimEnd() } else { $null }
-    if ($null -ne $prevRaw -and $prevRaw -eq $raw.TrimEnd()) {
-        Write-Host "No change since the last pull — snapshot/vpp-coordinates.json left as-is (no backup needed)."
-    } else {
-        # Back up whatever was pulled last time before overwriting — a subdirectory, never a
-        # same-dir '.bak'/'fixed_' sibling, so the live snapshot/vpp-coordinates.json stay
-        # unambiguous. Skipped on a first-ever pull (nothing to back up yet).
-        if (Test-Path $snapshotPath) {
+
+if ($SetDefault) {
+    # Ad-hoc, OUTSIDE the deploy sync: capture the current live coords as the fallback baseline.
+    # Refuses to bless an empty default (that would defeat the whole safety net).
+    if (-not $pullOk) {
+        Write-Error "-SetDefault: live pull has no usable spawn coordinates — refusing to overwrite the default with nothing. Capture spawn bookmarks in-game first."
+        exit 1
+    }
+    if ($Execute) {
+        New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+        if (Test-Path $defaultPath) {
             New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
             $bstamp = Get-Date -Format "yyyyMMdd_HHmmss"
-            Copy-Item -LiteralPath $snapshotPath -Destination (Join-Path $backupDir "TeleportLocation.snapshot.$bstamp.json") -Force
-            if (Test-Path $normPath) {
-                Copy-Item -LiteralPath $normPath -Destination (Join-Path $backupDir "vpp-coordinates.$bstamp.json") -Force
-            }
-            Write-Host "Backed up previous pull to $backupDir (*.$bstamp.json)"
+            Copy-Item -LiteralPath $defaultPath -Destination (Join-Path $backupDir "vpp-coordinates.default.$bstamp.json") -Force
+            Write-Host "Backed up previous default to $backupDir (*.$bstamp.json)"
         }
-        # Verbatim snapshot — exactly what the box returned, for audit and to diff drift later.
-        $raw.TrimEnd() | Set-Content -LiteralPath $snapshotPath -Encoding utf8
-        # Normalised list — every entry with its parsed fields + Conforms flag.
-        ($records | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $normPath -Encoding utf8
-        Write-Host "Wrote:`n  $snapshotPath`n  $normPath"
+        ($records | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $defaultPath -Encoding utf8
+        Write-Host ("Set default baseline ({0} records, {1} spawns): {2}" -f $records.Count, ($classified.Count + $coordOnly.Count), $defaultPath)
+    } else {
+        Write-Host "Dry-run (-SetDefault) — would write $($records.Count) records to the baseline:`n  $defaultPath`n  Re-run with -Execute to write."
     }
-} else {
-    Write-Host "Dry-run — nothing written. Re-run with -Execute to save to:`n  $snapshotPath`n  $normPath"
+}
+elseif ($pullOk) {
+    # Usable live data -> refresh the working file the deploy ships and the builder consumes.
+    if ($Execute) {
+        New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+        $prevRaw = if (Test-Path $snapshotPath) { (Get-Content -Raw -LiteralPath $snapshotPath).TrimEnd() } else { $null }
+        if ($null -ne $prevRaw -and $prevRaw -eq $raw.TrimEnd()) {
+            Write-Host "No change since the last pull — snapshot/vpp-coordinates.json left as-is (no backup needed)."
+        } else {
+            # Back up whatever was pulled last time before overwriting — a subdirectory, never a
+            # same-dir '.bak'/'fixed_' sibling, so the live snapshot/vpp-coordinates.json stay
+            # unambiguous. Skipped on a first-ever pull (nothing to back up yet).
+            if (Test-Path $snapshotPath) {
+                New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+                $bstamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                Copy-Item -LiteralPath $snapshotPath -Destination (Join-Path $backupDir "TeleportLocation.snapshot.$bstamp.json") -Force
+                if (Test-Path $normPath) {
+                    Copy-Item -LiteralPath $normPath -Destination (Join-Path $backupDir "vpp-coordinates.$bstamp.json") -Force
+                }
+                Write-Host "Backed up previous pull to $backupDir (*.$bstamp.json)"
+            }
+            # Verbatim snapshot — exactly what the box returned, for audit and to diff drift later.
+            $raw.TrimEnd() | Set-Content -LiteralPath $snapshotPath -Encoding utf8
+            # Normalised list — every entry with its parsed fields + Kind.
+            ($records | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $normPath -Encoding utf8
+            Write-Host "Wrote:`n  $snapshotPath`n  $normPath"
+        }
+    } else {
+        Write-Host "Dry-run — nothing written. Re-run with -Execute to save to:`n  $snapshotPath`n  $normPath"
+    }
+}
+else {
+    # No usable live data -> fall back to the committed default so the deploy ships good coords
+    # instead of nothing. Soft by design: never aborts the deploy (exit 0).
+    if (Test-Path $defaultPath) {
+        if ($Execute) {
+            $defRaw = (Get-Content -Raw -LiteralPath $defaultPath).TrimEnd()
+            $curRaw = if (Test-Path $normPath) { (Get-Content -Raw -LiteralPath $normPath).TrimEnd() } else { $null }
+            if ($defRaw -eq $curRaw) {
+                Write-Host "No usable live data — vpp-coordinates.json already equals the default; left as-is."
+            } else {
+                New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+                if (Test-Path $normPath) {
+                    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+                    $bstamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                    Copy-Item -LiteralPath $normPath -Destination (Join-Path $backupDir "vpp-coordinates.$bstamp.json") -Force
+                }
+                Copy-Item -LiteralPath $defaultPath -Destination $normPath -Force
+                Write-Warning "No usable live data — fell back to the default baseline (vpp-coordinates.default.json -> vpp-coordinates.json)."
+            }
+        } else {
+            Write-Host "Dry-run — no usable live data; would fall back to the default baseline:`n  $defaultPath -> $normPath"
+        }
+    } else {
+        Write-Warning "No usable live data AND no default baseline yet ($defaultPath). Left vpp-coordinates.json untouched. Seed one once with:  ./Sync-VPPCoordinates.ps1 -SetDefault -Execute  (after capturing spawn bookmarks)."
+    }
 }
 
 # --- Run log (CSV, append, timestamped; -NoLog to disable). --------------------------------
