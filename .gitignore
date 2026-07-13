@@ -24,3 +24,4 @@ CLAUDE.md
 # Agent-facing operational notes (postmortems, real host/account details) — reference-only,
 # never shipped. Public docs live in README.md / docs/.
 /.internal/
+/.deltas/

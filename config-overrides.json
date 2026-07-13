@@ -11,11 +11,22 @@
             "flashlightDetectionRangeMeters": 100.0,
             "lootMinCount": 0,
             "lootMaxCount": 2,
+            "lootAllowDuplicates": 0,
             "nightLightsEnabled": 0,
-            "stanceAccuracyStanding": 0.9,
-            "weatherSnowAccuracyMin": 0.9,
-            "woundedAccuracyMultiplier": 0.8,
-            "nightAccuracyPercent": 0.5
+            "nightStartHour": 19,
+            "nightEndHour": 5,
+            "nightAccuracyPercent": 0.3,
+            "stanceAccuracyStanding": 0.8,
+            "weatherSnowAccuracyMin": 0.7,
+            "woundedAccuracyMultiplier": 0.5,
+            "combatPursuitSpeed": 4,
+            "engageRangeMeters": 350.0,
+            "playerDisengageRange": 350.0,
+            "shootingRangeMinMeters": 1.5,
+            "infectedBodyDamage": 5.0,
+            "noiseFootstepWalkRange": 5.0,
+            "noiseFootstepJogRange": 20.0,
+            "noiseVehicleEngineRange": 150.0
         },
         "profiles/ExpansionMod/Settings/SocialMediaSettings.json": {
             "NewsFeedTexts": [
@@ -54,10 +65,13 @@
                     { "ClassName": "SteakKnife", "Quantity": -1, "Attachments": [] },
                     { "ClassName": "BandageDressing", "Quantity": -1, "Attachments": [] },
                     { "ClassName": "Chemlight_White", "Quantity": -1, "Attachments": [] },
-                    { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] }
+                    { "ClassName": "Heatpack", "Quantity": -1, "Attachments": [] }, 
+                    { "ClassName": "CZ61", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "Mag_CZ61_20Rnd", "Quantity": -1, "Attachments": [] },
+                    { "ClassName": "AmmoBox_9x19_25rnd", "Quantity": -1, "Attachments": [] }
                 ],
                 "StartingClothing.Backpacks": []
             }
         }
-    }
+    }    
 }
