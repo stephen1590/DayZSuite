@@ -252,6 +252,7 @@
   .map-bar .mp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 25%, transparent); }
   .map-bar .mp-bandit { display: inline-flex; align-items: center; gap: 6px; color: var(--map-bad); font-weight: 600; cursor: help; }
   .map-bar .mb-dot { width: 8px; height: 8px; background: var(--map-bad); transform: rotate(45deg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--map-bad) 22%, transparent); }
+  .map-bar .mp-stale { color: var(--muted); font-weight: 600; font-style: italic; cursor: help; }
   .map-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
   .map-seg button { font-size: 12px; padding: 5px 11px; background: var(--panel2); color: var(--muted); border: none; cursor: pointer; }
   .map-seg button + button { border-left: 1px solid var(--border); }
@@ -461,6 +462,12 @@
           <button type="button" data-grid="subtle">Subtle</button>
           <button type="button" data-grid="bold">Bold</button>
         </span>
+        <span class="map-seg" id="mapSpawnSeg" title="Player spawn points (fresh + travel), from the map's cfgplayerspawnpoints.xml">
+          <button type="button" data-spawn="toggle">Spawns</button>
+        </span>
+        <span class="map-seg" id="mapLootSeg" title="Loot sites coloured by category, from the map's mapgrouppos/mapgroupproto">
+          <button type="button" data-loot="toggle">Loot</button>
+        </span>
         <span class="meta">drag pan · scroll zoom · right-click copies X Y Z · Δ = bookmark Y − heightmap Y</span>
         <span class="spacer"></span>
         <button id="mapRefresh" class="ghost" type="button">Refresh</button>
@@ -542,6 +549,7 @@
     maptab: $('maptab'), mapSel: $('mapSel'), mapRefresh: $('mapRefresh'), mapSum: $('mapSum'),
     mapStage: $('mapStage'), mapCanvas: $('mapCanvas'), mapEmpty: $('mapEmpty'), mapBar: $('mapBar'),
     mapLayerSeg: $('mapLayerSeg'), mapGridSeg: $('mapGridSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'),
+    mapSpawnSeg: $('mapSpawnSeg'), mapLootSeg: $('mapLootSeg'),
   };
 
   let toastTimer;
@@ -1316,7 +1324,7 @@
 
   // ===================== Map tab (browsable terrain map + AI coordinates) ====
   // A dependency-free "maps app" viewer: pre-rendered terrain tile pyramids
-  // (DayZHeightmap/Build-MapTiles.ps1 → web/tiles/<map>/terrain/<z>/<x>_<y>.png,
+  // (MapDataExtraction/Build-MapTiles.ps1 → web/tiles/<map>/terrain/<z>/<x>_<y>.png,
   // z0 = whole world in one 256px tile) drawn on a canvas with drag-pan and
   // wheel/pinch zoom, a coordinate grid that rescales with zoom, live X/Y/Z under
   // the crosshair (Y sampled client-side from tiles/<map>/height.bin, fetched
@@ -1338,6 +1346,8 @@
   let mapLoadSeq = 0;      // async guard: stale fetches/resolves must not render
   let mapTiles = null;     // { man, base, cache } once tiles/<map>/manifest.json loads
   let mapLocs = [];        // location labels (tiles/<map>/locations.json, tier-sorted)
+  let mapSpawns = null;    // { fresh:[[x,z]…], travel:[[x,z]…] } from tiles/<map>/spawns.json
+  let mapLoot = null;      // { categories, points, colors, legend } from tiles/<map>/loot.json
   let mapHgt = null;       // { grid, gridN, minY, maxY } once height.bin loads
   let mapView = null;      // { cx, cz, ppm } camera: world center + pixels-per-meter
   let mapAssetSeq = 0;     // async guard for tile/height fetches across map switches
@@ -1345,8 +1355,7 @@
   let mapPlayers = [];     // live player positions [{x,z}] (anonymized) — the overlay layer
   let mapPlayersAt = null; // server-clock HH:MM:SS of the freshest fix (staleness hint)
   let mapPlayersTimer = null;
-  let mapBandits = { spawns: [], kills: [] };  // recent AIB activity from the log (approximate)
-  let mapBanditsAt = null;
+  let mapBandits = { positions: [], stale: false, ageSec: null };  // live bandit positions from the AIB_Tracker serverMod
   let mapCursor = null;    // world { x, z } under the pointer (null = outside)
   let mapDrawQueued = false;
 
@@ -1429,7 +1438,7 @@
     resolveMapDeltas();
   }
 
-  // Static assets rendered by DayZHeightmap: the tile pyramid manifest (v2:
+  // Static assets rendered by MapDataExtraction: the tile pyramid manifest (v2:
   // layers[] — satellite extracted from the game files, terrain rendered from
   // the heightmap) and the height grid the crosshair Y readout samples locally.
   function setMapLayer(name) {
@@ -1455,6 +1464,8 @@
     mapTiles = null;
     mapHgt = null;
     mapLocs = [];
+    mapSpawns = null;
+    mapLoot = null;
     renderMapLayerSeg();
     try {
       const root = 'tiles/' + encodeURIComponent(short) + '/';
@@ -1462,6 +1473,14 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((l) => { if (seq === mapAssetSeq && Array.isArray(l)) { mapLocs = l; requestMapDraw(); } })
         .catch(() => { /* labels are optional */ });
+      fetch(root + 'spawns.json')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((s) => { if (seq === mapAssetSeq && s) { mapSpawns = s; requestMapDraw(); } })
+        .catch(() => { /* spawn overlay is optional */ });
+      fetch(root + 'loot.json')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((l) => { if (seq === mapAssetSeq && l && Array.isArray(l.points)) { mapLoot = prepLoot(l); requestMapDraw(); } })
+        .catch(() => { /* loot overlay is optional */ });
       const mR = await fetch(root + 'manifest.json');
       if (seq !== mapAssetSeq) return;
       if (!mR.ok) { requestMapDraw(); return; }        // no tiles delivered for this map
@@ -1627,7 +1646,10 @@
       }
     }
     drawMapGrid(ctx, w, h);
+    drawMapLoot(ctx);                                    // dense loot dots go under labels
+    drawMapSpawns(ctx);                                  // sparse spawn markers over loot
     drawMapLabels(ctx, w, h);
+    drawMapLootLegend(ctx, w, h);                        // category key, top-left, when loot is on
     drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
     drawMapBandits(ctx);                                 // AIB activity under the players
     drawMapPlayers(ctx);                                 // live players on top of the bookmarks
@@ -1635,7 +1657,7 @@
     updateMapBar();
   }
 
-  // ---------- location labels (CfgWorlds Names, dumped by DayZHeightmap) ----
+  // ---------- location labels (CfgWorlds Names, dumped by MapDataExtraction) ----
   // Tiers gate visibility by zoom: Capital/City always, villages from ~2x,
   // POIs deeper, hills/viewpoints deepest. First-come collision skipping keeps
   // the map readable (the list is tier-sorted, so big names win the space).
@@ -1737,6 +1759,118 @@
     }
   }
 
+  // ---------- datascraped overlays: player spawns + loot (toggle each) ----------
+  // Both come from the map's own CE files (MapDataExtraction/tools/build-overlays.mjs),
+  // the same primary source iZurvive parses. Off by default so the map stays clean.
+  // Loot colours by category with a fixed priority so rare/important sites
+  // (military, medical) win the colour over ubiquitous village/industrial.
+  const LOOT_COLORS = {
+    Military: '#e5484d', Medic: '#e5a0d8', Police: '#3e63dd', Firefighter: '#f76b15',
+    Prison: '#a18072', Underground: '#8b7355', ContaminatedArea: '#8bcd00',
+    Lunapark: '#e93d82', SeasonalEvent: '#ffcc00', Office: '#8e4ec6', School: '#d6409f',
+    Special: '#ffffff', Hunting: '#5c7f3a', Coast: '#2ec9e0', Town: '#12a594',
+    Farm: '#9bbb2f', Industrial: '#c8890a', Village: '#46a758',
+  };
+  // Higher priority first — the dominant category picked for a multi-tag site.
+  const LOOT_PRIORITY = ['Military', 'Medic', 'Police', 'Firefighter', 'Prison', 'Underground',
+    'ContaminatedArea', 'Lunapark', 'SeasonalEvent', 'Office', 'School', 'Special',
+    'Hunting', 'Coast', 'Town', 'Farm', 'Industrial', 'Village'];
+  // Precompute per-point colour + a present-categories legend once per load, not per frame.
+  function prepLoot(l) {
+    const cats = l.categories || [];
+    const domRank = (mask) => {
+      for (const name of LOOT_PRIORITY) { const i = cats.indexOf(name); if (i >= 0 && (mask & (1 << i))) return name; }
+      for (let i = 0; i < cats.length; i++) if (mask & (1 << i)) return cats[i];   // fallback: first set
+      return null;
+    };
+    const colors = new Array(l.points.length);
+    const present = new Set();
+    for (let i = 0; i < l.points.length; i++) {
+      const name = domRank(l.points[i][2]);
+      colors[i] = (name && LOOT_COLORS[name]) || '#9aa4ad';
+      if (name) present.add(name);
+    }
+    const legend = LOOT_PRIORITY.filter((n) => present.has(n)).map((n) => ({ name: n, color: LOOT_COLORS[n] || '#9aa4ad' }));
+    return { categories: cats, points: l.points, colors, legend };
+  }
+
+  let mapShowSpawns = false, mapShowLoot = false;
+  try { mapShowSpawns = localStorage.getItem('cfgview-mapspawns') === 'on'; } catch { /* default off */ }
+  try { mapShowLoot = localStorage.getItem('cfgview-maploot') === 'on'; } catch { /* default off */ }
+  function setMapSpawns(on) {
+    mapShowSpawns = !!on;
+    try { localStorage.setItem('cfgview-mapspawns', on ? 'on' : 'off'); } catch { /* private mode */ }
+    for (const b of el.mapSpawnSeg.querySelectorAll('button')) b.classList.toggle('active', mapShowSpawns);
+    requestMapDraw();
+  }
+  function setMapLoot(on) {
+    mapShowLoot = !!on;
+    try { localStorage.setItem('cfgview-maploot', on ? 'on' : 'off'); } catch { /* private mode */ }
+    for (const b of el.mapLootSeg.querySelectorAll('button')) b.classList.toggle('active', mapShowLoot);
+    requestMapDraw();
+  }
+
+  function drawMapLoot(ctx) {
+    if (!mapShowLoot || !mapLoot || !mapView) return;
+    const { w, h } = mapVp();
+    const r = mapView.ppm > 0.4 ? 2.4 : 1.6;             // a touch bigger when zoomed in
+    const pts = mapLoot.points, cols = mapLoot.colors;
+    ctx.globalAlpha = 0.85;
+    for (let i = 0; i < pts.length; i++) {
+      const [sx, sy] = mapToScreen(pts[i][0], pts[i][1]);
+      if (sx < -4 || sy < -4 || sx > w + 4 || sy > h + 4) continue;
+      ctx.fillStyle = cols[i];
+      ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Spawn markers: hollow diamonds, fresh vs travel by colour. Sparse (~40-60), so
+  // always drawn. Sakhal reuses the same points for both — travel then wins the colour.
+  function drawMapSpawns(ctx) {
+    if (!mapShowSpawns || !mapSpawns || !mapView) return;
+    const { w, h } = mapVp();
+    const draw = (list, color) => {
+      if (!Array.isArray(list)) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      for (const [x, z] of list) {
+        const [sx, sy] = mapToScreen(x, z);
+        if (sx < -12 || sy < -12 || sx > w + 12 || sy > h + 12) continue;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 6); ctx.lineTo(sx + 6, sy); ctx.lineTo(sx, sy + 6); ctx.lineTo(sx - 6, sy);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(10,16,22,0.55)';
+        ctx.fill();
+        ctx.stroke();
+      }
+    };
+    draw(mapSpawns.fresh, '#7ee787');                    // fresh = green
+    draw(mapSpawns.travel, '#4cc9e0');                   // travel = cyan (drawn last = on top)
+  }
+
+  function drawMapLootLegend(ctx, w, h) {
+    if (!mapShowLoot || !mapLoot || !mapLoot.legend.length) return;
+    const rows = mapLoot.legend, pad = 8, sw = 10, lh = 15;
+    ctx.font = '600 11px system-ui, sans-serif';
+    let bw = 0;
+    for (const r of rows) bw = Math.max(bw, ctx.measureText(r.name).width);
+    bw += pad * 2 + sw + 6;
+    const bh = pad * 2 + rows.length * lh;
+    const x0 = 10, y0 = 10;
+    ctx.fillStyle = 'rgba(16,22,30,0.82)';
+    ctx.beginPath(); ctx.roundRect(x0, y0, bw, bh, 6); ctx.fill();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    for (let i = 0; i < rows.length; i++) {
+      const cy = y0 + pad + i * lh + lh / 2 - 1;
+      ctx.fillStyle = rows[i].color;
+      ctx.fillRect(x0 + pad, cy - sw / 2, sw, sw);
+      ctx.fillStyle = 'rgba(232,238,244,0.95)';
+      ctx.fillText(rows[i].name, x0 + pad + sw + 6, cy);
+    }
+  }
+
   // ---------- bookmark markers ----------
   function mapColors() {
     const cs = getComputedStyle(document.documentElement);
@@ -1828,16 +1962,10 @@
   // precise-live upgrade; this is the no-mod activity view.
   function drawMapBandits(ctx) {
     if (!mapView) return;
+    // The API already dropped positions when the file was stale/missing, so whatever is here is
+    // fresh (<=60s) — plot every live bandit as a diamond, distinct from the player circles.
     const spawn = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
-    for (const k of mapBandits.kills) {
-      const [sx, sy] = mapToScreen(k.x, k.z);
-      ctx.beginPath();
-      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(140,150,160,0.6)';   // faded ring — a bandit died here recently
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-    for (const s of mapBandits.spawns) {
+    for (const s of mapBandits.positions) {
       const [sx, sy] = mapToScreen(s.x, s.z);
       ctx.save();
       ctx.translate(sx, sy);
@@ -1855,17 +1983,20 @@
     if (!cred) return;
     try {
       const r = await apiPost('/dayz/bandits', cred);
-      mapBandits = { spawns: Array.isArray(r.spawns) ? r.spawns : [], kills: Array.isArray(r.kills) ? r.kills : [] };
-      mapBanditsAt = r.at || null;
+      mapBandits = {
+        positions: Array.isArray(r.positions) ? r.positions : [],
+        stale: !!r.stale,
+        ageSec: typeof r.ageSec === 'number' ? r.ageSec : null,
+      };
       requestMapDraw();
       updateMapBar();
     } catch (err) {
       if (handle(err)) return;
-      /* transient / 404 before deploy: keep last-known, don't blank */
+      /* transient (torn read / pre-deploy 404): keep last-known, don't blank */
     }
   }
   function startPlayers() { stopPlayers(); loadPlayers(); loadBandits(); mapPlayersTimer = setInterval(() => { loadPlayers(); loadBandits(); }, 30000); }
-  function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersTimer); mapPlayersTimer = null; } mapPlayers = []; mapBandits = { spawns: [], kills: [] }; }
+  function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersTimer); mapPlayersTimer = null; } mapPlayers = []; mapBandits = { positions: [], stale: false, ageSec: null }; }
 
   function updateMapBar() {
     const scale = mapView ? (1 / mapView.ppm) : 0;
@@ -1874,11 +2005,12 @@
       ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
         + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
       : '';
-    const bandits = mapBandits.spawns.length
-      ? '<span class="mp-bandit" title="Recent AIB activity from the log — spawn coords (approximate), not live tracking">'
-        + '<span class="mb-dot"></span>' + mapBandits.spawns.length + ' bandit spawn' + (mapBandits.spawns.length === 1 ? '' : 's')
-        + (mapBandits.kills.length ? ' · ' + mapBandits.kills.length + ' killed' : '') + '</span>'
-      : '';
+    const bandits = mapBandits.positions.length
+      ? '<span class="mp-bandit" title="Live AI-bandit positions from the AIB_Tracker serverMod (updated every 20s)">'
+        + '<span class="mb-dot"></span>' + mapBandits.positions.length + ' bandit' + (mapBandits.positions.length === 1 ? '' : 's') + '</span>'
+      : mapBandits.stale
+        ? '<span class="mp-stale" title="AIB tracker has not updated in over a minute — the server or the AIB_Tracker serverMod may be down">bandit tracker stale</span>'
+        : '';
     if (!mapCursor) {
       el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
         (mapTiles ? '' : '<span style="color:var(--danger)">no map tiles delivered for this map — run Build-MapTiles.ps1 -Execute -Deliver + redeploy</span>');
@@ -2415,6 +2547,10 @@
   el.mapLayerSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-layer]'); if (b) setMapLayer(b.dataset.layer); });
   el.mapGridSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-grid]'); if (b) setMapGrid(b.dataset.grid); });
   setMapGrid(mapGrid);   // mark the persisted choice active
+  el.mapSpawnSeg.addEventListener('click', () => setMapSpawns(!mapShowSpawns));
+  el.mapLootSeg.addEventListener('click', () => setMapLoot(!mapShowLoot));
+  setMapSpawns(mapShowSpawns);   // mark persisted state active
+  setMapLoot(mapShowLoot);
   window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) showTab(tabFromHash()); });
   // Unsaved-changes guard: reloading or closing the tab drops in-memory override edits.
   window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
