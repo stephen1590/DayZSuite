@@ -357,6 +357,18 @@
   .log-aa { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 9px; }
   .log-aa.on { color: var(--accent); border-color: var(--accent); }
   .log-follow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+  /* Logs left column: a date picker (defaults to today) narrows the file list to
+     one day; the dropdown then picks the session within it. RPT/ADM split into
+     optgroups, newest session first. */
+  .log-picker { padding: 8px 8px 2px; display: flex; flex-direction: column; gap: 8px; }
+  .lp-row { display: flex; align-items: center; gap: 8px; }
+  .lp-lbl { font-size: 12px; color: var(--faint); width: 34px; flex: none; }
+  .lp-date { flex: 1; min-width: 0; font-size: 13px; padding: 6px 8px; border-radius: 7px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--border); color-scheme: light; }
+  :root[data-theme="dark"] .lp-date { color-scheme: dark; }
+  .lp-sel { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    padding: 6px 8px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+  .lp-sel:disabled { color: var(--faint); }
 </style>
 
 <!-- Login card (pre-auth; centered, no shell) -->
@@ -401,8 +413,16 @@
       <div id="apiNav" class="hidden"><span class="meta">The API explorer opens on the right. Calls are signed with your key.</span></div>
       <!-- Map tab: the spawn-bookmark list, sorted by |delta| once heights resolve. -->
       <div id="mapNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
-      <!-- Logs tab: every RPT/ADM on the box, newest first. -->
-      <div id="logsNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <!-- Logs tab: a date picker (default today) narrows to one day, the dropdown
+           picks the RPT/ADM session within it. -->
+      <div id="logsNav" class="hidden">
+        <div class="log-picker">
+          <div class="lp-row"><span class="lp-lbl">Date</span>
+            <input type="date" id="logDate" class="lp-date"></div>
+          <select id="logFileSel" class="lp-sel" aria-label="Log file"><option disabled selected>Loading…</option></select>
+          <div class="side-sub2" id="logNavMeta" style="padding-left:8px">Loading…</div>
+        </div>
+      </div>
     </div>
     <div class="side-foot"><button id="signout" class="ghost" type="button">Sign out</button></div>
   </aside>
@@ -461,8 +481,9 @@
       <div class="page-head">
         <span class="ph-title">Logs</span>
         <input id="logFilter" class="log-filter" spellcheck="false" autocapitalize="off"
-               placeholder="filter — grep -E regex, Enter applies">
+               placeholder="filter — plain text, Enter applies">
         <button id="logCase" class="ghost log-aa" type="button" title="Match case (off = case-insensitive)">Aa</button>
+        <button id="logRe" class="ghost log-aa" type="button" title="Regex (off = plain text — special characters match literally)">.*</button>
         <input id="logGoto" class="log-goto" inputmode="numeric" placeholder="go to #">
         <span class="meta" id="logStatus">—</span>
         <span class="spacer"></span>
@@ -510,7 +531,8 @@
     signout: $('signout'), toast: $('toast'), themeToggle: $('themeToggle'),
     statsbar: $('statsbar'), sbStats: $('sbStats'), sbArm: $('sbArm'), sbRestart: $('sbRestart'),
     filesNav: $('filesNav'), apiNav: $('apiNav'), mapNav: $('mapNav'), logsNav: $('logsNav'),
-    logstab: $('logstab'), logFilter: $('logFilter'), logCase: $('logCase'), logGoto: $('logGoto'),
+    logDate: $('logDate'), logFileSel: $('logFileSel'), logNavMeta: $('logNavMeta'),
+    logstab: $('logstab'), logFilter: $('logFilter'), logCase: $('logCase'), logRe: $('logRe'), logGoto: $('logGoto'),
     logStatus: $('logStatus'), logFollow: $('logFollow'), logRefresh: $('logRefresh'),
     logPane: $('logPane'), logEmpty: $('logEmpty'), logLines: $('logLines'),
     workspace: $('workspace'),
@@ -1653,8 +1675,8 @@
   // bright snow alike. Intensity is user-set (Off/Subtle/Bold, persisted).
   const MAP_GRIDS = {
     off: null,
-    subtle: { halo: 0.30, minor: 0.32, major: 0.58, wMaj: 1 },
-    bold: { halo: 0.62, minor: 0.62, major: 0.95, wMaj: 2 },
+    subtle: { halo: 0.16, minor: 0.18, major: 0.34, wMaj: 1 },
+    bold: { halo: 0.28, minor: 0.32, major: 0.56, wMaj: 1 },
   };
   let mapGrid = 'bold';
   try { mapGrid = localStorage.getItem('cfgview-mapgrid') || 'bold'; } catch { /* default */ }
@@ -1676,8 +1698,8 @@
     const major = step * 5;
     const wx0 = mv.cx - w / 2 / mv.ppm, wx1 = mv.cx + w / 2 / mv.ppm;
     const wzB = mv.cz - h / 2 / mv.ppm, wzT = mv.cz + h / 2 / mv.ppm;
-    const fmtC = (v) => (v >= 1000 && v % 1000 === 0) ? (v / 1000) + 'k' : String(v);
-    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    // Game-native map coordinate: metres / 10000, so 8000 -> 0.8, 10000 -> 1.0.
+    const fmtC = (v) => { let s = (v / 10000).toFixed(3).replace(/0+$/, ''); return s.endsWith('.') ? s + '0' : s; };
     ctx.textBaseline = 'middle';
     const line = (x0, y0, x1, y1, isMaj) => {
       ctx.beginPath();
@@ -1689,27 +1711,29 @@
       ctx.strokeStyle = 'rgba(20,32,44,' + (isMaj ? G.major : G.minor) + ')';
       ctx.stroke();
     };
-    const chip = (x, y, txt, alignRight) => {
-      const tw = ctx.measureText(txt).width;
-      const bx = alignRight ? x - tw - 8 : x - tw / 2 - 4;
-      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+    // Every line gets a chip; majors are bolder and darker so they read first.
+    const chip = (x, y, txt, anchor, maj) => {
+      ctx.font = (maj ? '700 10.5px ' : '400 9px ') + 'ui-monospace, SFMono-Regular, Menlo, monospace';
+      const tw = ctx.measureText(txt).width, bw = tw + 8;
+      const bx = anchor === 'left' ? x : x - bw / 2;
+      ctx.fillStyle = maj ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.62)';
       ctx.beginPath();
-      ctx.roundRect(bx, y - 8, tw + 8, 16, 4);
+      ctx.roundRect(bx, y - 8, bw, 16, 4);
       ctx.fill();
-      ctx.fillStyle = 'rgba(24,34,46,0.95)';
+      ctx.fillStyle = maj ? 'rgba(16,24,34,0.98)' : 'rgba(46,58,70,0.82)';
       ctx.fillText(txt, bx + 4, y + 0.5);
     };
     for (let gx = Math.ceil(Math.max(0, wx0) / step) * step; gx <= Math.min(mapWs, wx1); gx += step) {
       const isMaj = gx % major === 0;
       const sx = Math.round(mapToScreen(gx, 0)[0]) + 0.5;
       line(sx, 0, sx, h, isMaj);
-      if (isMaj) chip(sx, h - 12, fmtC(gx));
+      chip(sx, h - 12, fmtC(gx), 'center', isMaj);
     }
     for (let gz = Math.ceil(Math.max(0, wzB) / step) * step; gz <= Math.min(mapWs, wzT); gz += step) {
       const isMaj = gz % major === 0;
       const sy = Math.round(mapToScreen(0, gz)[1]) + 0.5;
       line(0, sy, w, sy, isMaj);
-      if (isMaj) chip(12, sy, fmtC(gz));
+      chip(6, sy, fmtC(gz), 'left', isMaj);
     }
   }
 
@@ -1988,21 +2012,69 @@
   let logBusy = false;
   let logFollowTimer = null;
   let logCaseSensitive = false; // Aa toggle; we send ignoreCase unless it's on
+  let logRegex = false;         // .* toggle; off = the filter is plain text (metacharacters escaped)
+  let logSelDate = null;        // the date the left column is filtered to (YYYY-MM-DD, UTC)
+
+  // The backend filter is always a grep -E regex. In plain-text mode we escape the
+  // ERE metacharacters so a user's "." or "(" matches itself — no reserved-character
+  // surprises. The set is identical for JS RegExp, so the same escape feeds both the
+  // server filter and the client-side highlighter.
+  function ereEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function logPattern() { const f = el.logFilter.value.trim(); return logRegex ? f : ereEscape(f); }
 
   function logHuman(bytes) {
     if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + 'M';
     if (bytes >= 1024) return Math.round(bytes / 1024) + 'K';
     return bytes + 'B';
   }
+  // The box names logs DayZServer_YYYY-MM-DD_HH-MM-SS.RPT/.ADM in server (UTC)
+  // time — read the day and start-time straight off the name, fall back to mtime.
+  function logDateOf(f) { const m = /_(\d{4}-\d\d-\d\d)_\d\d-\d\d-\d\d\.(?:RPT|ADM)$/i.exec(f.name); return m ? m[1] : (f.modified || '').slice(0, 10); }
+  function logTimeOf(f) { const m = /_(\d\d)-(\d\d)-(\d\d)\.(?:RPT|ADM)$/i.exec(f.name); return m ? m[1] + ':' + m[2] + ':' + m[3] : f.name; }
+  const logByNameDesc = (a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0);   // newest session first
+  const logDayFiles = (d) => logFiles.filter((f) => logDateOf(f) === d).sort(logByNameDesc);
+  function logUtcToday() { const n = new Date(); return n.getUTCFullYear() + '-' + String(n.getUTCMonth() + 1).padStart(2, '0') + '-' + String(n.getUTCDate()).padStart(2, '0'); }
+
+  // Left column = date picker + file dropdown. The picker defaults to today (UTC,
+  // to match how the box names its logs); if today has none, it falls back to the
+  // newest day that does, so the panel is never blank when logs exist.
   function renderLogsNav() {
-    if (!logFiles.length) { el.logsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">No log files on the box.</span>'; return; }
-    el.logsNav.innerHTML = '<div class="side-sub2">' + logFiles.length + ' log file' + (logFiles.length === 1 ? '' : 's') + ' · newest first</div>' +
-      logFiles.map((f) => {
-        const when = (f.modified || '').replace('T', ' ').replace(/Z$/, ' UTC');
-        return '<div class="side-item lg-item' + (f.name === logCurFile ? ' active' : '') + '" data-name="' + attr(f.name) + '" title="' + attr(f.name + ' — ' + when) + '">' +
-          '<span class="fn">' + escapeHtml(f.name) + '</span>' +
-          '<span class="mp-badge ' + (f.type === 'adm' ? 'mwarn' : 'mnull') + '">' + escapeHtml(f.type) + ' ' + logHuman(f.sizeBytes || 0) + '</span></div>';
-      }).join('');
+    if (!logFiles.length) {
+      el.logDate.value = ''; el.logDate.disabled = true;
+      el.logFileSel.innerHTML = '<option disabled selected>—</option>'; el.logFileSel.disabled = true;
+      el.logNavMeta.textContent = 'No log files on the box.';
+      return;
+    }
+    const dates = [...new Set(logFiles.map(logDateOf))].sort().reverse();
+    const today = logUtcToday();
+    if (!logSelDate || !dates.includes(logSelDate)) logSelDate = dates.includes(today) ? today : dates[0];
+    el.logDate.disabled = false;
+    el.logDate.max = dates[0] > today ? dates[0] : today;   // don't cap below the newest log we actually have
+    el.logDate.value = logSelDate;
+
+    const day = logDayFiles(logSelDate);
+    const opt = (f) => '<option value="' + attr(f.name) + '"' + (f.name === logCurFile ? ' selected' : '') + '>'
+      + escapeHtml(logTimeOf(f) + ' · ' + logHuman(f.sizeBytes || 0)) + '</option>';
+    const grp = (label, type) => { const a = day.filter((f) => f.type === type); return a.length ? '<optgroup label="' + label + '">' + a.map(opt).join('') + '</optgroup>' : ''; };
+    el.logFileSel.disabled = !day.length;
+    el.logFileSel.innerHTML = day.length
+      ? grp('RPT — server log', 'rpt') + grp('ADM — admin log', 'adm')
+      : '<option disabled selected>no logs on this date</option>';
+
+    el.logNavMeta.textContent = day.length
+      ? day.length + ' file' + (day.length === 1 ? '' : 's') + ' on ' + logSelDate + ' · ' + dates.length + ' day' + (dates.length === 1 ? '' : 's') + ' logged'
+      : 'no logs on ' + logSelDate + ' · ' + dates.length + ' day' + (dates.length === 1 ? '' : 's') + ' logged';
+  }
+
+  // Date changed: jump to that day's newest RPT (or newest file if it has no RPT).
+  // A day with no logs just refreshes the dropdown — the open file stays put.
+  function onLogDatePick() {
+    const v = el.logDate.value;
+    if (!v || v === logSelDate) return;
+    logSelDate = v;
+    const day = logDayFiles(v);
+    const pick = day.find((f) => f.type === 'rpt') || day[0];
+    if (pick) openLog(pick.name); else renderLogsNav();
   }
 
   async function loadLogsTab(force) {
@@ -2014,10 +2086,12 @@
       const r = await apiPost('/dayz/logs/files', cred, {});
       logFiles = r.files || [];
     } catch (e) { if (!handle(e)) toast('Log list failed: ' + e.message, 'err'); return; }
-    renderLogsNav();
-    // First visit: open the newest RPT automatically.
+    renderLogsNav();   // establishes logSelDate (defaults to today)
+    // First visit: open the newest RPT of the selected day automatically.
     if (!logCurFile) {
-      const first = logFiles.find((f) => f.type === 'rpt') || logFiles[0];
+      const day = logDayFiles(logSelDate);
+      const first = day.find((f) => f.type === 'rpt') || day[0]
+        || logFiles.find((f) => f.type === 'rpt') || logFiles[0];
       if (first) openLog(first.name);
     }
   }
@@ -2025,7 +2099,7 @@
   function logParams(extra) {
     const p = { file: logCurFile, limit: LOG_PAGE, ...extra };
     const f = el.logFilter.value.trim();
-    if (f) { p.filter = f; if (!logCaseSensitive) p.ignoreCase = true; }
+    if (f) { p.filter = logPattern(); if (!logCaseSensitive) p.ignoreCase = true; }
     return p;
   }
   async function logFetch(extra) {
@@ -2045,7 +2119,7 @@
     const f = el.logFilter.value.trim();
     if (f) {
       let re = null;
-      try { re = new RegExp(f, logCaseSensitive ? 'g' : 'gi'); } catch { /* keep plain */ }
+      try { re = new RegExp(logPattern(), logCaseSensitive ? 'g' : 'gi'); } catch { /* keep plain */ }
       if (re) {
         let out = '', last = 0, ok = true;
         for (const m of text.matchAll(re)) {
@@ -2123,6 +2197,8 @@
 
   function openLog(name) {
     logCurFile = name;
+    const f = logFiles.find((x) => x.name === name);
+    if (f) logSelDate = logDateOf(f);   // keep the date picker + dropdown on the open file's day
     logWin = null;
     renderLogsNav();
     logJump(0);
@@ -2214,9 +2290,10 @@
   el.tabMap.addEventListener('click', () => { location.hash = 'map'; });
   el.tabLogs.addEventListener('click', () => { location.hash = 'logs'; });
 
-  // Logs tab: sidebar picks the file; the pane's top edge pages back; filter and
-  // goto re-anchor the window; the line-number gutter copies the line.
-  el.logsNav.addEventListener('click', (e) => { const r = e.target.closest('.lg-item'); if (r && r.dataset.name !== logCurFile) openLog(r.dataset.name); });
+  // Logs tab: date picker narrows to a day, dropdown picks the session; the pane's
+  // top edge pages back; filter and goto re-anchor the window; the gutter copies.
+  el.logDate.addEventListener('change', onLogDatePick);
+  el.logFileSel.addEventListener('change', () => { if (el.logFileSel.value && el.logFileSel.value !== logCurFile) openLog(el.logFileSel.value); });
   el.logPane.addEventListener('scroll', () => {
     if (!logWin) return;
     if (el.logPane.scrollTop < 120) logExtend(-1);
@@ -2226,6 +2303,13 @@
   el.logCase.addEventListener('click', () => {
     logCaseSensitive = !logCaseSensitive;
     el.logCase.classList.toggle('on', logCaseSensitive);
+    if (el.logFilter.value.trim()) logJump(0);
+  });
+  el.logRe.addEventListener('click', () => {
+    logRegex = !logRegex;
+    el.logRe.classList.toggle('on', logRegex);
+    el.logFilter.placeholder = logRegex ? 'filter — grep -E regex, Enter applies' : 'filter — plain text, Enter applies';
+    el.logFilter.classList.remove('badre');   // plain-text mode can't be an invalid pattern
     if (el.logFilter.value.trim()) logJump(0);
   });
   el.logGoto.addEventListener('keydown', (e) => {
