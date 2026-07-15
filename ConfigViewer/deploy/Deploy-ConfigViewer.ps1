@@ -71,10 +71,10 @@ $webDir = Join-Path $SiteRoot 'web'
 if (-not (Test-Path (Join-Path $webDir 'index.html'))) { throw "No app at $webDir (expected index.html)." }
 
 # --- Stage vendored assets + the API spec into web/ ----------------------
-# The API tab embeds Swagger UI (vendored, self-hosted — no CDN) and loads the OpenAPI
-# spec same-origin. Both are provisioned here (not committed — see .gitignore) so a fresh
-# checkout deploys cleanly. The spec's single source of truth is ../../Api/openapi.yaml;
-# swagger-ui-dist is pinned and fetched once, then reused.
+# The API tab embeds Swagger UI (vendored, self-hosted — no CDN); it loads the OpenAPI
+# spec LIVE from the API at /api/openapi.json (generated from code — no static copy to
+# drift). The vendored bundle is provisioned here (not committed — see .gitignore) so a
+# fresh checkout deploys cleanly; swagger-ui-dist is pinned and fetched once, then reused.
 $SwaggerVersion = '5.32.8'
 $suiDir = Join-Path $webDir 'vendor/swagger-ui'
 if (-not (Test-Path (Join-Path $suiDir 'swagger-ui-bundle.js'))) {
@@ -90,13 +90,6 @@ if (-not (Test-Path (Join-Path $suiDir 'swagger-ui-bundle.js'))) {
     Copy-Item (Join-Path $tmp 'package/swagger-ui.css') $suiDir -Force
     Copy-Item (Join-Path $tmp 'package/swagger-ui-bundle.js') $suiDir -Force
 }
-$specSrc = Join-Path $PSScriptRoot '../../Api/openapi.yaml'
-if (Test-Path $specSrc) {
-    Copy-Item $specSrc (Join-Path $webDir 'openapi.yaml') -Force
-} else {
-    Write-Warning "API spec not found at $specSrc — the API tab will 404 loading openapi.yaml."
-}
-
 # --- Deploy (rsync over ssh) ---------------------------------------------
 # Trailing slash on source => copy the CONTENTS of web/, not the dir itself.
 $sshParts = @("ssh -p $SshPort")

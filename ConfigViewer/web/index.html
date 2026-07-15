@@ -1,222 +1,534 @@
 <!--
-  Config Viewer — a dependency-free, single-file front end for the DayZ config API.
+  DayZ Config UI — a dependency-free, single-file front end for the DayZ config API.
 
   It talks ONLY to the same-origin /api/ path, which this site's nginx vhost
   reverse-proxies to the API service (localhost:3100). The browser signs every
-  request itself (HMAC-SHA256 over the empty body, Web Crypto) with the derived
-  key the user pastes in, exactly the way the API verifies it. No build step, no
-  external scripts, no CDN — everything needed is inline.
+  request itself (HMAC-SHA256, Web Crypto) with the derived key the user pastes in,
+  exactly the way the API verifies it. No build step, no external scripts, no CDN.
 
-  Auth model: paste the Key ID + secret from an OBSERVE-scoped key minted via the
-  Keys API (/keys/create). Credentials are kept in a cookie on this device so a
-  refresh doesn't ask again; the cookie is destroyed the first time the API
-  rejects them (401), which bounces you back to the login card.
+  Layout: a persistent left sidebar (brand + page nav + ONE merged file tree) and a
+  full-width content area. Two pages — Server Files and API (Swagger).
+
+  Server Files model: every row is a FILE (deduped by server-relative path across its
+  read alias, folder listing and any config-overrides target). Every JSON/XML file
+  opens the same Fields ⇄ File editor: overridden fields are highlighted deltas, the
+  rest is context, and editing a context field ADDS an override. Mission files carry
+  LAYERS — 'all missions' (mpmissions.common) and the mission's own layer (mission
+  wins) — chips mark common rows and a selector picks where new overrides land.
+  Box-owned writable files (rw) open a whole-file editor; non-JSON/XML files are
+  locked (ro): viewable, not patchable.
+
+  Auth: paste the Key ID + secret from a key minted via /keys/create. An OBSERVE key
+  can view + read; a FULL-scope key also writes. Credentials live in a cookie and are
+  cleared the moment the API rejects them (401).
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Config Viewer</title>
+<title>DayZ Config UI</title>
+<script>
+  // Resolve the theme before first paint (no flash-of-wrong-theme): a stored choice wins,
+  // otherwise follow the OS. Only an explicit toggle stores a choice — until then it tracks the OS.
+  (function () {
+    try {
+      var t = localStorage.getItem('cfgview-theme');
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  })();
+</script>
 <style>
+  /* Palette — cohesive across every page. Brass accent (DayZ brass casings) for
+     interactive/active; a distinct DELTA green that means one thing: "captured override";
+     a soft INFO blue for the 'all missions' layer chip. The code surface (--pre-bg) stays
+     dark in both themes on purpose, like a terminal. */
   :root {
-    --bg: #f6f7f9; --card: #fff; --fg: #1c2128; --muted: #6b7684;
-    --border: #d7dce2; --accent: #2f6feb; --accent-fg: #fff;
-    --pre-bg: #0d1117; --pre-fg: #d4d9e0; --danger: #b3261e; --ok: #1a7f37;
+    --bg: #eaeef3; --card: #ffffff; --fg: #1a2028; --muted: #59636f; --faint: #8592a0;
+    --border: #d2dae2; --border-soft: #e5eaef; --rail: #f6f8fa; --panel2: #f2f5f8;
+    --accent: #a9741a; --accent-fg: #ffffff; --accent-weak: rgba(169,116,26,0.12);
+    --pre-bg: #0b1017; --pre-fg: #cfd9e4; --danger: #c33327; --ok: #1a8a44;
+    --delta: #1a8a44; --delta-weak: rgba(26,138,68,0.12); --delta-line: rgba(26,138,68,0.16);
+    --info: #2f6fd0; --info-weak: rgba(47,111,208,0.12);
+    --shadow: 0 1px 2px rgba(16,24,32,.06), 0 6px 20px rgba(16,24,32,.06);
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0d1117; --card: #161b22; --fg: #e6edf3; --muted: #8b949e;
-      --border: #30363d; --accent: #4f8cff; --accent-fg: #fff;
-      --pre-bg: #010409; --pre-fg: #c9d1d9; --danger: #ff7b72; --ok: #3fb950;
-    }
+  :root[data-theme="dark"] {
+    --bg: #0e1217; --card: #151b23; --fg: #e7edf3; --muted: #8b98a7; --faint: #5c6875;
+    --border: #263140; --border-soft: #1c2530; --rail: #10161d; --panel2: #1a222c;
+    --accent: #d7a13b; --accent-fg: #1a1205; --accent-weak: rgba(215,161,59,0.14);
+    --pre-bg: #0b1017; --pre-fg: #cfd9e4; --danger: #ef5b52; --ok: #46c266;
+    --delta: #46c266; --delta-weak: rgba(70,194,102,0.13); --delta-line: rgba(70,194,102,0.14);
+    --info: #4c9be8; --info-weak: rgba(76,155,232,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.35);
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    min-height: 100vh;
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; min-height: 100vh;
   }
-  header {
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-  }
-  header h1 { font-size: 18px; margin: 0; font-weight: 650; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  header .spacer { flex: 1; }
-  main { max-width: 980px; margin: 0 auto; padding: 24px 20px; }
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 22px; max-width: 460px; margin: 8vh auto 0;
-  }
-  .card h2 { margin: 0 0 4px; font-size: 17px; }
-  .card p.hint { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
-  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 5px; }
-  input, select {
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .hidden { display: none !important; }
+  .spacer { flex: 1; }
+  .meta { color: var(--muted); font-size: 13px; word-break: break-all; margin: 0; }
+  .msg { font-size: 13px; min-height: 1em; }
+  .msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
+
+  input, select, textarea {
     width: 100%; padding: 9px 11px; border: 1px solid var(--border);
     border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit;
   }
-  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button {
-    font: inherit; font-weight: 600; padding: 9px 16px; border: 0;
-    border-radius: 8px; background: var(--accent); color: var(--accent-fg);
-    cursor: pointer; margin-top: 18px;
-  }
-  button.ghost {
-    background: transparent; color: var(--muted); border: 1px solid var(--border);
-    margin: 0; padding: 6px 12px; font-size: 13px;
-  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { font: inherit; font-weight: 600; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-fg); cursor: pointer; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 6px 12px; font-size: 13px; }
+  button.ghost:hover { color: var(--fg); border-color: var(--faint); }
   button:disabled { opacity: .55; cursor: default; }
-  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .row label { margin: 0; }
-  .row select { width: auto; min-width: 170px; flex: 1; }
-  /* file picker: subfolders are <optgroup> headers so they stand out from the files
-     under them (native bold/greyed on every browser; accent colour where supported). */
-  select optgroup { font-weight: 700; font-style: normal; color: var(--accent); }
-  select optgroup option { font-weight: 400; color: var(--fg); }
-  .msg { font-size: 13px; margin-top: 14px; min-height: 1em; }
-  .msg.err { color: var(--danger); }
-  .msg.ok  { color: var(--ok); }
-  .meta { color: var(--muted); font-size: 13px; word-break: break-all; margin: 0; }
-  .bar { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; }
-  .bar .spacer { flex: 1; }
-  .badge {
-    font-size: 11px; color: var(--muted); text-transform: uppercase;
-    letter-spacing: .05em; border: 1px solid var(--border); border-radius: 6px;
-    padding: 2px 8px;
-  }
-  #copy { min-width: 78px; margin: 0; }
-  /* color-coded category chips */
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 7px; font: inherit;
-    font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
-    cursor: pointer; background: var(--card); color: var(--fg);
-    border: 1px solid var(--border);
-  }
-  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--muted)); flex: none; }
-  .chip:hover { border-color: var(--c, var(--accent)); }
-  .chip.active { border-color: var(--c, var(--accent)); background: var(--cbg, transparent); }
-  .chip.active .dot { box-shadow: 0 0 0 3px var(--cbg, transparent); }
+
+  /* ---------- login card (pre-auth) ---------- */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; max-width: 460px; margin: 10vh auto 0; box-shadow: var(--shadow); }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .card p.hint { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  .card label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 5px; }
+  .card button[type=submit] { margin-top: 18px; }
+
+  /* ---------- app shell ---------- */
+  #app { display: grid; grid-template-columns: 250px 1fr; grid-template-rows: 1fr auto; height: 100vh; }
+
+  /* Server stats bar — spans both columns at the very bottom. */
+  #statsbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px;
+    padding: 8px 16px; border-top: 1px solid var(--border); background: var(--rail);
+    font-size: 12px; color: var(--muted); min-height: 20px; }
+  #sbStats { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+  #sbActions { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+  #statsbar .sb-arm { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; white-space: nowrap; }
+  #statsbar .sb-arm input { cursor: pointer; margin: 0; }
+  #statsbar .sb-btn { padding: 4px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; background: var(--danger); color: #fff; border: 0; cursor: pointer; }
+  #statsbar .sb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  #statsbar .sb-stat { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  #statsbar .sb-k { color: var(--muted); }
+  #statsbar .sb-v { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #statsbar .sb-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--fg); }
+  #statsbar .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  #statsbar.sb-up .sb-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+  #statsbar.sb-down .sb-dot { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent); }
+  #statsbar .sb-spacer { margin-left: auto; }
+  #statsbar .sb-foot { color: var(--faint); font-size: 11px; }
+  #statsbar .sb-err { color: var(--danger); }
+  #sidebar { background: var(--rail); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .side-brand { display: flex; align-items: center; gap: 8px; padding: 16px 16px 8px; font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+  .theme-toggle { margin-left: auto; flex: none; width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px; line-height: 1; border-radius: 7px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; }
+  .theme-toggle:hover { color: var(--fg); border-color: var(--faint); background: var(--panel2); }
+  .side-brand b { color: var(--accent); }
+  .side-sub { padding: 0 16px 10px; color: var(--faint); font-size: 12px; }
+  .side-nav { display: flex; flex-direction: column; gap: 2px; padding: 2px 10px 8px; }
+  .snav { text-align: left; padding: 8px 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 9px; }
+  .snav:hover { background: var(--panel2); color: var(--fg); }
+  .snav.active { background: var(--accent-weak); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .snav .ic { width: 15px; height: 15px; flex: none; }
+  .side-hr { height: 1px; background: var(--border); margin: 4px 14px; }
+  .side-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 8px 12px; }
+  .side-foot { padding: 10px 12px; border-top: 1px solid var(--border); }
+  .side-foot .ghost { width: 100%; }
+
+  /* file tree (sidebar) */
+  .side-grp { margin: 1px 0; }
+  .side-grp > summary { list-style: none; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--faint); padding: 7px 8px 5px; display: flex; align-items: center; gap: 7px; }
+  .side-grp > summary::-webkit-details-marker { display: none; }
+  .side-grp > summary::before { content: "▸"; font-size: 9px; }
+  .side-grp[open] > summary::before { content: "▾"; }
+  .side-count { margin-left: auto; }
+  .side-sub2 { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: var(--faint); padding: 6px 8px 2px 22px; }
+  .side-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 1px 0 1px 8px; border-radius: 7px; border: 1px solid transparent; cursor: pointer; }
+  .side-item .fn { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-item:hover { background: var(--panel2); } .side-item:hover .fn { color: var(--fg); }
+  .side-item.active { background: var(--accent-weak); border-color: color-mix(in srgb, var(--accent) 30%, transparent); } .side-item.active .fn { color: var(--accent); font-weight: 600; }
+  /* badges: green N = captured overrides; rw = box-owned whole-file; ro = locked (not patchable) */
+  .ovr-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; min-width: 18px; text-align: center; color: var(--delta); background: var(--delta-weak); border-radius: 999px; padding: 1px 6px; }
+  .own-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-weak); border-radius: 999px; padding: 1px 6px; }
+  .ro-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--faint); background: var(--panel2); border: 1px solid var(--border-soft); border-radius: 999px; padding: 0 6px; }
+  .own-ta { display: block; width: 100%; min-height: 55vh; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.6; background: var(--pre-bg); color: var(--pre-fg); border: none; border-radius: 0; padding: 16px 22px; resize: vertical; }
+  .own-ta:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .ovr-add { display: flex; align-items: center; gap: 8px; margin: 10px 8px 0; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 7px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .ovr-add:hover { color: var(--fg); border-color: var(--accent); }
+
+  /* ---------- workspace (content) ---------- */
+  #workspace { overflow-y: auto; min-height: 0; }
+  .page-head { display: flex; align-items: center; gap: 12px; padding: 15px 22px 13px; border-bottom: 1px solid var(--border); }
+  .ph-title { font-size: 15px; font-weight: 650; }
+  .empty { display: flex; align-items: center; justify-content: center; min-height: 55vh; color: var(--faint); font-size: 14px; padding: 40px; text-align: center; }
+
+  pre { background: var(--pre-bg); color: var(--pre-fg); padding: 18px 22px; overflow: auto; font-size: 13px; line-height: 1.6; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   /* token colours — tuned for the always-dark code surface (--pre-bg) */
-  .t-key { color: #79c0ff; }
-  .t-str { color: #a5d6ff; }
-  .t-num { color: #f0883e; }
-  .t-kw  { color: #ff7b72; }
-  .t-com { color: #8b949e; font-style: italic; }
-  .t-tag { color: #7ee787; }
-  pre {
-    background: var(--pre-bg); color: var(--pre-fg); padding: 16px;
-    border-radius: 10px; overflow: auto; font-size: 13px; line-height: 1.55;
-    max-height: 68vh; margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  .t-key { color: #79c0ff; } .t-str { color: #a5d6ff; } .t-num { color: #f0883e; }
+  .t-kw { color: #ff7b72; } .t-com { color: #8b949e; font-style: italic; } .t-tag { color: #7ee787; }
+
+  /* ---------- file editor (content pane; tree lives in the sidebar) ---------- */
+  #editorPage { display: flex; flex-direction: column; min-height: 100%; }
+  #edEditor { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .ovr-empty { flex: 1; }
+  .ovr-phead { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); flex-wrap: wrap; }
+  .ovr-ppath { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ovr-ppath .crumb { font-size: 11px; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ovr-ppath .nm { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--fg); font-weight: 600; word-break: break-all; }
+  .ovr-pact { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  .ovr-unsaved { display: none; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    border-radius: 999px; padding: 3px 10px; }
+  .ovr-unsaved.on { display: inline-flex; }
+  .ovr-unsaved .ud-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex: none; }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; padding: 2px; }
+  .seg button { padding: 5px 13px; border: none; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
+  .seg button.on { background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
+  .btn-sm { font-size: 13px; padding: 7px 15px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel2); color: var(--fg); display: inline-flex; align-items: center; gap: 6px; }
+  .btn-sm:hover { border-color: var(--faint); }
+  .btn-sm.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .btn-sm.primary:hover { filter: brightness(1.06); }
+  .lay-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .lay-sel { width: auto; font-size: 12px; padding: 5px 8px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+  .ovr-sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 9px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); font-size: 12.5px; color: var(--muted); }
+  .stat { display: inline-flex; align-items: center; gap: 7px; } .stat b { color: var(--fg); font-variant-numeric: tabular-nums; } .stat.d b { color: var(--delta); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; } .dot.d { background: var(--delta); } .dot.b { background: var(--faint); }
+  .ovr-body { flex: 1; }
+  .ovr-note { padding: 11px 22px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--border-soft); } .ovr-note b { color: var(--fg); }
+
+  /* fields */
+  .fld { display: grid; grid-template-columns: minmax(160px,280px) 1fr auto 30px; align-items: center; gap: 14px; padding: 8px 22px 8px 19px; border-left: 3px solid transparent; border-bottom: 1px solid var(--border-soft); }
+  .fld .k { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--fg); word-break: break-word; }
+  .fld .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--faint); word-break: break-all; cursor: pointer; }
+  .fld input, .fld textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); }
+  .fld textarea { resize: vertical; min-height: 34px; }
+  .fld input:focus, .fld textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .fld .meta2 { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .base { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; color: var(--delta); background: var(--delta-weak); }
+  .tag.warn { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+  .tag.cx { color: var(--accent); background: var(--accent-weak); }
+  .tag.all { color: var(--info); background: var(--info-weak); }
+  .x { cursor: pointer; color: var(--faint); background: transparent; border: none; border-radius: 6px; width: 26px; height: 26px; padding: 0; opacity: 0; }
+  .fld:hover .x { opacity: 1; } .x:hover { color: var(--danger); background: var(--panel2); }
+  .fld.over { border-left-color: var(--delta); background: linear-gradient(90deg, var(--delta-weak), transparent 55%); }
+  .fld.ctx .k { color: var(--muted); }
+  .fld.ctx .addb { font-size: 11px; cursor: pointer; color: var(--faint); background: transparent; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; opacity: 0; }
+  .fld.ctx:hover .addb { opacity: 1; } .fld.ctx:hover { background: var(--panel2); }
+  .fld.ctx .addb:hover { color: var(--delta); border-color: var(--delta); }
+  .fdiv { display: flex; align-items: center; gap: 12px; padding: 13px 22px 7px; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .fdiv::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+  .frow-add { margin: 12px 22px 20px; }
+
+  /* file view */
+  .fileview pre { border-radius: 0; }
+  .xeval { display: flex; flex-direction: column; gap: 4px; padding: 10px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); font-size: 12px; }
+  .xeval .row2 { display: flex; align-items: center; gap: 8px; }
+  .xeval .sel { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); word-break: break-all; }
+
+  /* version history */
+  .ovr-history { margin: 10px 22px 30px; border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px; }
+  .ovr-history > summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 8px 4px; color: var(--muted); }
+  .ovr-ver { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-bottom: 1px solid var(--border-soft); }
+  .ovr-ver:last-child { border-bottom: none; }
+  .ovr-ver .mono { font-size: 12px; color: var(--fg); }
+
+  /* API page */
+  #swagger { margin: 0; background: #fff; }
+  #apiNav .meta { padding: 12px 10px; }
+
+  /* toast */
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--fg); color: var(--bg); font-weight: 600; font-size: 13px; padding: 10px 18px; border-radius: 999px; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 80vw; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { background: var(--delta); color: #04210f; } .toast.err { background: var(--danger); color: #fff; }
+
+  /* ---------- Map tab (AI coordinates from VPP bookmarks) ---------- */
+  /* Delta status colors — contrast + CVD validated against both surfaces. The amber↔red
+     pair sits in the CVD floor band, so serious (>2 m) points ALSO change shape to a
+     square and every delta is printed as a number in the list: color is never alone. */
+  :root { --map-ok: #1a8a44; --map-warn: #b06008; --map-bad: #c33327; }
+  :root[data-theme="dark"] { --map-ok: #3aa957; --map-warn: #c07f24; --map-bad: #ef5b52; }
+  .map-head-sel { width: auto; font-size: 13px; padding: 6px 10px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+  /* The stage is a pan/zoom canvas viewport (terrain tiles + grid + bookmarks). */
+  .map-stage { position: relative; margin: 12px 22px 0; height: min(72vh, 920px); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel2); }
+  #mapCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+  .map-stage .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: color-mix(in srgb, var(--panel2) 82%, transparent); }
+  .map-bar { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 0 22px; padding: 8px 4px 2px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .map-bar b { color: var(--fg); font-weight: 600; }
+  .map-bar .mp-live { display: inline-flex; align-items: center; gap: 6px; color: var(--info); font-weight: 600; }
+  .map-bar .mp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 25%, transparent); }
+  .map-bar .mp-bandit { display: inline-flex; align-items: center; gap: 6px; color: var(--map-bad); font-weight: 600; cursor: help; }
+  .map-bar .mb-dot { width: 8px; height: 8px; background: var(--map-bad); transform: rotate(45deg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--map-bad) 22%, transparent); }
+  .map-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .map-seg button { font-size: 12px; padding: 5px 11px; background: var(--panel2); color: var(--muted); border: none; cursor: pointer; }
+  .map-seg button + button { border-left: 1px solid var(--border); }
+  .map-seg button.active { background: var(--accent); color: #fff; }
+  .map-tip { position: fixed; z-index: 40; pointer-events: none; background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font-size: 12px; line-height: 1.45; box-shadow: var(--shadow); max-width: 300px; display: none; }
+  .map-detail { margin: 8px 22px 24px; border: 1px solid var(--border); border-radius: 10px; padding: 11px 16px; display: flex; gap: 16px 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; }
+  .map-detail .k2 { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin-right: 6px; }
+  .dot.mok { background: var(--map-ok); } .dot.mwarn { background: var(--map-warn); }
+  .dot.mbad { background: var(--map-bad); border-radius: 2px; } .dot.mnull { background: var(--faint); }
+  .mp-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+  .mp-badge.mok { color: var(--map-ok); background: color-mix(in srgb, var(--map-ok) 13%, transparent); }
+  .mp-badge.mwarn { color: var(--map-warn); background: color-mix(in srgb, var(--map-warn) 14%, transparent); }
+  .mp-badge.mbad { color: var(--map-bad); background: color-mix(in srgb, var(--map-bad) 14%, transparent); }
+  .mp-badge.mnull { color: var(--faint); background: var(--panel2); }
+
+  @media (max-width: 780px) {
+    #app { grid-template-columns: 1fr; height: auto; }
+    #sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    .side-scroll { max-height: 40vh; }
+    .fld { grid-template-columns: 1fr; gap: 6px; }
+    .fld .meta2 { justify-content: flex-start; }
   }
-  /* tab nav (shown only once authed) */
-  nav#tabs { display: flex; gap: 4px; }
-  .tab {
-    font: inherit; font-weight: 600; font-size: 13px; padding: 6px 14px; margin: 0;
-    border: 1px solid var(--border); border-radius: 8px; background: transparent;
-    color: var(--muted); cursor: pointer;
+
+  /* ===== Swagger UI dark theme (scoped to #swagger; wins over the vendored light css) =====
+     Nested under :root[data-theme="dark"] so it follows the manual toggle, not just the OS. */
+  :root[data-theme="dark"] {
+    #swagger, #swagger .swagger-ui { background: var(--card); }
+    #swagger .swagger-ui .info .title,
+    #swagger .swagger-ui .info li, #swagger .swagger-ui .info p, #swagger .swagger-ui .info table,
+    #swagger .swagger-ui .info h1, #swagger .swagger-ui .info h2, #swagger .swagger-ui .info h3,
+    #swagger .swagger-ui .info h4, #swagger .swagger-ui .info h5,
+    #swagger .swagger-ui .opblock-tag,
+    #swagger .swagger-ui .opblock .opblock-summary-operation-id,
+    #swagger .swagger-ui .opblock .opblock-summary-path,
+    #swagger .swagger-ui .opblock .opblock-summary-path__deprecated,
+    #swagger .swagger-ui .opblock .opblock-summary-description,
+    #swagger .swagger-ui .opblock-description-wrapper p,
+    #swagger .swagger-ui .opblock-external-docs-wrapper p,
+    #swagger .swagger-ui .opblock-title_normal p,
+    #swagger .swagger-ui .opblock .opblock-section-header h4,
+    #swagger .swagger-ui .opblock .opblock-section-header > label,
+    #swagger .swagger-ui .tab li,
+    #swagger .swagger-ui .parameter__name,
+    #swagger .swagger-ui .parameter__type,
+    #swagger .swagger-ui .parameters-col_description p,
+    #swagger .swagger-ui table thead tr td, #swagger .swagger-ui table thead tr th,
+    #swagger .swagger-ui .response-col_status,
+    #swagger .swagger-ui .response-col_links,
+    #swagger .swagger-ui .responses-inner h4, #swagger .swagger-ui .responses-inner h5,
+    #swagger .swagger-ui .model-title, #swagger .swagger-ui .model,
+    #swagger .swagger-ui section.models h4, #swagger .swagger-ui section.models h5,
+    #swagger .swagger-ui .prop-type,
+    #swagger .swagger-ui .servers > label,
+    #swagger .swagger-ui label { color: var(--fg); }
+    #swagger .swagger-ui .opblock-tag small,
+    #swagger .swagger-ui .parameter__in,
+    #swagger .swagger-ui .parameter__extension,
+    #swagger .swagger-ui .response-col_description,
+    #swagger .swagger-ui table.model tr.property-row td:first-child { color: var(--muted); }
+    #swagger .swagger-ui a, #swagger .swagger-ui .info a, #swagger .swagger-ui .info a.link { color: var(--accent); }
+    #swagger .swagger-ui .expand-methods svg, #swagger .swagger-ui .expand-operation svg,
+    #swagger .swagger-ui .model-toggle:after, #swagger .swagger-ui svg.arrow { fill: var(--fg); }
+    #swagger .swagger-ui .scheme-container, #swagger .swagger-ui section.models,
+    #swagger .swagger-ui section.models .model-container, #swagger .swagger-ui .model-box,
+    #swagger .swagger-ui .opblock .opblock-section-header, #swagger .swagger-ui .responses-inner { background: var(--card); }
+    #swagger .swagger-ui .opblock-tag, #swagger .swagger-ui section.models,
+    #swagger .swagger-ui section.models .model-container,
+    #swagger .swagger-ui .opblock .opblock-section-header,
+    #swagger .swagger-ui table tbody tr td { border-color: var(--border); }
+    #swagger .swagger-ui input[type=text], #swagger .swagger-ui input[type=password],
+    #swagger .swagger-ui input[type=search], #swagger .swagger-ui input[type=email],
+    #swagger .swagger-ui input[type=file], #swagger .swagger-ui textarea, #swagger .swagger-ui select {
+      background: var(--pre-bg); color: var(--fg); border-color: var(--border); }
+    #swagger .swagger-ui .highlight-code > .microlight, #swagger .swagger-ui .microlight code { color: var(--pre-fg); }
+    #swagger .swagger-ui .opblock .opblock-section-header { box-shadow: none; }
   }
-  .tab.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  /* Swagger UI host — the bundle ships its own (light) styles, so give it a white
-     surface so it renders normally even under the page's dark theme. */
-  #swagger { margin-top: 8px; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  .hidden { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  
+  .logo a, a:visited{
+    text-decoration: none;
+    color: inherit;
+  }
+
+  /* --- Logs tab: mono scrollback pane with line numbers + filter highlights --- */
+  .log-pane { position: relative; height: min(72vh, 920px); overflow: auto; background: var(--card);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+  .log-lines { padding: 6px 0 8px; width: max-content; min-width: 100%; }
+  .ll { display: flex; gap: 12px; padding: 0 14px 0 8px; white-space: pre; }
+  .ll:hover { background: var(--panel2); }
+  .ll .ln { color: var(--faint); min-width: 64px; text-align: right; flex: none; user-select: none; cursor: pointer; }
+  .ll .ln:hover { color: var(--accent); }
+  .ll .lt .ts { color: var(--faint); }
+  .ll.lwarn .lt { color: var(--map-warn); }
+  .ll.lerr .lt { color: var(--map-bad); }
+  .ll .lt mark { background: var(--accent-weak); color: var(--accent); border-radius: 3px; padding: 0 1px; }
+  .log-sentinel { text-align: center; color: var(--faint); font-size: 11px; padding: 4px 0; }
+  .log-filter { width: 300px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    padding: 6px 10px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+  .log-filter.badre { outline: 2px solid var(--map-bad); }
+  .log-goto { width: 92px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    padding: 6px 10px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+  .log-aa { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 9px; }
+  .log-aa.on { color: var(--accent); border-color: var(--accent); }
+  .log-follow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 </style>
 
-<header>
-  <h1>Config Viewer</h1>
-  <span class="sub">read-only view of the live server configs</span>
-  <nav id="tabs" class="hidden" role="tablist">
-    <button id="tabConfigs" class="tab active" type="button">Configs</button>
-    <button id="tabApi" class="tab" type="button">API</button>
-  </nav>
-  <span class="spacer"></span>
-  <button id="signout" class="ghost hidden">Sign out</button>
-</header>
+<!-- Login card (pre-auth; centered, no shell) -->
+<section id="login" class="card">
+  <h2>Enter your API key</h2>
+  <p class="hint">
+    Paste a Key&nbsp;ID and secret minted with the Keys API. An <strong>observe</strong> key
+    views files and overrides; a broader-scoped key also writes overrides and unlocks the
+    write endpoints in the <strong>API</strong> page. Credentials stay in a cookie on this
+    device and clear automatically if the server rejects them.
+  </p>
+  <form id="loginForm" autocomplete="off">
+    <label for="keyId">Key ID</label>
+    <input id="keyId" name="keyId" spellcheck="false" autocapitalize="off" placeholder="e.g. config-viewer">
+    <label for="secret">Secret</label>
+    <input id="secret" name="secret" type="password" spellcheck="false" placeholder="64-character hex secret">
+    <button type="submit" id="connect">Connect</button>
+    <div id="loginMsg" class="msg"></div>
+  </form>
+</section>
 
-<main>
-  <!-- Login card -->
-  <section id="login" class="card">
-    <h2>Enter your API key</h2>
-    <p class="hint">
-      Paste a Key&nbsp;ID and secret minted with the Keys API. An <strong>observe</strong>
-      key views configs and runs the read-only API calls; a broader-scoped key also unlocks
-      the write endpoints in the <strong>API</strong> tab. Credentials stay in a cookie on
-      this device and are cleared automatically if the server rejects them.
-    </p>
-    <form id="loginForm" autocomplete="off">
-      <label for="keyId">Key ID</label>
-      <input id="keyId" name="keyId" spellcheck="false" autocapitalize="off" placeholder="e.g. config-viewer">
-      <label for="secret">Secret</label>
-      <input id="secret" name="secret" type="password" spellcheck="false" placeholder="64-character hex secret">
-      <button id="connect" type="submit">Connect</button>
-      <div id="loginMsg" class="msg"></div>
-    </form>
-  </section>
-
-  <!-- Viewer -->
-  <section id="viewer" class="hidden">
-    <div id="groups" class="chips"><span class="meta">Loading…</span></div>
-    <div class="row">
-      <label for="file">Config</label>
-      <select id="file" disabled><option value="">—</option></select>
-      <button id="refresh" class="ghost">Refresh</button>
+<!-- App shell (post-auth): sidebar + workspace -->
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="side-brand logo"><a href="./">DayZ <b>Config</b> UI</a><button type="button" id="themeToggle" class="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">☾</button></div>
+    <div class="side-sub">DayZ @ CytonicMushroom.ddns.net</div>
+    <nav class="side-nav" id="tabs" role="tablist">
+      <button id="tabFiles" class="snav active" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v6H4zM4 14h16v6H4z"/></svg> Server Files</button>
+      <button id="tabMap" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg> Map</button>
+      <button id="tabLogs" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 9h16M4 13h10M4 17h13"/></svg> Logs</button>
+      <button id="tabApi" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg> API</button>
+    </nav>
+    <div class="side-hr"></div>
+    <div class="side-scroll">
+      <!-- ONE merged tree: every readable server file, one row each. Badges: green N =
+           captured overrides, rw = box-owned whole-file editable, ro = locked. -->
+      <div id="filesNav"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <div id="apiNav" class="hidden"><span class="meta">The API explorer opens on the right. Calls are signed with your key.</span></div>
+      <!-- Map tab: the spawn-bookmark list, sorted by |delta| once heights resolve. -->
+      <div id="mapNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <!-- Logs tab: every RPT/ADM on the box, newest first. -->
+      <div id="logsNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
     </div>
-    <div id="viewerMsg" class="msg"></div>
-    <div id="pane" class="hidden">
-      <div class="bar">
-        <span id="meta" class="meta"></span>
-        <span class="spacer"></span>
-        <span id="lang" class="badge"></span>
-        <button id="copy" class="ghost" type="button">Copy</button>
+    <div class="side-foot"><button id="signout" class="ghost" type="button">Sign out</button></div>
+  </aside>
+
+  <main id="workspace">
+    <!-- Server Files: landing + the shared Fields ⇄ File editor -->
+    <section id="editorPage" class="hidden">
+      <div id="edEmpty" class="empty ovr-empty">Pick a file on the left — every JSON/XML file opens the Fields ⇄ File editor; editing a field captures it as an override.</div>
+      <div id="edEditor" class="hidden"></div>
+      <details class="ovr-history">
+        <summary>Version history — roll back the whole overrides doc (restart to apply)</summary>
+        <div id="ovrVersions"><span class="meta">—</span></div>
+      </details>
+    </section>
+
+    <!-- Server Files: BOX-OWNED file editor (whole-file replace: ban/allow lists) -->
+    <section id="ownfile" class="hidden">
+      <div class="ovr-phead">
+        <div class="ovr-ppath"><span class="crumb">box-owned</span><span class="nm" id="ownPath">—</span></div>
+        <div class="ovr-pact"><button class="btn-sm primary" id="ownSave" type="button">Save file</button></div>
       </div>
-      <pre id="content"></pre>
-    </div>
-  </section>
+      <div class="ovr-note"><b style="color:var(--accent)">Whole file.</b> Box-owned — deploys never touch it; every save snapshots the previous version on the box. Takes effect per the game's own rules (bans are read live; the whitelist needs it enabled).</div>
+      <textarea id="ownTa" class="own-ta" spellcheck="false"></textarea>
+    </section>
 
-  <!-- API tab: vendored Swagger UI, gated behind the same login. Every request is
-       rewritten onto this origin's /api proxy and HMAC-signed by the interceptor with
-       the cached key — what actually runs depends on the key's scope. -->
-  <section id="apitab" class="hidden">
-    <p class="meta">Live API explorer — calls are signed with your key and sent through
-      this site's <code>/api</code> proxy.</p>
-    <div id="swagger"></div>
-  </section>
-</main>
+    <!-- Map page: browsable terrain map (pre-rendered tile pyramid) + VPP AI spawn
+         bookmarks with terrain-Y deltas. Drag pans, wheel zooms, right-click copies
+         the X Y Z under the crosshair. -->
+    <section id="maptab" class="hidden">
+      <div class="page-head">
+        <span class="ph-title">Map</span>
+        <select id="mapSel" class="map-head-sel"></select>
+        <span class="map-seg hidden" id="mapLayerSeg"></span>
+        <span class="meta">drag pan · scroll zoom · right-click copies X Y Z · Δ = bookmark Y − heightmap Y</span>
+        <span class="spacer"></span>
+        <button id="mapRefresh" class="ghost" type="button">Refresh</button>
+      </div>
+      <div class="ovr-sum" id="mapSum"><span class="meta">—</span></div>
+      <div class="map-stage" id="mapStage">
+        <canvas id="mapCanvas"></canvas>
+        <div class="empty" id="mapEmpty">Loading…</div>
+      </div>
+      <div class="map-bar" id="mapBar">—</div>
+      <div class="map-detail hidden" id="mapDetail"></div>
+    </section>
+
+    <!-- Logs page: server log browser. Opens on the tail; scrolling up pages back
+         through the file; the filter is a grep -E regex applied server-side, with
+         original line numbers kept so context never gets lost. -->
+    <section id="logstab" class="hidden">
+      <div class="page-head">
+        <span class="ph-title">Logs</span>
+        <input id="logFilter" class="log-filter" spellcheck="false" autocapitalize="off"
+               placeholder="filter — grep -E regex, Enter applies">
+        <button id="logCase" class="ghost log-aa" type="button" title="Match case (off = case-insensitive)">Aa</button>
+        <input id="logGoto" class="log-goto" inputmode="numeric" placeholder="go to #">
+        <span class="meta" id="logStatus">—</span>
+        <span class="spacer"></span>
+        <label class="log-follow"><input type="checkbox" id="logFollow" checked> Follow</label>
+        <button id="logRefresh" class="ghost" type="button">Refresh</button>
+      </div>
+      <div class="log-pane" id="logPane">
+        <div class="empty" id="logEmpty">Pick a log file on the left.</div>
+        <div id="logLines" class="log-lines hidden"></div>
+      </div>
+    </section>
+
+    <!-- API page: vendored Swagger UI -->
+    <section id="apitab" class="hidden">
+      <div class="page-head"><span class="ph-title">API</span><span class="meta">Live explorer — calls are signed with your key and sent through <code>/api</code>.</span></div>
+      <div id="swagger"></div>
+    </section>
+  </main>
+
+  <!-- Server stats bar: live DayZ status from POST /dayz/status, polled. -->
+  <footer id="statsbar" aria-live="polite">
+    <span id="sbStats"><span class="sb-load meta">Loading server stats…</span></span>
+    <span id="sbActions">
+      <label class="sb-arm"><input type="checkbox" id="sbArm"> Arm restart</label>
+      <button type="button" id="sbRestart" class="sb-btn" disabled>Restart</button>
+    </span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="map-tip" id="mapTip"></div>
 
 <script>
 (() => {
   'use strict';
 
-  const API = '/api';              // same-origin; nginx proxies to the config API
+  const API = '/api';
   const COOKIE = 'cfgview';
   const enc = new TextEncoder();
-
   const $ = (id) => document.getElementById(id);
   const el = {
-    login: $('login'), loginForm: $('loginForm'), keyId: $('keyId'),
-    secret: $('secret'), connect: $('connect'), loginMsg: $('loginMsg'),
-    viewer: $('viewer'), groups: $('groups'), file: $('file'), refresh: $('refresh'),
-    viewerMsg: $('viewerMsg'), pane: $('pane'), meta: $('meta'),
-    lang: $('lang'), content: $('content'), copy: $('copy'),
-    signout: $('signout'),
-    tabs: $('tabs'), tabConfigs: $('tabConfigs'), tabApi: $('tabApi'),
+    login: $('login'), loginForm: $('loginForm'), keyId: $('keyId'), secret: $('secret'),
+    connect: $('connect'), loginMsg: $('loginMsg'),
+    app: $('app'), tabs: $('tabs'), tabFiles: $('tabFiles'), tabApi: $('tabApi'), tabMap: $('tabMap'), tabLogs: $('tabLogs'),
+    signout: $('signout'), toast: $('toast'), themeToggle: $('themeToggle'),
+    statsbar: $('statsbar'), sbStats: $('sbStats'), sbArm: $('sbArm'), sbRestart: $('sbRestart'),
+    filesNav: $('filesNav'), apiNav: $('apiNav'), mapNav: $('mapNav'), logsNav: $('logsNav'),
+    logstab: $('logstab'), logFilter: $('logFilter'), logCase: $('logCase'), logGoto: $('logGoto'),
+    logStatus: $('logStatus'), logFollow: $('logFollow'), logRefresh: $('logRefresh'),
+    logPane: $('logPane'), logEmpty: $('logEmpty'), logLines: $('logLines'),
+    workspace: $('workspace'),
+    editorPage: $('editorPage'), edEmpty: $('edEmpty'), edEditor: $('edEditor'), ovrVersions: $('ovrVersions'),
+    ownfile: $('ownfile'), ownPath: $('ownPath'), ownTa: $('ownTa'), ownSave: $('ownSave'),
     apitab: $('apitab'), swagger: $('swagger'),
+    maptab: $('maptab'), mapSel: $('mapSel'), mapRefresh: $('mapRefresh'), mapSum: $('mapSum'),
+    mapStage: $('mapStage'), mapCanvas: $('mapCanvas'), mapEmpty: $('mapEmpty'), mapBar: $('mapBar'),
+    mapLayerSeg: $('mapLayerSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'),
   };
 
-  let currentRaw = '';               // raw text of the config on screen (for Copy)
-  let grouped = new Map();           // category -> [{ name, label }] for the two-step picker
-  // distinct colors assigned to categories by order (stable while the config is)
-  const PALETTE = ['#e5484d', '#e5822d', '#d9a520', '#7cc63a', '#26c281',
-                   '#22b8cf', '#4d7cff', '#9b5cf0', '#e15ac0', '#7d8794'];
-  function hexToRgba(hex, a) {
-    const n = parseInt(hex.slice(1), 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  let toastTimer;
+  function toast(msg, kind) {
+    el.toast.textContent = msg || '';
+    el.toast.className = 'toast show' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.toast.className = 'toast'; }, kind === 'err' ? 4200 : 2400);
   }
+  function setGlobalMsg(text, isErr, isOk) { toast(text, isErr ? 'err' : isOk ? 'ok' : ''); }
 
-  // --- syntax highlighting (dependency-free) -------------------------------
-  function escapeHtml(s) {
-    return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  }
+  // --- syntax highlighting (dependency-free; runs on ESCAPED text, inserts only our spans) ---
+  function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+  function attr(s) { return escapeHtml(String(s)).replace(/"/g, '&quot;'); }
   function detectLang(path) {
     const p = (path || '').toLowerCase();
     if (p.endsWith('.json')) return 'json';
@@ -224,22 +536,18 @@
     if (p.endsWith('.cfg') || p.endsWith('.conf') || p.endsWith('.ini')) return 'ini';
     return 'text';
   }
-  // Every highlighter runs on ALREADY-ESCAPED text and only inserts our own
-  // <span> tags, so config content can never inject markup.
   function hlJson(s) {
-    return s.replace(
-      /("(?:[^"\\]|\\.)*")(\s*:)|("(?:[^"\\]|\\.)*")|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    return s.replace(/("(?:[^"\\]|\\.)*")(\s*:)|("(?:[^"\\]|\\.)*")|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
       (m, key, colon, str, kw, num) => {
         if (key !== undefined) return `<span class="t-key">${key}</span>${colon}`;
         if (str !== undefined) return `<span class="t-str">${str}</span>`;
-        if (kw  !== undefined) return `<span class="t-kw">${kw}</span>`;
+        if (kw !== undefined) return `<span class="t-kw">${kw}</span>`;
         if (num !== undefined) return `<span class="t-num">${num}</span>`;
         return m;
       });
   }
   function hlIni(s) {
-    return s.replace(
-      /("(?:[^"\\]|\\.)*")|((?:#|\/\/)[^\n]*)|(-?\b\d+(?:\.\d+)?\b)/g,
+    return s.replace(/("(?:[^"\\]|\\.)*")|((?:#|\/\/)[^\n]*)|(-?\b\d+(?:\.\d+)?\b)/g,
       (m, str, com, num) => {
         if (str !== undefined) return `<span class="t-str">${str}</span>`;
         if (com !== undefined) return `<span class="t-com">${com}</span>`;
@@ -248,153 +556,1589 @@
       });
   }
   function hlXml(s) {
-    // s is escaped: '<' is '&lt;', '>' is '&gt;'. Comments first, then tags.
     return s
       .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="t-com">$1</span>')
-      .replace(/(&lt;\/?)([\w:.-]+)((?:(?!&gt;)[\s\S])*?)(\/?&gt;)/g,
-        (m, open, name, attrs, close) => {
-          const a = attrs.replace(/([\w:.-]+)(=)("(?:[^"\\]|\\.)*")/g,
-            '<span class="t-key">$1</span>$2<span class="t-str">$3</span>');
-          return `<span class="t-tag">${open}${name}</span>${a}<span class="t-tag">${close}</span>`;
-        });
+      .replace(/(&lt;\/?)([\w:.-]+)((?:(?!&gt;)[\s\S])*?)(\/?&gt;)/g, (m, open, name, attrs, close) => {
+        const a = attrs.replace(/([\w:.-]+)(=)("(?:[^"\\]|\\.)*")/g, '<span class="t-key">$1</span>$2<span class="t-str">$3</span>');
+        return `<span class="t-tag">${open}${name}</span>${a}<span class="t-tag">${close}</span>`;
+      });
   }
   function highlight(raw, lang) {
-    const esc = escapeHtml(raw);
-    if (lang === 'json') return hlJson(esc);
-    if (lang === 'ini')  return hlIni(esc);
-    if (lang === 'xml')  return hlXml(esc);
-    return esc;
+    const e = escapeHtml(raw);
+    if (lang === 'json') return hlJson(e);
+    if (lang === 'ini') return hlIni(e);
+    if (lang === 'xml') return hlXml(e);
+    return e;
   }
 
-  // --- credential cookie ---------------------------------------------------
-  // Not HttpOnly by necessity: the browser must read the secret to sign. It is
-  // scoped tight (Secure + SameSite=Strict) and holds a read-only observe key.
-  function saveCred(c) {
-    const v = encodeURIComponent(JSON.stringify(c));
-    document.cookie = `${COOKIE}=${v};Path=/;Secure;SameSite=Strict;Max-Age=2592000`;
-  }
+  // --- credential cookie ---
+  function saveCred(c) { document.cookie = `${COOKIE}=${encodeURIComponent(JSON.stringify(c))};Path=/;Secure;SameSite=Strict;Max-Age=2592000`; }
   function loadCred() {
     const m = document.cookie.match(/(?:^|;\s*)cfgview=([^;]+)/);
     if (!m) return null;
-    try { const c = JSON.parse(decodeURIComponent(m[1])); return c && c.id && c.secret ? c : null; }
-    catch { return null; }
+    try { const c = JSON.parse(decodeURIComponent(m[1])); return c && c.id && c.secret ? c : null; } catch { return null; }
   }
-  function clearCred() {
-    document.cookie = `${COOKIE}=;Path=/;Secure;SameSite=Strict;Max-Age=0`;
-  }
+  function clearCred() { document.cookie = `${COOKIE}=;Path=/;Secure;SameSite=Strict;Max-Age=0`; }
 
-  // --- signing + API call --------------------------------------------------
+  // --- signing + API call ---
   async function sign(secret, bytes) {
-    const key = await crypto.subtle.importKey(
-      'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const mac = await crypto.subtle.sign('HMAC', key, bytes);
-    const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return 'sha256=' + hex;
+    return 'sha256=' + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-
-  // All calls are bodyless reads: sign the empty body, pass the key id + sig.
-  // Throws an Error with .status set; status 401 is the "destroy the cookie" case.
-  async function apiPost(path, cred) {
-    const sig = await sign(cred.secret, new Uint8Array(0));
-    const res = await fetch(API + path, {
-      method: 'POST',
-      headers: { 'X-Key-Id': cred.id, 'X-Signature-256': sig },
-    });
+  async function apiPost(path, cred, bodyObj) {
+    const bodyStr = bodyObj === undefined ? '' : JSON.stringify(bodyObj);
+    const sig = await sign(cred.secret, enc.encode(bodyStr));
+    const headers = { 'X-Key-Id': cred.id, 'X-Signature-256': sig };
+    const init = { method: 'POST', headers };
+    if (bodyObj !== undefined) { headers['Content-Type'] = 'application/json'; init.body = bodyStr; }
+    const res = await fetch(API + path, init);
     let data = {};
-    try { data = await res.json(); } catch { /* non-JSON error body */ }
-    if (!res.ok) {
-      const err = new Error(data.message || data.error || `HTTP ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
+    try { data = await res.json(); } catch { /* non-JSON body */ }
+    if (!res.ok) { const err = new Error(data.message || data.error || `HTTP ${res.status}`); err.status = res.status; throw err; }
     return data;
   }
-
-  // Central failure handling: a 401 means the credentials are no good — destroy
-  // the cookie and drop back to login (the requested "kill on first auth fail").
   function handle(err) {
-    if (err.status === 401) {
-      clearCred();
-      showLogin('Credentials rejected — please enter them again.');
-      return true;
-    }
+    if (err.status === 401) { clearCred(); showLogin('Credentials rejected — please enter them again.'); return true; }
     return false;
   }
 
-  // --- views ---------------------------------------------------------------
+  // --- views ---
   function showLogin(msg) {
-    el.viewer.classList.add('hidden');
-    el.apitab.classList.add('hidden');
-    el.tabs.classList.add('hidden');
-    el.signout.classList.add('hidden');
+    stopStats();
+    stopPlayers();
+    el.app.classList.add('hidden');
     el.login.classList.remove('hidden');
     el.loginMsg.className = 'msg err';
     el.loginMsg.textContent = msg || '';
     el.secret.value = '';
   }
-
   function showViewer() {
     el.login.classList.add('hidden');
-    el.signout.classList.remove('hidden');
-    el.tabs.classList.remove('hidden');
-    el.pane.classList.add('hidden');   // no config shown until one is picked
-    showTab(tabFromHash());            // honour a deep link like /…#api on load
+    el.app.classList.remove('hidden');
+    showTab(tabFromHash());
+    startStats();
   }
-
-  // --- tabs ----------------------------------------------------------------
-  // The URL hash (#configs / #api) is the single source of truth for the active tab,
-  // so a tab is directly linkable and back/forward navigates between them. Clicks set
-  // the hash; a hashchange listener (below) applies it. showTab itself only renders —
-  // it never writes the hash, so there is no feedback loop.
   function tabFromHash() {
-    return location.hash.replace(/^#/, '') === 'api' ? 'api' : 'configs';
+    const h = location.hash.replace(/^#/, '');
+    return h === 'api' ? 'api' : h === 'map' ? 'map' : h === 'logs' ? 'logs' : 'files';   // legacy #configs / #overrides deep links land on files
   }
-
   function showTab(name) {
-    const api = name === 'api';
-    el.viewer.classList.toggle('hidden', api);
-    el.apitab.classList.toggle('hidden', !api);
-    el.tabConfigs.classList.toggle('active', !api);
-    el.tabApi.classList.toggle('active', api);
-    if (api) initSwagger();
+    el.apitab.classList.toggle('hidden', name !== 'api');
+    el.maptab.classList.toggle('hidden', name !== 'map');
+    el.logstab.classList.toggle('hidden', name !== 'logs');
+    el.filesNav.classList.toggle('hidden', name !== 'files');
+    el.apiNav.classList.toggle('hidden', name !== 'api');
+    el.mapNav.classList.toggle('hidden', name !== 'map');
+    el.logsNav.classList.toggle('hidden', name !== 'logs');
+    el.tabFiles.classList.toggle('active', name === 'files');
+    el.tabApi.classList.toggle('active', name === 'api');
+    el.tabMap.classList.toggle('active', name === 'map');
+    el.tabLogs.classList.toggle('active', name === 'logs');
+    if (name !== 'files') { el.editorPage.classList.add('hidden'); el.ownfile.classList.add('hidden'); }
+    if (name === 'api') initSwagger();
+    if (name === 'map') { loadMapTab(); startPlayers(); } else stopPlayers();
+    if (name === 'logs') loadLogsTab(); else stopLogFollow();
+    if (name === 'files') { showFilesSurface(); loadFiles(true); }
   }
 
-  // Lazy-load the vendored Swagger UI only when the API tab is first opened, so config
-  // viewing stays instant. The interceptor rewrites every call onto THIS origin's /api
-  // proxy (the spec's own servers are cross-origin, blocked by connect-src 'self') and
-  // HMAC-signs the exact body bytes with the cached key — the scheme the API verifies.
+  // ===================== server stats bar =====================
+  // Live DayZ status from POST /dayz/status (readOnly) — polled while signed in.
+  let statsTimer = null;
+  const STATS_POLL_MS = 20000;
+
+  function sbStat(k, v) {
+    return `<span class="sb-stat"><span class="sb-k">${escapeHtml(k)}</span><span class="sb-v">${escapeHtml(v)}</span></span>`;
+  }
+  function renderStats(s) {
+    const up = s.status === 'active';
+    el.statsbar.className = up ? 'sb-up' : 'sb-down';   // class on the bar; the dot lives inside #sbStats
+    const parts = [`<span class="sb-state"><span class="sb-dot"></span>${up ? 'Online' : 'Offline'}</span>`];
+    parts.push(sbStat('players', s.players == null ? '—' : String(s.players)));
+    if (s.map) parts.push(sbStat('mission', s.map));
+    if (up && s.uptimeHuman) parts.push(sbStat('uptime', s.uptimeHuman));
+    if (up && s.restart && s.restart.inHuman) parts.push(sbStat('next restart', '~' + s.restart.inHuman));
+    if (typeof s.modCount === 'number') parts.push(sbStat('mods', String(s.modCount)));
+    parts.push('<span class="sb-foot">live · every 20s</span>');
+    el.sbStats.innerHTML = parts.join('');   // only the polled half — the restart control (#sbActions) is left alone
+  }
+  async function loadStats() {
+    const cred = loadCred();
+    if (!cred) return;
+    try {
+      renderStats(await apiPost('/dayz/status', cred));
+    } catch (err) {
+      if (handle(err)) return;   // 401 -> clears cred + showLogin (which stops polling)
+      el.statsbar.className = 'sb-down';
+      el.sbStats.innerHTML = '<span class="sb-state"><span class="sb-dot"></span>Server</span><span class="sb-err">stats unavailable</span>';
+    }
+  }
+  function startStats() { stopStats(); loadStats(); statsTimer = setInterval(loadStats, STATS_POLL_MS); }
+  function stopStats() { if (statsTimer) { clearInterval(statsTimer); statsTimer = null; } }
+
+  // Restart control — gated behind the "Arm restart" checkbox so it can't fire on a stray
+  // click. POST /dayz/restart is destructive; the API still enforces its own player guard
+  // (refuses while players are online unless forced), and we surface that message as-is.
+  function armRestart() { el.sbRestart.disabled = !el.sbArm.checked; }
+  async function restartServer() {
+    const cred = loadCred();
+    if (!cred) return;
+    el.sbRestart.disabled = true;
+    setGlobalMsg('Restart issued — warning players and cycling the server…', false);
+    try {
+      await apiPost('/dayz/restart', cred, {});
+      setGlobalMsg('Server restarting.', false, true);
+      el.sbArm.checked = false;   // disarm after a successful trigger
+      loadStats();
+    } catch (err) {
+      if (handle(err)) return;
+      setGlobalMsg('Restart refused: ' + err.message, true);   // e.g. players online, or key lacks write scope
+    } finally {
+      armRestart();   // re-enable only if still armed
+    }
+  }
+
+  // ===================== theme toggle =====================
+  // The early head script set data-theme before paint; this drives the manual switch and
+  // persists it. No stored value = follow the OS (see the head script + matchMedia listener).
+  function currentTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
+  function updateThemeToggle() {
+    const b = el.themeToggle; if (!b) return;
+    const dark = currentTheme() === 'dark';
+    b.textContent = dark ? '☀' : '☾';
+    b.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    b.setAttribute('aria-label', b.title);
+  }
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('cfgview-theme', t); } catch { /* private mode — session-only */ }
+    updateThemeToggle();
+    if (typeof requestMapDraw === 'function') requestMapDraw();   // the map paints from CSS vars
+  }
+  function toggleTheme() { applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
+
+  // ===================== Server Files: state =====================
+  // overridesDoc is the in-memory copy the editor mutates; Save ships the WHOLE doc to
+  // configs/set-overrides (the box snapshots + validates + writes). Whole files are fetched
+  // for context via the curated read (alias) or configs/target (relpath); only deltas saved.
+  let overridesDoc = {};
+  let activeMission = null;
+  let configItems = [];     // /dayz/configs/list — now carries each file's relpath
+  let boxFiles = [];        // /dayz/configs/writable [{name, path}]
+  let rows = [];            // the merged tree rows (buildRows)
+  let selKey = null;        // selected row key
+  let selMode = null;       // null | 'edit' | 'own'
+  let ovrView = 'file';   // 'fields' | 'file'
+  let ovrLeafMap = new Map();
+  let lastFileText = null;  // last fetched whole-file text (for Copy)
+  const fileCache = {};
+
+  // Dirty tracking: overridesDoc vs its last loaded/saved state. Drives the unsaved
+  // notification — the header pill, and the beforeunload guard so a reload/close can't
+  // silently drop edits. (In-memory edits survive a file/tab switch; only a reload or a
+  // fresh reload-from-server drops them.)
+  let savedSnapshot = '{}';
+  function isDirty() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
+  function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
+  function updateDirtyUi() { const d = $('ovrDirty'); if (d) d.classList.toggle('on', isDirty()); }
+
+  function kindOf(p) { const s = (p || '').toLowerCase(); return s.endsWith('.xml') ? 'xml' : s.endsWith('.json') ? 'json' : 'other'; }
+  function jsonEnc(v) { return JSON.stringify(v); }
+  function valPreview(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    const n = Array.isArray(v) ? v.length : Object.keys(v).length;
+    return (Array.isArray(v) ? '[ ' : '{ ') + n + (Array.isArray(v) ? ' item' : ' field') + (n === 1 ? '' : 's') + (Array.isArray(v) ? ' ]' : ' }');
+  }
+
+  // ===================== layers over config-overrides.json =====================
+  // A row's patches come in LAYERS: server-dir files have one ('files'); mission files
+  // have up to two — 'common' (applies to ALL missions) then 'mission' (wins on clash).
+  function docLayer(layer, fileKey, mission) {
+    const mp = overridesDoc.mpmissions || {};
+    if (layer === 'files') return (overridesDoc.files || {})[fileKey] || null;
+    if (layer === 'common') return (mp.common || {})[fileKey] || null;
+    return ((mp[mission] || {}))[fileKey] || null;
+  }
+  // Effective patch set for a row: Map selector -> { value, layer }. Mission layer wins.
+  function effectivePatches(row) {
+    const out = new Map();
+    const put = (map, layer) => {
+      if (!map || typeof map !== 'object') return;
+      for (const [k, v] of Object.entries(map)) { if (!k.startsWith('_')) out.set(k, { value: v, layer }); }
+    };
+    if (row.scope === 'files') put(docLayer('files', row.fileKey), 'files');
+    else { put(docLayer('common', row.fileKey), 'common'); if (row.mission) put(docLayer('mission', row.fileKey, row.mission), 'mission'); }
+    return out;
+  }
+  // The writable {selector: value} map for a layer of a row (creates parents).
+  function layerMapRW(row, layer) {
+    const path = layer === 'files' ? ['files', row.fileKey]
+      : layer === 'common' ? ['mpmissions', 'common', row.fileKey]
+      : ['mpmissions', row.mission, row.fileKey];
+    let cur = overridesDoc;
+    for (const k of path) { if (cur[k] === null || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; }
+    return cur;
+  }
+  // Which layer NEW overrides go to for this row (the chrome's selector for mission files).
+  function newLayerFor(row) {
+    if (row.scope === 'files') return 'files';
+    if (!row.mission) return 'common';
+    const sel = $('ovrLayerSel');
+    return sel && sel.value === 'common' ? 'common' : 'mission';
+  }
+
+  // ===================== the merged tree =====================
+  // One row per FILE, deduped by relpath. Sources: the curated /dayz/configs/list list (now
+  // with relpaths), the box-writable list, and any override entries the curated list
+  // doesn't surface. Pure function of its inputs (testable).
+  function makeRow(relpath, name, label, group) {
+    const m = relpath ? relpath.match(/^mpmissions\/([^/]+)\/(.+)$/) : null;
+    return {
+      key: relpath, relpath, name, label, group,
+      scope: m ? 'mission' : 'files',
+      mission: m ? m[1] : null,
+      fileKey: m ? m[2] : relpath,
+      kind: kindOf(relpath || label),
+    };
+  }
+  function buildRows(items, writable, doc, mission) {
+    const list = [];
+    const byRel = new Map();
+    const wByKey = new Map();
+    for (const w of writable || []) { if (w && w.name) { wByKey.set(w.name, w); if (w.path) wByKey.set(w.path, w); } }
+    for (const it of items || []) {
+      const c = (typeof it === 'string') ? { group: 'General', name: it, label: it, path: it } : it;
+      if (!c || !c.name || c.name === 'overrides' || c.path === 'config-overrides.json') continue;
+      const rel = c.path || c.name;
+      if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
+      const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
+      const w = wByKey.get(c.name) || wByKey.get(rel) || null;
+      row.access = w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
+      if (w) row.writableName = w.name;
+      byRel.set(rel, row); list.push(row);
+    }
+    // Writable files the curated list doesn't surface.
+    for (const w of writable || []) {
+      if (!w || !w.name || [...byRel.values()].some((r) => r.writableName === w.name)) continue;
+      const rel = w.path || w.name;
+      if (byRel.has(rel)) { byRel.get(rel).access = 'own'; byRel.get(rel).writableName = w.name; continue; }
+      const row = makeRow(rel, w.name, rel, 'box files');
+      row.access = 'own'; row.writableName = w.name;
+      byRel.set(rel, row); list.push(row);
+    }
+    // Override entries with no curated row -> their own sections.
+    const missionKeys = new Set(list.filter((r) => r.scope === 'mission').map((r) => r.mission + '\n' + r.fileKey));
+    const synth = (relpath, name, label, group) => {
+      if (relpath && byRel.has(relpath)) return;
+      const row = makeRow(relpath, name, label, group);
+      row.access = row.kind === 'other' ? 'lock' : 'edit';
+      if (relpath) byRel.set(relpath, row);
+      list.push(row);
+    };
+    for (const f of Object.keys(doc.files || {})) {
+      if (f.startsWith('_') || byRel.has(f)) continue;
+      synth(f, null, f, 'overrides · server dir');
+    }
+    for (const [layer, files] of Object.entries(doc.mpmissions || {})) {
+      if (layer.startsWith('_') || !files || typeof files !== 'object') continue;
+      for (const f of Object.keys(files)) {
+        if (f.startsWith('_')) continue;
+        if (layer === 'common') {
+          // The common layer gets its OWN row per file, ALWAYS — 'Map - All Missions'
+          // is where all-missions changes live; mission folders show only their own
+          // layer. Never registered in byRel (a mission row shares the resolved path).
+          const row = makeRow(activeMissionRel(mission, f), null, f, 'Map - All Missions');
+          row.key = 'common|' + f; row.scope = 'mission'; row.mission = null; row.fileKey = f; row.kind = kindOf(f);
+          row.access = row.kind === 'other' ? 'lock' : 'edit';
+          list.push(row);
+        } else {
+          if (missionKeys.has(layer + '\n' + f)) continue;
+          synth('mpmissions/' + layer + '/' + f, null, f, 'overrides · ' + layer);
+        }
+      }
+    }
+    return list;
+  }
+  function activeMissionRel(mission, fileKey) { return mission ? 'mpmissions/' + mission + '/' + fileKey : null; }
+  // The row's OWN layer map (what the tree badge counts): common rows count the common
+  // layer, mission rows ONLY their mission layer, server-dir rows the files layer.
+  function ownLayerCount(row) {
+    const map = row.scope === 'files' ? docLayer('files', row.fileKey)
+      : row.mission === null ? docLayer('common', row.fileKey)
+      : docLayer('mission', row.fileKey, row.mission);
+    return map ? Object.keys(map).filter((k) => !k.startsWith('_')).length : 0;
+  }
+  function rowByKey(k) { return rows.find((r) => r.key === k) || null; }
+  function currentRow() { return selKey ? rowByKey(selKey) : null; }
+
+  function renderFilesNav() {
+    rows = buildRows(configItems, boxFiles, overridesDoc, activeMission);
+    // Preserve the user's expand/collapse choices across rerenders.
+    const openState = new Map();
+    el.filesNav.querySelectorAll('details.side-grp[data-g]').forEach((d) => openState.set(d.dataset.g, d.open));
+    const groups = new Map();
+    for (const r of rows) { if (!groups.has(r.group)) groups.set(r.group, []); groups.get(r.group).push(r); }
+    // 'Map - All Missions' sits with the map groups: splice it in just before the first
+    // group whose rows are mission-scoped (it renders last otherwise, being synthetic).
+    let entries = [...groups];
+    const ami = entries.findIndex(([g]) => g === 'Map - All Missions');
+    if (ami >= 0) {
+      const [amiEntry] = entries.splice(ami, 1);
+      const firstMap = entries.findIndex(([, list]) => list.some((r) => r.scope === 'mission'));
+      entries.splice(firstMap >= 0 ? firstMap : entries.length, 0, amiEntry);
+    }
+    let html = '';
+    let i = 0;
+    for (const [g, list] of entries) {
+      const bySub = new Map();          // subfolder ('' = top) -> rows
+      for (const r of list) {
+        const slash = r.label.lastIndexOf('/');
+        const sub = slash >= 0 ? r.label.slice(0, slash) : '';
+        if (!bySub.has(sub)) bySub.set(sub, []);
+        bySub.get(sub).push(Object.assign({}, r, { file: slash >= 0 ? r.label.slice(slash + 1) : r.label }));
+      }
+      const rowHtml = (r) => {
+        const n = ownLayerCount(r);   // a mission row counts ONLY its own layer; common has its own row
+        const badge = n > 0 ? '<span class="ovr-badge">' + n + '</span>'
+          : r.access === 'own' ? '<span class="own-badge">rw</span>'
+          : r.access === 'lock' ? '<span class="ro-badge">ro</span>' : '';
+        return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
+          '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
+      };
+      let inner = (bySub.get('') || []).map(rowHtml).join('');
+      for (const sub of [...bySub.keys()].filter(Boolean).sort()) inner += '<div class="side-sub2">' + escapeHtml(sub) + '</div>' + bySub.get(sub).map(rowHtml).join('');
+      const open = openState.has(g) ? openState.get(g) : (i === 0 || list.some((r) => r.key === selKey));
+      html += '<details class="side-grp"' + (open ? ' open' : '') + ' data-g="' + attr(g) + '"><summary>' + escapeHtml(g) + '<span class="side-count">' + list.length + '</span></summary>' + inner + '</details>';
+      i++;
+    }
+    if (!rows.length) html = '<span class="meta" style="padding:10px;display:block">No files exposed.</span>';
+    el.filesNav.innerHTML = html + '<div class="ovr-add" id="ovrAddFile"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add a file to override…</div>';
+    const a = $('ovrAddFile'); if (a) a.onclick = addFileFlow;
+  }
+
+  function showFilesSurface() {
+    el.editorPage.classList.toggle('hidden', selMode === 'own');
+    el.ownfile.classList.toggle('hidden', selMode !== 'own');
+  }
+
+  function selectRow(key) {
+    const row = rowByKey(key);
+    if (!row) return;
+    selKey = key;
+    if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
+    if (row.access === 'own') { selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
+    selMode = 'edit';
+    ovrView = row.kind === 'other' ? 'file' : 'fields';
+    renderFilesNav();
+    showFilesSurface();
+    el.edEmpty.classList.add('hidden');
+    el.edEditor.classList.remove('hidden');
+    renderEditor();
+  }
+
+  // Fetch everything the tree needs. configs/writable degrades to [] on an older API.
+  async function loadFiles(preserve) {
+    const cred = loadCred();
+    if (!cred) return;
+    try {
+      const [cfgR, ovrR, boxR] = await Promise.all([
+        apiPost('/dayz/configs/list', cred),
+        apiPost('/dayz/configs/get?name=overrides', cred),
+        apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
+      ]);
+      configItems = cfgR.configs || [];
+      boxFiles = boxR.files || [];
+      // On a plain tab re-entry (preserve) keep unsaved edits — only reload the doc from
+      // the server on the initial load, after a save, or after a rollback.
+      if (!(preserve && isDirty())) {
+        try { overridesDoc = JSON.parse(stripBom(ovrR.content || '{}')); markClean(); }
+        catch { el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">config-overrides.json is not valid JSON.</span>'; return; }
+      }
+    } catch (err) {
+      if (handle(err)) return;
+      el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">Could not load: ' + escapeHtml(err.message) + '</span>';
+      return;
+    }
+    if (activeMission === null) {
+      try { const s = await apiPost('/dayz/status', cred); activeMission = s.map || null; } catch { /* leave null */ }
+    }
+    renderFilesNav();
+    if (selKey && !rowByKey(selKey)) { selKey = null; selMode = null; }
+    showFilesSurface();
+    if (selMode === 'edit' && currentRow()) { el.edEmpty.classList.add('hidden'); el.edEditor.classList.remove('hidden'); renderEditor(); }
+    else if (selMode !== 'own') { el.edEditor.classList.add('hidden'); el.edEmpty.classList.remove('hidden'); }
+    loadVersions();
+  }
+
+  // ===================== whole-file fetching =====================
+  // XML files written by the box (XmlDocument.Save) carry a UTF-8 BOM; as a JS string
+  // that's a leading U+FEFF, which breaks JSON.parse and can confuse DOMParser.
+  function stripBom(s) { return typeof s === 'string' ? s.replace(/^\uFEFF/, '') : s; }
+  // A row's content comes from its curated read alias when it has one, else configs/target
+  // by relpath (override targets are always in that allowlist).
+  async function fetchRowFile(row) {
+    const ck = 'f|' + row.key;
+    if (fileCache[ck]) return fileCache[ck];
+    const cred = loadCred();
+    if (!cred) return { text: null, err: 'not signed in' };
+    try {
+      let r;
+      if (row.name) r = await apiPost('/dayz/configs/get?name=' + encodeURIComponent(row.name), cred);
+      else if (row.relpath) r = await apiPost('/dayz/configs/target?name=' + encodeURIComponent(row.relpath), cred);
+      else return { text: null, err: 'no active mission — start the server to resolve common/ files' };
+      return (fileCache[ck] = { text: stripBom(r.content ?? ''), path: r.path || row.relpath });
+    } catch (err) {
+      if (err.status === 401) { handle(err); return { text: null, err: 'signed out' }; }
+      return { text: null, err: err.status === 404 ? 'not readable on the box' : err.message };
+    }
+  }
+  // The frozen-default companion (<name>.defaults<ext>) — the true default, since the live
+  // file is default+patches. 404 = no default captured yet: omit the default column quietly.
+  function defaultRelpath(rel) {
+    const dot = rel.lastIndexOf('.'), slash = rel.lastIndexOf('/');
+    return dot > slash ? rel.slice(0, dot) + '.defaults' + rel.slice(dot) : rel + '.defaults';
+  }
+  async function fetchDefaultFile(row) {
+    if (!row.relpath) return { text: null };
+    const drel = defaultRelpath(row.relpath);
+    const ck = 'f|' + drel;
+    if (fileCache[ck]) return fileCache[ck];
+    const cred = loadCred();
+    if (!cred) return { text: null };
+    try {
+      const r = await apiPost('/dayz/configs/target?name=' + encodeURIComponent(drel), cred);
+      return (fileCache[ck] = { text: stripBom(r.content ?? '') });
+    } catch (err) { if (err.status === 401) handle(err); return (fileCache[ck] = { text: null }); }
+  }
+
+  // ===================== the Fields ⇄ File editor =====================
+  function editorChrome(row) {
+    const eff = effectivePatches(row);
+    const nOver = eff.size;
+    const locked = row.access === 'lock';
+    const crumb = row.scope === 'files' ? 'files/' : ('mpmissions · ' + (row.mission || 'all missions') + '/');
+    const layerSel = (row.scope === 'mission' && !locked)
+      ? '<span class="lay-wrap">New overrides:<select id="ovrLayerSel" class="lay-sel"><option value="mission"' + (row.mission ? '' : ' disabled') + '>this mission only</option><option value="common"' + (row.mission ? '' : ' selected') + '>all missions</option></select></span>'
+      : '';
+    const summary = locked
+      ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
+      : '<span class="stat d"><span class="dot d"></span><b>' + nOver + '</b> ' + (row.kind === 'xml' ? 'XPath override' + (nOver === 1 ? '' : 's') : 'overridden') + '</span>';
+    return '<div class="ovr-phead">' +
+      '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
+      '<div class="ovr-pact">' +
+        '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+        layerSel +
+        '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">File</button></div>' +
+        '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
+        (locked ? '' : '<button class="btn-sm primary" id="ovrSave">Save ' + nOver + ' delta' + (nOver === 1 ? '' : 's') + '</button>') +
+      '</div></div>' +
+      '<div class="ovr-sum">' + summary + '<span class="stat" style="margin-left:auto">' + (locked ? '' : 'Restart to apply') + '</span></div>';
+  }
+  function editorFoot(row) {
+    if (row.access === 'lock') return '';
+    return '<div class="ovr-note" style="border-top:1px solid var(--border);border-bottom:none">' +
+      '<b style="color:var(--delta)">Deltas only.</b> The whole file shows for context — Save writes just your changes to <span class="mono">config-overrides.json</span>.</div>';
+  }
+  async function renderEditor() {
+    const row = currentRow();
+    if (!row || row.access === 'own') return;
+    el.edEditor.innerHTML = editorChrome(row) + '<div class="ovr-body" id="ovrBody"></div>' + editorFoot(row);
+    const seg = $('ovrSeg');
+    if (seg) seg.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ovrView = b.dataset.v; renderEditor(); };
+    const save = $('ovrSave');
+    if (save) save.onclick = () => saveOverrides();
+    const copy = $('ovrCopy');
+    if (copy) copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(lastFileText ?? ''); copy.textContent = 'Copied'; }
+      catch { copy.textContent = 'Copy failed'; }
+      setTimeout(() => { copy.textContent = 'Copy'; }, 1400);
+    };
+    await renderBody(row);
+  }
+  async function renderBody(row) {
+    const body = $('ovrBody'); if (!body) return;
+    body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading file…</span>';
+    const [file, def] = await Promise.all([fetchRowFile(row), row.access === 'lock' ? { text: null } : fetchDefaultFile(row)]);
+    if (selKey !== row.key) return;                    // selection changed while awaiting
+    lastFileText = file.text;
+    const eff = effectivePatches(row);
+    if (ovrView === 'file') { body.innerHTML = fileViewHtml(row, file, eff); return; }
+    if (row.access === 'lock') {
+      body.innerHTML = '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
+      return;
+    }
+    body.innerHTML = (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
+      (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
+    wireFields(row);
+  }
+
+  function flattenJson(obj, prefix, out) {
+    for (const [k, v] of Object.entries(obj)) {
+      const path = prefix ? prefix + '.' + k : k;
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) flattenJson(v, path, out);
+      else out.push({ path, value: v });
+    }
+    return out;
+  }
+  // One overridden-field row. layer = which overrides layer holds it ('common' gets the
+  // 'all missions' chip); def = the frozen-default value string (context for the change).
+  function fieldRowOver(row, sel, val, def, layer) {
+    const complex = val !== null && typeof val === 'object';
+    const e = jsonEnc(val);
+    const input = complex
+      ? '<textarea class="ovr-inp" data-sel="' + attr(sel) + '" data-layer="' + layer + '" rows="2">' + escapeHtml(e) + '</textarea>'
+      : '<input class="ovr-inp" data-sel="' + attr(sel) + '" data-layer="' + layer + '" value="' + attr(e) + '">';
+    const layerChip = (row.scope === 'mission' && layer === 'common') ? '<span class="tag all">all missions</span>' : '';
+    const tag = row.kind === 'xml' ? '<span class="tag">override</span>' : (complex ? '<span class="tag cx">json</span>' : '<span class="tag">override</span>');
+    const defHtml = def != null ? '<span class="base">default ' + escapeHtml(String(def)) + '</span>' : '';
+    return '<div class="fld over"><div class="k" title="' + attr(sel) + '">' + escapeHtml(sel) + '</div><div>' + input + '</div><div class="meta2">' + layerChip + tag + defHtml + '</div><button class="x ovr-rm" data-sel="' + attr(sel) + '" data-layer="' + layer + '" title="Remove override — reverts this field to its default">✕</button></div>';
+  }
+  function jsonFieldsHtml(row, eff, text, defaultText) {
+    let fileObj = null;
+    if (text !== null) { try { fileObj = JSON.parse(text); } catch { fileObj = null; } }
+    let defObj = null;
+    if (defaultText != null) { try { defObj = JSON.parse(defaultText); } catch { defObj = null; } }
+    const defMap = (defObj && typeof defObj === 'object' && !Array.isArray(defObj)) ? new Map(flattenJson(defObj, '', []).map((l) => [l.path, l.value])) : new Map();
+    const leaves = (fileObj && typeof fileObj === 'object' && !Array.isArray(fileObj)) ? flattenJson(fileObj, '', []) : [];
+    ovrLeafMap = new Map(leaves.map((l) => [l.path, l.value]));
+    let html = '<div class="fields">';
+    for (const [sel, p] of eff) {
+      const def = defMap.has(sel) ? valPreview(defMap.get(sel)) : null;
+      html += fieldRowOver(row, sel, p.value, def, p.layer);
+    }
+    if (fileObj === null && text !== null) html += '<div class="ovr-note">This file isn\'t valid JSON — showing overrides only.</div>';
+    const ctx = leaves.filter((l) => !eff.has(l.path));
+    if (ctx.length) {
+      html += '<div class="fdiv">Rest of the file — click a value to override it</div>';
+      const CAP = 200;
+      for (const l of ctx.slice(0, CAP)) {
+        html += '<div class="fld ctx"><div class="k">' + escapeHtml(l.path) + '</div><div class="v ovr-addv" data-sel="' + attr(l.path) + '" title="Click to override">' + escapeHtml(valPreview(l.value)) + '</div><div class="meta2"><button class="addb ovr-addctx" data-sel="' + attr(l.path) + '">+ override</button></div><span></span></div>';
+      }
+      if (ctx.length > CAP) html += '<div class="ovr-note">' + (ctx.length - CAP) + ' more field(s) hidden — see the whole file in the File view.</div>';
+    }
+    html += '<div class="frow-add"><button class="ghost" id="ovrAddSel" type="button">+ Add override</button></div></div>';
+    return html;
+  }
+  // The default value of an XPath selector = evaluate it against the frozen default XML.
+  function xmlValueAt(doc, sel) {
+    try {
+      const n = doc.evaluate(sel, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      if (!n) return null;
+      return n.nodeValue != null ? n.nodeValue : n.textContent;
+    } catch { return null; }
+  }
+  function xmlFieldsHtml(row, eff, defaultText) {
+    let doc = null;
+    if (defaultText != null) { try { doc = new DOMParser().parseFromString(defaultText, 'application/xml'); if (doc.querySelector('parsererror')) doc = null; } catch { doc = null; } }
+    let html = '<div class="ovr-note">XML overrides are XPath selectors — flip to the <b>File</b> view to see each one resolved against the live file.</div><div class="fields">';
+    for (const [sel, p] of eff) html += fieldRowOver(row, sel, p.value, doc ? xmlValueAt(doc, sel) : null, p.layer);
+    html += '<div class="frow-add"><button class="ghost" id="ovrAddSel" type="button">+ Add XPath override</button></div></div>';
+    return html;
+  }
+  function xmlEvalHtml(text, sels) {
+    if (!sels.length) return '';
+    let doc = null, perr = false;
+    try { doc = new DOMParser().parseFromString(text, 'application/xml'); perr = !!doc.querySelector('parsererror'); } catch { perr = true; }
+    let rows2 = '';
+    for (const sel of sels) {
+      let state;
+      if (perr || !doc) state = 'parse error';
+      else { try { state = doc.evaluate(sel, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength > 0 ? 'ok' : 'none'; } catch { state = 'bad xpath'; } }
+      const badge = state === 'ok' ? '<span class="tag">matched</span>' : '<span class="tag warn">' + (state === 'none' ? 'no match' : state) + '</span>';
+      rows2 += '<div class="row2">' + badge + '<span class="sel">' + escapeHtml(sel) + '</span></div>';
+    }
+    return '<div class="xeval"><div class="stat" style="color:var(--faint);margin-bottom:2px">XPaths evaluated against this file</div>' + rows2 + '</div>';
+  }
+  function fileViewHtml(row, file, eff) {
+    if (file.text === null) return '<div class="ovr-note">Whole-file view unavailable — ' + escapeHtml(file.err || 'unknown') + '.</div>';
+    const head = row.kind === 'xml' ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
+    return '<div class="fileview">' + head + '<pre>' + highlight(file.text, detectLang(row.relpath || row.label)) + '</pre></div>';
+  }
+
+  // ===================== mutations =====================
+  function addOverride(row, sel, initial) {
+    const layer = newLayerFor(row);
+    const map = layerMapRW(row, layer);
+    if (!(sel in map)) map[sel] = initial;
+    renderFilesNav(); renderEditor();
+    setGlobalMsg('Override added — edit its value, then Save.', false);
+  }
+  function wireFields(row) {
+    const body = $('ovrBody'); if (!body) return;
+    body.querySelectorAll('.ovr-inp').forEach((inp) => inp.addEventListener('change', () => {
+      let v;
+      try { v = JSON.parse(inp.value); } catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON (e.g. 110, "text", [1,2]).', true); return; }
+      inp.style.outline = '';
+      layerMapRW(row, inp.dataset.layer)[inp.dataset.sel] = v;
+      updateDirtyUi();
+      setGlobalMsg('Unsaved change — press Save.', false);
+    }));
+    body.querySelectorAll('.ovr-rm').forEach((b) => b.addEventListener('click', () => {
+      delete layerMapRW(row, b.dataset.layer)[b.dataset.sel];
+      renderFilesNav(); renderEditor();
+      setGlobalMsg('Override removed — press Save.', false);
+    }));
+    const addFrom = (elx) => addOverride(row, elx.dataset.sel, ovrLeafMap.has(elx.dataset.sel) ? ovrLeafMap.get(elx.dataset.sel) : null);
+    body.querySelectorAll('.ovr-addctx').forEach((b) => b.addEventListener('click', () => addFrom(b)));
+    body.querySelectorAll('.ovr-addv').forEach((v) => v.addEventListener('click', () => addFrom(v)));
+    const addSel = $('ovrAddSel');
+    if (addSel) addSel.onclick = () => {
+      const sel = (window.prompt(row.kind === 'xml'
+        ? "XPath selector (e.g. //var[@name='TimeHopping']/@value):"
+        : 'Dotted key path (e.g. a.b.c):') || '').trim();
+      if (sel) addOverride(row, sel, null);
+    };
+  }
+  function addFileFlow() {
+    const where = window.prompt('Override a file in:\n  1 = server dir (files/)\n  2 = a mission (mpmissions/)\nEnter 1 or 2:', '1');
+    if (where === null) return;
+    let key;
+    if (where.trim() === '2') {
+      const mission = (window.prompt('Mission layer — "common" (all missions) or a name like dayzOffline.sakhal:', 'common') || '').trim();
+      if (!mission) return;
+      const file = (window.prompt('File path within the mission (e.g. db/globals.xml):') || '').trim();
+      if (!file) return;
+      layerMapRW({ scope: 'mission', mission: mission === 'common' ? null : mission, fileKey: file }, mission === 'common' ? 'common' : 'mission');
+      key = mission === 'common'
+        ? (activeMission ? 'mpmissions/' + activeMission + '/' + file : 'common|' + file)
+        : 'mpmissions/' + mission + '/' + file;
+    } else {
+      const file = (window.prompt('File path under the server dir (e.g. profiles/AIB_Unleashed/AIB_UL_Config.json):') || '').trim();
+      if (!file) return;
+      layerMapRW({ scope: 'files', fileKey: file }, 'files');
+      key = file;
+    }
+    renderFilesNav();
+    if (rowByKey(key)) selectRow(key);
+    setGlobalMsg('File added — override its fields, then Save.', false);
+  }
+
+  async function saveOverrides() {
+    const cred = loadCred();
+    if (!cred) return;
+    const save = $('ovrSave');
+    if (save) save.disabled = true;
+    setGlobalMsg('Saving…', false);
+    try {
+      await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc });
+      setGlobalMsg('Saved — restart the server to apply.', false, true);
+      Object.keys(fileCache).forEach((k) => delete fileCache[k]);
+      await loadFiles();
+    } catch (err) {
+      if (handle(err)) return;
+      setGlobalMsg(err.status === 403 ? 'Your key can’t write — sign in with a full-scope key.' : 'Save failed: ' + err.message, true);
+    } finally { if (save) save.disabled = false; }
+  }
+  async function loadVersions() {
+    const cred = loadCred();
+    if (!cred) return;
+    try {
+      const r = await apiPost('/dayz/configs/override-versions', cred);
+      const versions = r.versions || [];
+      el.ovrVersions.innerHTML = versions.length
+        ? versions.map((v) => '<div class="ovr-ver"><span class="mono">' + escapeHtml(v) + '</span><span class="spacer"></span><button class="ghost ovr-roll" type="button" data-ver="' + attr(v) + '">Roll back</button></div>').join('')
+        : '<span class="meta">No snapshots yet.</span>';
+    } catch (err) { if (handle(err)) return; el.ovrVersions.innerHTML = '<span class="meta">Could not load versions.</span>'; }
+  }
+  async function rollbackTo(version) {
+    const cred = loadCred();
+    if (!cred) return;
+    if (isDirty() && !window.confirm('You have unsaved override changes. Rolling back replaces the whole document and discards them.\n\nRoll back anyway?')) return;
+    try {
+      await apiPost('/dayz/configs/override-rollback', cred, { version });
+      setGlobalMsg('Rolled back — restart to apply.', false, true);
+      Object.keys(fileCache).forEach((k) => delete fileCache[k]);
+      loadFiles();
+    } catch (err) {
+      if (handle(err)) return;
+      setGlobalMsg(err.status === 403 ? 'Your key can’t roll back — full-scope key needed.' : 'Rollback failed: ' + err.message, true);
+    }
+  }
+
+  // ===================== box-owned whole-file editor =====================
+  async function loadOwn(row) {
+    el.ownPath.textContent = row.relpath || row.label;
+    el.ownTa.value = 'Loading…';
+    el.ownTa.disabled = true;
+    try {
+      const r = await apiPost('/dayz/configs/get?name=' + encodeURIComponent(row.name || row.writableName), loadCred());
+      if (selKey !== row.key) return;
+      el.ownTa.value = stripBom(r.content ?? '');
+      el.ownTa.disabled = false;
+    } catch (err) {
+      if (handle(err)) return;
+      el.ownTa.value = '';
+      setGlobalMsg('Could not load ' + (row.label || '') + ': ' + err.message, true);
+    }
+  }
+  async function saveOwnFile() {
+    const cred = loadCred();
+    const row = currentRow();
+    if (!cred || !row || !row.writableName) return;
+    el.ownSave.disabled = true;
+    setGlobalMsg('Saving…', false);
+    try {
+      await apiPost('/dayz/configs/set-file', cred, { name: row.writableName, content: el.ownTa.value });
+      setGlobalMsg('Saved — previous version snapshotted on the box.', false, true);
+      Object.keys(fileCache).forEach((k) => delete fileCache[k]);
+    } catch (err) {
+      if (handle(err)) return;
+      setGlobalMsg(err.status === 403 ? 'Your key can’t write — sign in with a full-scope key.' : 'Save failed: ' + err.message, true);
+    } finally { el.ownSave.disabled = false; }
+  }
+
+  // ===================== Map tab (browsable terrain map + AI coordinates) ====
+  // A dependency-free "maps app" viewer: pre-rendered terrain tile pyramids
+  // (DayZHeightmap/Build-MapTiles.ps1 → web/tiles/<map>/terrain/<z>/<x>_<y>.png,
+  // z0 = whole world in one 256px tile) drawn on a canvas with drag-pan and
+  // wheel/pinch zoom, a coordinate grid that rescales with zoom, live X/Y/Z under
+  // the crosshair (Y sampled client-side from tiles/<map>/height.bin, fetched
+  // once), and right-click → copy "X Y Z" (exact Y re-fetched from
+  // terrain/surface-y; the local grid is the offline fallback).
+  //
+  // Overlaid: the VPP spawn bookmarks (read via the Vpp-coordinates config), each
+  // bookmark's terrain Y resolved in ONE bulk terrain/surface-y call, showing
+  // Δ = bookmark Y − heightmap Y. Δ bands: ≤0.5 m ok (the heightmap's validated
+  // error bound), ≤2 m warn, >2 m serious (likely a stale bookmark). Serious
+  // points render as SQUARES and every Δ is printed as a number — color is never
+  // the only channel. NonSpawn bookmarks (no map prefix) are admin teleports: skipped.
+  let mapData = null;      // { coords, classes, hms } after first fetch
+  let mapMission = '';     // selected mission folder (dayzOffline.*)
+  let mapPts = [];         // spawn bookmarks of the selected map (plot order)
+  let mapWs = 15360;       // world size in meters for the current map
+  let mapHm = null;        // API heightmap meta for the current map (null = none shipped)
+  let mapSelPt = -1;       // selected point index into mapPts
+  let mapLoadSeq = 0;      // async guard: stale fetches/resolves must not render
+  let mapTiles = null;     // { man, base, cache } once tiles/<map>/manifest.json loads
+  let mapLocs = [];        // location labels (tiles/<map>/locations.json, tier-sorted)
+  let mapHgt = null;       // { grid, gridN, minY, maxY } once height.bin loads
+  let mapView = null;      // { cx, cz, ppm } camera: world center + pixels-per-meter
+  let mapAssetSeq = 0;     // async guard for tile/height fetches across map switches
+  let mapHover = -1;       // bookmark index under the pointer (-1 = none)
+  let mapPlayers = [];     // live player positions [{x,z}] (anonymized) — the overlay layer
+  let mapPlayersAt = null; // server-clock HH:MM:SS of the freshest fix (staleness hint)
+  let mapPlayersTimer = null;
+  let mapBandits = { spawns: [], kills: [] };  // recent AIB activity from the log (approximate)
+  let mapBanditsAt = null;
+  let mapCursor = null;    // world { x, z } under the pointer (null = outside)
+  let mapDrawQueued = false;
+
+  function mapShort(mission) { return String(mission || '').replace(/^dayzOffline\./, ''); }
+  function mapBand(p) { return p.ty === undefined ? 'mnull' : Math.abs(p.delta) <= 0.5 ? 'mok' : Math.abs(p.delta) <= 2 ? 'mwarn' : 'mbad'; }
+  function fmtDelta(d) { return (d >= 0 ? '+' : '') + d.toFixed(2) + ' m'; }
+  function mapStageMsg(msg) {
+    el.mapEmpty.textContent = msg || '';
+    el.mapEmpty.classList.toggle('hidden', !msg);
+  }
+
+  async function loadMapTab(force) {
+    const cred = loadCred();
+    if (!cred) return;
+    const seq = ++mapLoadSeq;
+    if (!mapData || force) {
+      mapStageMsg('Loading VPP coordinates…');
+      try {
+        const [coordsR, classesR, hmsR] = await Promise.all([
+          apiPost('/dayz/configs/get?name=Vpp-coordinates', cred),
+          apiPost('/dayz/configs/get?name=Aib-classes', cred),
+          apiPost('/dayz/terrain/heightmaps', cred).catch(() => ({ maps: [] })),  // older API -> no deltas, map still plots
+        ]);
+        if (seq !== mapLoadSeq) return;
+        mapData = {
+          coords: JSON.parse(stripBom(coordsR.content || '[]')),
+          classes: JSON.parse(stripBom(classesR.content || '{}')),
+          hms: hmsR.maps || [],
+        };
+      } catch (err) {
+        if (handle(err)) return;
+        mapStageMsg(err.status === 404
+          ? 'The API does not expose Vpp-coordinates — redeploy it with the updated Configs allowlist.'
+          : 'Could not load coordinates: ' + err.message);
+        return;
+      }
+      if (activeMission === null) {
+        try { const s = await apiPost('/dayz/status', cred); activeMission = s.map || null; } catch { /* leave null */ }
+        if (seq !== mapLoadSeq) return;
+      }
+    }
+    buildMapOptions();
+    const target = el.mapSel.value || mapMission;
+    // Revisiting the tab keeps the camera where you left it; only a real map
+    // switch (or Refresh) rebuilds the scene.
+    if (force || target !== mapMission || !mapView) setMapMission(target);
+    else { mapStageMsg(''); requestMapDraw(); }
+  }
+
+  // The selector lists every mission letter from classification.json, spawn-bookmark
+  // count included, defaulting to the server's active mission.
+  function buildMapOptions() {
+    const letters = (mapData.classes && mapData.classes.maps) || {};
+    const countFor = (mission) => mapData.coords.filter((e) => e.Kind !== 'NonSpawn' && letters[e.Map] === mission).length;
+    const opts = Object.values(letters).map((mission) => ({ mission, n: countFor(mission) }));
+    if (!mapMission) mapMission = (opts.find((o) => o.mission === activeMission) || opts.find((o) => o.n > 0) || opts[0] || { mission: '' }).mission;
+    el.mapSel.innerHTML = opts.map((o) =>
+      '<option value="' + attr(o.mission) + '"' + (o.mission === mapMission ? ' selected' : '') + '>' +
+      escapeHtml(mapShort(o.mission)) + ' (' + o.n + ')' + (o.mission === activeMission ? ' · live' : '') + '</option>').join('');
+  }
+
+  function setMapMission(mission) {
+    if (!mission) { mapStageMsg('No maps declared in classification.json.'); return; }
+    mapMission = mission;
+    mapSelPt = -1;
+    mapHover = -1;
+    mapCursor = null;
+    const letters = (mapData.classes && mapData.classes.maps) || {};
+    mapPts = mapData.coords
+      .filter((e) => e.Kind !== 'NonSpawn' && letters[e.Map] === mission)
+      .map((e) => ({ name: e.RawName, arb: e.ArbitraryName, kind: e.Kind, cat: e.Category, size: e.Size, x: e.X, y: e.Y, z: e.Z }));
+    mapHm = mapData.hms.find((h) => h.map === mapShort(mission)) || null;
+    // Without a shipped heightmap there's no worldSize either — scale to the data.
+    // (The tile manifest, when it arrives, is the final authority.)
+    mapWs = mapHm ? mapHm.worldSize : Math.max(15360, ...mapPts.map((p) => Math.max(p.x, p.z)), 1) * 1.02;
+    mapStageMsg('');
+    fitMapView();
+    loadMapAssets(mapShort(mission));
+    renderMap();
+    resolveMapDeltas();
+  }
+
+  // Static assets rendered by DayZHeightmap: the tile pyramid manifest (v2:
+  // layers[] — satellite extracted from the game files, terrain rendered from
+  // the heightmap) and the height grid the crosshair Y readout samples locally.
+  function setMapLayer(name) {
+    if (!mapTiles) return;
+    const layer = mapTiles.man.layers.find((l) => l.name === name) || mapTiles.man.layers[0];
+    if (!layer) return;
+    mapTiles.layer = layer;
+    mapTiles.base = mapTiles.root + layer.name + '/';
+    mapTiles.cache = new Map();
+    try { localStorage.setItem('cfgview-maplayer', layer.name); } catch { /* private mode */ }
+    renderMapLayerSeg();
+    requestMapDraw();
+  }
+  function renderMapLayerSeg() {
+    const layers = mapTiles ? mapTiles.man.layers : [];
+    el.mapLayerSeg.classList.toggle('hidden', layers.length < 2);
+    el.mapLayerSeg.innerHTML = layers.map((l) =>
+      '<button type="button" data-layer="' + attr(l.name) + '"' + (mapTiles.layer.name === l.name ? ' class="active"' : '') + '>' +
+      escapeHtml(l.name.charAt(0).toUpperCase() + l.name.slice(1)) + '</button>').join('');
+  }
+  async function loadMapAssets(short) {
+    const seq = ++mapAssetSeq;
+    mapTiles = null;
+    mapHgt = null;
+    mapLocs = [];
+    renderMapLayerSeg();
+    try {
+      const root = 'tiles/' + encodeURIComponent(short) + '/';
+      fetch(root + 'locations.json')
+        .then((r) => (r.ok ? r.json() : []))
+        .then((l) => { if (seq === mapAssetSeq && Array.isArray(l)) { mapLocs = l; requestMapDraw(); } })
+        .catch(() => { /* labels are optional */ });
+      const mR = await fetch(root + 'manifest.json');
+      if (seq !== mapAssetSeq) return;
+      if (!mR.ok) { requestMapDraw(); return; }        // no tiles delivered for this map
+      const man = await mR.json();
+      if (seq !== mapAssetSeq) return;
+      if (!Array.isArray(man.layers) || !man.layers.length || typeof man.layers[0] === 'string') { requestMapDraw(); return; }
+      mapTiles = { man, root, layer: null, base: '', cache: new Map() };
+      let want = 'satellite';
+      try { want = localStorage.getItem('cfgview-maplayer') || 'satellite'; } catch { /* default */ }
+      setMapLayer(want);
+      if (man.worldSize && Math.abs(man.worldSize - mapWs) > 1) { mapWs = man.worldSize; fitMapView(); }
+      requestMapDraw();
+      const hR = await fetch('tiles/' + encodeURIComponent(short) + '/height.bin');
+      if (!hR.ok) return;
+      const buf = await hR.arrayBuffer();
+      if (seq !== mapAssetSeq) return;
+      const hm = man.height || {};
+      if (buf.byteLength === hm.gridN * hm.gridN * 2) {
+        mapHgt = { grid: new Uint16Array(buf), gridN: hm.gridN, minY: hm.minY, maxY: hm.maxY };
+      }
+    } catch { /* tiles are progressive enhancement — the plot still works bare */ }
+    requestMapDraw();
+  }
+
+  // Bilinear terrain Y from the local grid (docs/FORMAT.md sampler). Null when
+  // the grid isn't loaded or the point is off-map.
+  function mapLocalY(x, z) {
+    if (!mapHgt || x < 0 || z < 0 || x > mapWs || z > mapWs) return null;
+    const n = mapHgt.gridN;
+    const gx = (x / mapWs) * (n - 1);
+    const gz = ((mapWs - z) / mapWs) * (n - 1);            // row 0 = north
+    const x0 = Math.floor(gx), z0 = Math.floor(gz);
+    const x1 = Math.min(x0 + 1, n - 1), z1 = Math.min(z0 + 1, n - 1);
+    const fx = gx - x0, fz = gz - z0;
+    const g = mapHgt.grid;
+    const top = g[z0 * n + x0] * (1 - fx) + g[z0 * n + x1] * fx;
+    const bot = g[z1 * n + x0] * (1 - fx) + g[z1 * n + x1] * fx;
+    return mapHgt.minY + ((top * (1 - fz) + bot * fz) / 65535) * (mapHgt.maxY - mapHgt.minY);
+  }
+
+  // ONE bulk call for the whole point set (per-point calls would eat the rate limit).
+  async function resolveMapDeltas() {
+    if (!mapHm || !mapPts.length) return;
+    const cred = loadCred();
+    if (!cred) return;
+    const mission = mapMission;
+    try {
+      const r = await apiPost('/dayz/terrain/surface-y', cred, {
+        map: mapShort(mission),
+        points: mapPts.map((p) => ({ x: p.x, z: p.z })),
+      });
+      if (mission !== mapMission) return;              // user switched maps mid-flight
+      (r.points || []).forEach((rp, i) => {
+        const p = mapPts[i];
+        if (!p || rp.y === null || rp.y === undefined) return;
+        p.ty = rp.y;
+        p.delta = p.y - rp.y;
+      });
+      renderMap();
+    } catch (err) {
+      if (handle(err)) return;
+      setGlobalMsg('Height lookup failed: ' + err.message, true);
+    }
+  }
+
+  function renderMap() {
+    requestMapDraw();
+    renderMapList();
+    renderMapSummary();
+    renderMapDetail();
+  }
+
+  // ---------- camera ----------
+  function mapVp() { return { w: el.mapCanvas.clientWidth, h: el.mapCanvas.clientHeight }; }
+  function mapFitPpm() {
+    const { w, h } = mapVp();
+    return (Math.min(w, h) || 600) / mapWs * 0.98;      // whole map just fits
+  }
+  function mapClampPpm(ppm) { return Math.min(3, Math.max(mapFitPpm() * 0.7, ppm)); }
+  function fitMapView() { mapView = { cx: mapWs / 2, cz: mapWs / 2, ppm: mapFitPpm() }; }
+  function mapClampCenter() {
+    mapView.cx = Math.min(mapWs, Math.max(0, mapView.cx));
+    mapView.cz = Math.min(mapWs, Math.max(0, mapView.cz));
+  }
+  function mapToScreen(wx, wz) {
+    const { w, h } = mapVp();
+    return [w / 2 + (wx - mapView.cx) * mapView.ppm, h / 2 - (wz - mapView.cz) * mapView.ppm];
+  }
+  function mapToWorld(sx, sy) {
+    const { w, h } = mapVp();
+    return { x: mapView.cx + (sx - w / 2) / mapView.ppm, z: mapView.cz - (sy - h / 2) / mapView.ppm };
+  }
+  function mapZoomAt(sx, sy, factor) {
+    const anchor = mapToWorld(sx, sy);
+    mapView.ppm = mapClampPpm(mapView.ppm * factor);
+    const { w, h } = mapVp();
+    mapView.cx = anchor.x - (sx - w / 2) / mapView.ppm;  // keep the anchor under the cursor
+    mapView.cz = anchor.z + (sy - h / 2) / mapView.ppm;
+    mapClampCenter();
+    requestMapDraw();
+  }
+
+  // ---------- tiles ----------
+  function mapTile(z, tx, ty) {
+    const cache = mapTiles.cache;
+    const key = z + '/' + tx + '_' + ty;
+    let t = cache.get(key);
+    if (!t) {
+      if (cache.size > 420) {                            // decoded tiles hold real memory
+        for (const k of cache.keys()) { cache.delete(k); if (cache.size <= 260) break; }
+      }
+      t = { img: new Image(), ok: false };
+      t.img.onload = () => { t.ok = true; requestMapDraw(); };
+      t.img.src = mapTiles.base + key + '.' + (mapTiles.layer.ext || 'png');
+      cache.set(key, t);
+    }
+    return t;
+  }
+
+  function requestMapDraw() {
+    if (mapDrawQueued) return;
+    mapDrawQueued = true;
+    requestAnimationFrame(() => { mapDrawQueued = false; drawMap(); });
+  }
+
+  function drawMap() {
+    const c = el.mapCanvas;
+    if (!mapView || el.maptab.classList.contains('hidden')) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) return;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const mv = mapView;
+    const wx0 = mv.cx - w / 2 / mv.ppm, wx1 = mv.cx + w / 2 / mv.ppm;
+    const wzB = mv.cz - h / 2 / mv.ppm, wzT = mv.cz + h / 2 / mv.ppm;
+    if (mapTiles) {
+      const layer = mapTiles.layer;
+      const tileSize = layer.tileSize || mapTiles.man.tileSize || 256;
+      // level whose native resolution first meets the screen's (cap: layer maxZoom)
+      const zBest = Math.max(0, Math.min(layer.maxZoom, Math.ceil(Math.log2(mapWs * mv.ppm / tileSize))));
+      ctx.imageSmoothingEnabled = true;
+      // draw coarse→fine: lower levels backfill while the exact tiles stream in
+      for (let z = 0; z <= zBest; z++) {
+        const across = 1 << z;
+        const tw = mapWs / across;                       // meters per tile at this level
+        const tx0 = Math.max(0, Math.floor(wx0 / tw)), tx1 = Math.min(across - 1, Math.floor(wx1 / tw));
+        const ty0 = Math.max(0, Math.floor((mapWs - wzT) / tw)), ty1 = Math.min(across - 1, Math.floor((mapWs - wzB) / tw));
+        for (let ty = ty0; ty <= ty1; ty++) {
+          for (let tx = tx0; tx <= tx1; tx++) {
+            const t = mapTile(z, tx, ty);
+            if (!t.ok) continue;
+            const [sx, sy] = mapToScreen(tx * tw, mapWs - ty * tw);
+            const s = tw * mv.ppm;
+            ctx.drawImage(t.img, sx, sy, s + 0.5, s + 0.5);  // +0.5 hides subpixel seams
+          }
+        }
+      }
+    }
+    drawMapGrid(ctx, w, h);
+    drawMapLabels(ctx, w, h);
+    drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
+    drawMapBandits(ctx);                                 // AIB activity under the players
+    drawMapPlayers(ctx);                                 // live players on top of the bookmarks
+    drawMapCrosshair(ctx, w, h);
+    updateMapBar();
+  }
+
+  // ---------- location labels (CfgWorlds Names, dumped by DayZHeightmap) ----
+  // Tiers gate visibility by zoom: Capital/City always, villages from ~2x,
+  // POIs deeper, hills/viewpoints deepest. First-come collision skipping keeps
+  // the map readable (the list is tier-sorted, so big names win the space).
+  function drawMapLabels(ctx, w, h) {
+    if (!mapLocs.length || !mapView) return;
+    const TH = [0, 0, 0.10, 0.25, 0.5];                  // min px-per-meter per tier
+    const FONTS = ['700 13px', '600 12.5px', '600 11.5px', '500 11px', '500 10.5px'];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const boxes = [];
+    for (const L of mapLocs) {
+      if (mapView.ppm < TH[L.tier] || L.tier > 4) continue;
+      const [sx, sy] = mapToScreen(L.x, L.z);
+      if (sx < -90 || sy < -20 || sx > w + 90 || sy > h + 20) continue;
+      const label = L.tier === 0 ? L.name.toUpperCase() : L.name;
+      ctx.font = FONTS[L.tier] + ' system-ui, sans-serif';
+      const tw = ctx.measureText(label).width;
+      const bx = sx - tw / 2 - 3, by = sy - 9, bw = tw + 6, bh = 18;
+      let clash = false;
+      for (const b of boxes) {
+        if (bx < b[0] + b[2] && bx + bw > b[0] && by < b[1] + b[3] && by + bh > b[1]) { clash = true; break; }
+      }
+      if (clash) continue;
+      boxes.push([bx, by, bw, bh]);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255,255,255,0.82)';        // halo: readable on imagery + sea
+      ctx.strokeText(label, sx, sy);
+      ctx.fillStyle = 'rgba(24,32,42,0.95)';
+      ctx.fillText(label, sx, sy);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- grid (spacing rescales with zoom) ----------
+  function drawMapGrid(ctx, w, h) {
+    const mv = mapView;
+    const steps = [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10];
+    let step = steps[0];
+    for (const s of steps) if (s * mv.ppm >= 56) step = s;  // smallest spacing ≥ 56px
+    const major = step * 5;
+    const wx0 = mv.cx - w / 2 / mv.ppm, wx1 = mv.cx + w / 2 / mv.ppm;
+    const wzB = mv.cz - h / 2 / mv.ppm, wzT = mv.cz + h / 2 / mv.ppm;
+    const fmtC = (v) => (v >= 1000 && v % 1000 === 0) ? (v / 1000) + 'k' : String(v);
+    ctx.lineWidth = 1;
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textBaseline = 'middle';
+    const chip = (x, y, txt, alignRight) => {
+      const tw = ctx.measureText(txt).width;
+      const bx = alignRight ? x - tw - 8 : x - tw / 2 - 4;
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.beginPath();
+      ctx.roundRect(bx, y - 8, tw + 8, 16, 4);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(24,34,46,0.95)';
+      ctx.fillText(txt, bx + 4, y + 0.5);
+    };
+    for (let gx = Math.ceil(Math.max(0, wx0) / step) * step; gx <= Math.min(mapWs, wx1); gx += step) {
+      const isMaj = gx % major === 0;
+      const sx = Math.round(mapToScreen(gx, 0)[0]) + 0.5;
+      ctx.strokeStyle = isMaj ? 'rgba(20,32,44,0.32)' : 'rgba(20,32,44,0.14)';
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+      if (isMaj) chip(sx, h - 12, fmtC(gx));
+    }
+    for (let gz = Math.ceil(Math.max(0, wzB) / step) * step; gz <= Math.min(mapWs, wzT); gz += step) {
+      const isMaj = gz % major === 0;
+      const sy = Math.round(mapToScreen(0, gz)[1]) + 0.5;
+      ctx.strokeStyle = isMaj ? 'rgba(20,32,44,0.32)' : 'rgba(20,32,44,0.14)';
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+      if (isMaj) chip(12, sy, fmtC(gz));
+    }
+  }
+
+  // ---------- bookmark markers ----------
+  function mapColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name) => cs.getPropertyValue(name).trim();
+    return { mok: v('--map-ok'), mwarn: v('--map-warn'), mbad: v('--map-bad'), mnull: v('--faint'), ring: v('--accent'), edge: v('--card') };
+  }
+  function drawMapMarkers(ctx) {
+    if (!mapPts.length) return;
+    const { w, h } = mapVp();
+    const C = mapColors();
+    mapPts.forEach((p, i) => {
+      const [sx, sy] = mapToScreen(p.x, p.z);
+      if (sx < -20 || sy < -20 || sx > w + 20 || sy > h + 20) return;
+      const band = mapBand(p);
+      const r = (i === mapSelPt || i === mapHover) ? 9 : 7;
+      ctx.fillStyle = C[band];
+      ctx.strokeStyle = C.edge;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (band === 'mbad') ctx.roundRect(sx - r, sy - r, r * 2, r * 2, 2);   // serious = square
+      else ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (i === mapSelPt) {
+        ctx.strokeStyle = C.ring;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    });
+  }
+  function mapHitTest(sx, sy) {
+    let best = -1, bd = 18 * 18;                         // 18px pickup radius > 7px mark
+    mapPts.forEach((p, i) => {
+      const [px, py] = mapToScreen(p.x, p.z);
+      const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+      if (d2 < bd) { bd = d2; best = i; }
+    });
+    return best;
+  }
+
+  // ---------- crosshair + readout ----------
+  function drawMapCrosshair(ctx, w, h) {
+    if (!mapCursor) return;
+    const [sx, sy] = mapToScreen(mapCursor.x, mapCursor.z);
+    ctx.strokeStyle = 'rgba(20,32,44,0.42)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(sx) + 0.5, 0); ctx.lineTo(Math.round(sx) + 0.5, h);
+    ctx.moveTo(0, Math.round(sy) + 0.5); ctx.lineTo(w, Math.round(sy) + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ---------- live player overlay (anonymized {x,z}, polled on the Map tab) ----------
+  function drawMapPlayers(ctx) {
+    if (!mapPlayers.length || !mapView) return;
+    const fill = (getComputedStyle(document.documentElement).getPropertyValue('--info') || '#2f6fd0').trim();
+    for (const p of mapPlayers) {
+      const [sx, sy] = mapToScreen(p.x, p.z);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';   // white ring reads on any terrain, either theme
+      ctx.stroke();
+    }
+  }
+  async function loadPlayers() {
+    const cred = loadCred();
+    if (!cred) return;
+    try {
+      const r = await apiPost('/dayz/positions', cred);
+      mapPlayers = Array.isArray(r.players) ? r.players : [];
+      mapPlayersAt = r.at || null;
+      requestMapDraw();
+      updateMapBar();
+    } catch (err) {
+      if (handle(err)) return;   // 401 -> signed out (stops the poll via showLogin)
+      /* transient error: keep the last-known dots rather than blanking the map */
+    }
+  }
+  // ---------- AI bandit overlay (recent activity from the AIB Unleashed log) ----------
+  // Approximate on purpose: these are SPAWN coords (bandits patrol away) + recent KILL spots,
+  // not live tracking. Spawns = red diamonds, kills = faded rings. The -serverMod route is the
+  // precise-live upgrade; this is the no-mod activity view.
+  function drawMapBandits(ctx) {
+    if (!mapView) return;
+    const spawn = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
+    for (const k of mapBandits.kills) {
+      const [sx, sy] = mapToScreen(k.x, k.z);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(140,150,160,0.6)';   // faded ring — a bandit died here recently
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    for (const s of mapBandits.spawns) {
+      const [sx, sy] = mapToScreen(s.x, s.z);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(Math.PI / 4);            // a diamond (rotated square) — distinct from player circles
+      ctx.fillStyle = spawn;
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeRect(-4, -4, 8, 8);
+      ctx.restore();
+    }
+  }
+  async function loadBandits() {
+    const cred = loadCred();
+    if (!cred) return;
+    try {
+      const r = await apiPost('/dayz/bandits', cred);
+      mapBandits = { spawns: Array.isArray(r.spawns) ? r.spawns : [], kills: Array.isArray(r.kills) ? r.kills : [] };
+      mapBanditsAt = r.at || null;
+      requestMapDraw();
+      updateMapBar();
+    } catch (err) {
+      if (handle(err)) return;
+      /* transient / 404 before deploy: keep last-known, don't blank */
+    }
+  }
+  function startPlayers() { stopPlayers(); loadPlayers(); loadBandits(); mapPlayersTimer = setInterval(() => { loadPlayers(); loadBandits(); }, 30000); }
+  function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersTimer); mapPlayersTimer = null; } mapPlayers = []; mapBandits = { spawns: [], kills: [] }; }
+
+  function updateMapBar() {
+    const scale = mapView ? (1 / mapView.ppm) : 0;
+    const scaleTxt = scale >= 1 ? scale.toFixed(1) + ' m/px' : (1 / scale).toFixed(1) + ' px/m';
+    const players = mapPlayers.length
+      ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
+        + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
+      : '';
+    const bandits = mapBandits.spawns.length
+      ? '<span class="mp-bandit" title="Recent AIB activity from the log — spawn coords (approximate), not live tracking">'
+        + '<span class="mb-dot"></span>' + mapBandits.spawns.length + ' bandit spawn' + (mapBandits.spawns.length === 1 ? '' : 's')
+        + (mapBandits.kills.length ? ' · ' + mapBandits.kills.length + ' killed' : '') + '</span>'
+      : '';
+    if (!mapCursor) {
+      el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
+        (mapTiles ? '' : '<span style="color:var(--danger)">no map tiles delivered for this map — run Build-MapTiles.ps1 -Execute -Deliver + redeploy</span>');
+      return;
+    }
+    const y = mapLocalY(mapCursor.x, mapCursor.z);
+    el.mapBar.innerHTML =
+      '<span>X <b>' + mapCursor.x.toFixed(1) + '</b></span>' +
+      '<span>Y <b>' + (y === null ? '—' : y.toFixed(2)) + '</b></span>' +
+      '<span>Z <b>' + mapCursor.z.toFixed(1) + '</b></span>' +
+      '<span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
+      '<span class="meta">right-click copies X Y Z</span>';
+  }
+
+  // Right-click → copy "X Y Z". The local grid answers instantly; the API's full
+  // grid (validated ≤0.5 m) refines Y when reachable — that call is what makes
+  // the copied Y spawn-grade rather than readout-grade.
+  async function copyMapCoords(wpt) {
+    if (!wpt) return;
+    let y = mapLocalY(wpt.x, wpt.z);
+    const cred = loadCred();
+    if (cred && mapHm) {
+      try {
+        const r = await apiPost('/dayz/terrain/surface-y', cred, { map: mapShort(mapMission), x: wpt.x, z: wpt.z });
+        if (typeof r.y === 'number') y = r.y;
+      } catch { /* offline / rate-limited → local grid value stands */ }
+    }
+    const txt = wpt.x.toFixed(2) + ' ' + (y === null ? '0.00' : y.toFixed(2)) + ' ' + wpt.z.toFixed(2);
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast('Copied ' + txt, 'ok');
+    } catch {
+      toast(txt, 'err');                                 // clipboard blocked — show it instead
+    }
+  }
+
+  // Sidebar list, worst |Δ| first (that's the triage order); unresolved sink to the end.
+  function renderMapList() {
+    const order = mapPts.map((p, i) => i).sort((a, b) => {
+      const da = mapPts[a].delta, db = mapPts[b].delta;
+      if (da === undefined && db === undefined) return mapPts[a].name.localeCompare(mapPts[b].name);
+      if (da === undefined) return 1;
+      if (db === undefined) return -1;
+      return Math.abs(db) - Math.abs(da);
+    });
+    el.mapNav.innerHTML = '<div class="side-sub2">' + mapPts.length + ' spawn bookmark' + (mapPts.length === 1 ? '' : 's') + ' · worst Δ first</div>' +
+      order.map((i) => {
+        const p = mapPts[i], band = mapBand(p);
+        return '<div class="side-item mp-item' + (i === mapSelPt ? ' active' : '') + '" data-i="' + i + '" title="' + attr(p.name) + '">' +
+          '<span class="fn">' + escapeHtml(p.name) + '</span>' +
+          '<span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span></div>';
+      }).join('');
+  }
+
+  function renderMapSummary() {
+    if (!mapPts.length) {
+      el.mapSum.innerHTML = '<span class="meta">No spawn bookmarks for ' + escapeHtml(mapShort(mapMission)) +
+        ' — capture some in-game with VPP, then Sync-VPPCoordinates + deploy. The map is still browsable.</span>';
+      return;
+    }
+    const n = { mok: 0, mwarn: 0, mbad: 0, mnull: 0 };
+    let worst = null;
+    for (const p of mapPts) {
+      n[mapBand(p)]++;
+      if (p.delta !== undefined && (worst === null || Math.abs(p.delta) > Math.abs(worst))) worst = p.delta;
+    }
+    const skipped = mapData.coords.filter((e) => e.Kind === 'NonSpawn').length;
+    const chip = (band, label, count) => count ? '<span class="stat"><span class="dot ' + band + '"></span>' + label + ' <b>' + count + '</b></span>' : '';
+    el.mapSum.innerHTML =
+      '<span class="stat"><b>' + mapPts.length + '</b> spawn points</span>' +
+      chip('mok', 'Δ ≤ 0.5 m', n.mok) + chip('mwarn', '0.5–2 m', n.mwarn) + chip('mbad', '&gt; 2 m', n.mbad) + chip('mnull', 'no height', n.mnull) +
+      (worst !== null ? '<span class="stat">worst Δ <b>' + escapeHtml(fmtDelta(worst)) + '</b></span>' : '') +
+      (!mapHm ? '<span class="stat" style="color:var(--danger)">no heightmap shipped for this map — Δ unavailable</span>' : '') +
+      '<span class="stat" style="margin-left:auto">' + skipped + ' non-spawn bookmark' + (skipped === 1 ? '' : 's') + ' not shown</span>';
+  }
+
+  function renderMapDetail() {
+    const p = mapPts[mapSelPt];
+    el.mapDetail.classList.toggle('hidden', !p);
+    if (!p) return;
+    const band = mapBand(p);
+    const cats = (mapData.classes && mapData.classes.categories) || {};
+    const role = p.cat ? p.cat + ' → ' + (cats[p.cat] || '?') : 'base → holdout';
+    el.mapDetail.innerHTML =
+      '<span><span class="k2">Bookmark</span><b class="mono">' + escapeHtml(p.name) + '</b></span>' +
+      '<span><span class="k2">Role</span>' + escapeHtml(role) + (p.size ? ' · size ' + escapeHtml(p.size) : '') + '</span>' +
+      '<span><span class="k2">X / Z</span><span class="mono">' + p.x.toFixed(1) + ' / ' + p.z.toFixed(1) + '</span></span>' +
+      '<span><span class="k2">VPP Y</span><span class="mono">' + p.y.toFixed(2) + '</span></span>' +
+      '<span><span class="k2">Terrain Y</span><span class="mono">' + (p.ty === undefined ? '—' : p.ty.toFixed(2)) + '</span></span>' +
+      '<span><span class="k2">Δ</span><span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span></span>';
+  }
+
+  function selectMapPt(i, center) {
+    mapSelPt = i === mapSelPt ? -1 : i;
+    if (center && mapSelPt > -1 && mapView) {            // sidebar pick → fly to it
+      const p = mapPts[mapSelPt];
+      mapView.cx = p.x;
+      mapView.cz = p.z;
+      if (mapView.ppm < 0.35) mapView.ppm = mapClampPpm(0.5);
+      mapClampCenter();
+    }
+    renderMap();
+    const row = el.mapNav.querySelector('.mp-item.active');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+
+  function mapTipHtml(p) {
+    const cats = (mapData.classes && mapData.classes.categories) || {};
+    return '<b class="mono">' + escapeHtml(p.name) + '</b><br>' +
+      escapeHtml(p.cat ? p.cat + ' → ' + (cats[p.cat] || '?') : 'base → holdout') + '<br>' +
+      '<span class="mono">' + p.x.toFixed(0) + ' / ' + p.z.toFixed(0) + '</span> · VPP Y ' + p.y.toFixed(2) +
+      (p.ty !== undefined ? '<br>terrain Y ' + p.ty.toFixed(2) + ' · Δ ' + escapeHtml(fmtDelta(p.delta)) : '');
+  }
+  function moveMapTip(e) {
+    if (el.mapTip.style.display !== 'block') return;
+    const w = el.mapTip.offsetWidth, h = el.mapTip.offsetHeight;
+    el.mapTip.style.left = Math.min(e.clientX + 14, window.innerWidth - w - 8) + 'px';
+    el.mapTip.style.top = Math.min(e.clientY + 14, window.innerHeight - h - 8) + 'px';
+  }
+
+  // ===================== Logs tab (server log browser) =====================
+  // Backed by /dayz/logs/files + /dayz/logs/read. The pane holds ONE contiguous
+  // window [logWin.lo .. logWin.hi] of the (filtered) line stream; scrolling to
+  // the top edge extends it a page at a time, so scrollback stays cheap no
+  // matter how big the file is. Line numbers are the file's ORIGINAL numbers
+  // even when a filter is active (the API keeps them), so context never lies.
+  const LOG_PAGE = 300;
+  let logFiles = [];            // logs/files reply, newest first
+  let logCurFile = null;        // opened filename
+  let logWin = null;            // { lo, hi, total, matched } — loaded stream window
+  let logBusy = false;
+  let logFollowTimer = null;
+  let logCaseSensitive = false; // Aa toggle; we send ignoreCase unless it's on
+
+  function logHuman(bytes) {
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + 'M';
+    if (bytes >= 1024) return Math.round(bytes / 1024) + 'K';
+    return bytes + 'B';
+  }
+  function renderLogsNav() {
+    if (!logFiles.length) { el.logsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">No log files on the box.</span>'; return; }
+    el.logsNav.innerHTML = '<div class="side-sub2">' + logFiles.length + ' log file' + (logFiles.length === 1 ? '' : 's') + ' · newest first</div>' +
+      logFiles.map((f) => {
+        const when = (f.modified || '').replace('T', ' ').replace(/Z$/, ' UTC');
+        return '<div class="side-item lg-item' + (f.name === logCurFile ? ' active' : '') + '" data-name="' + attr(f.name) + '" title="' + attr(f.name + ' — ' + when) + '">' +
+          '<span class="fn">' + escapeHtml(f.name) + '</span>' +
+          '<span class="mp-badge ' + (f.type === 'adm' ? 'mwarn' : 'mnull') + '">' + escapeHtml(f.type) + ' ' + logHuman(f.sizeBytes || 0) + '</span></div>';
+      }).join('');
+  }
+
+  async function loadLogsTab(force) {
+    const cred = loadCred();
+    if (!cred) return;
+    startLogFollow();
+    if (logFiles.length && !force) return;
+    try {
+      const r = await apiPost('/dayz/logs/files', cred, {});
+      logFiles = r.files || [];
+    } catch (e) { if (!handle(e)) toast('Log list failed: ' + e.message, 'err'); return; }
+    renderLogsNav();
+    // First visit: open the newest RPT automatically.
+    if (!logCurFile) {
+      const first = logFiles.find((f) => f.type === 'rpt') || logFiles[0];
+      if (first) openLog(first.name);
+    }
+  }
+
+  function logParams(extra) {
+    const p = { file: logCurFile, limit: LOG_PAGE, ...extra };
+    const f = el.logFilter.value.trim();
+    if (f) { p.filter = f; if (!logCaseSensitive) p.ignoreCase = true; }
+    return p;
+  }
+  async function logFetch(extra) {
+    const cred = loadCred();
+    if (!cred) return null;
+    return apiPost('/dayz/logs/read', cred, logParams(extra));
+  }
+
+  // One rendered line: severity tint + dimmed leading timestamp + <mark>ed filter
+  // hits. Highlighting finds match ranges on the RAW text, then escapes each
+  // segment separately, so entities can never split a match or leak markup.
+  function logLineHtml(n, text) {
+    let cls = '';
+    if (/\b(error|fault|fatal|crash)/i.test(text)) cls = ' lerr';
+    else if (/\bwarn/i.test(text)) cls = ' lwarn';
+    let body = null;
+    const f = el.logFilter.value.trim();
+    if (f) {
+      let re = null;
+      try { re = new RegExp(f, logCaseSensitive ? 'g' : 'gi'); } catch { /* keep plain */ }
+      if (re) {
+        let out = '', last = 0, ok = true;
+        for (const m of text.matchAll(re)) {
+          if (m[0] === '') { ok = false; break; }        // zero-width match — render plain
+          out += escapeHtml(text.slice(last, m.index)) + '<mark>' + escapeHtml(m[0]) + '</mark>';
+          last = m.index + m[0].length;
+        }
+        if (ok) body = out + escapeHtml(text.slice(last));
+      }
+    }
+    if (body === null) body = escapeHtml(text);
+    body = body.replace(/^((?:\s?\d{1,2}:\d\d:\d\d(?:\.\d+)?)(?:\s\|)?\s?)/, '<span class="ts">$1</span>');
+    return '<div class="ll' + cls + '"><span class="ln">' + n + '</span><span class="lt">' + body + '</span></div>';
+  }
+  const logLinesHtml = (lines) => lines.map((l) => logLineHtml(l.n, l.text)).join('');
+
+  function logStatusText() {
+    if (!logWin) { el.logStatus.textContent = '—'; return; }
+    const f = el.logFilter.value.trim();
+    el.logStatus.textContent =
+      (f ? logWin.matched.toLocaleString() + ' of ' + logWin.total.toLocaleString() + ' lines match'
+         : logWin.total.toLocaleString() + ' lines') +
+      (logWin.hi >= logWin.lo ? ' · showing ' + logWin.lo.toLocaleString() + '–' + logWin.hi.toLocaleString() : '');
+  }
+
+  // Replace the whole window. offset 0/undefined = the tail; otherwise jump there
+  // (a line number, or the Nth match while a filter is active).
+  async function logJump(offset) {
+    if (logBusy || !logCurFile) return;
+    logBusy = true;
+    try {
+      const r = await logFetch({ offset: offset || 0 });
+      if (!r) return;
+      el.logFilter.classList.remove('badre');
+      logWin = { lo: r.offset, hi: r.offset + r.count - 1, total: r.totalLines, matched: r.matchedLines };
+      el.logLines.innerHTML = r.count ? logLinesHtml(r.lines)
+        : '<div class="log-sentinel">no ' + (el.logFilter.value.trim() ? 'matching ' : '') + 'lines</div>';
+      el.logEmpty.classList.add('hidden');
+      el.logLines.classList.remove('hidden');
+      logStatusText();
+      // Tail pins to the bottom; a jump shows the target at the top.
+      el.logPane.scrollTop = offset ? 0 : el.logPane.scrollHeight;
+    } catch (e) {
+      if (!handle(e)) toast('Log read failed: ' + e.message, 'err');
+      el.logFilter.classList.toggle('badre', /invalid "filter"/.test(e.message || ''));
+    } finally { logBusy = false; }
+  }
+
+  async function logExtend(dir) {  // dir -1 = older (prepend), +1 = newer (append)
+    if (logBusy || !logWin || !logCurFile) return;
+    const lo = dir < 0 ? Math.max(1, logWin.lo - LOG_PAGE) : logWin.hi + 1;
+    const limit = dir < 0 ? logWin.lo - lo : LOG_PAGE;
+    if (dir < 0 && limit <= 0) return;
+    logBusy = true;
+    try {
+      const r = await logFetch({ offset: lo, limit });
+      if (!r) return;
+      logWin.total = r.totalLines; logWin.matched = r.matchedLines;
+      if (!r.count) { logStatusText(); return; }
+      if (dir < 0) {
+        const before = el.logPane.scrollHeight;
+        el.logLines.insertAdjacentHTML('afterbegin', logLinesHtml(r.lines));
+        logWin.lo = r.offset;
+        el.logPane.scrollTop += el.logPane.scrollHeight - before;   // keep the view anchored
+      } else {
+        const pinned = el.logPane.scrollTop + el.logPane.clientHeight >= el.logPane.scrollHeight - 40;
+        el.logLines.insertAdjacentHTML('beforeend', logLinesHtml(r.lines));
+        logWin.hi = r.offset + r.count - 1;
+        if (pinned) el.logPane.scrollTop = el.logPane.scrollHeight;
+      }
+      logStatusText();
+    } catch (e) { if (!handle(e)) toast('Log read failed: ' + e.message, 'err'); }
+    finally { logBusy = false; }
+  }
+
+  function openLog(name) {
+    logCurFile = name;
+    logWin = null;
+    renderLogsNav();
+    logJump(0);
+  }
+
+  // Follow: while the Logs tab is visible and the box is ticked, poll past the
+  // end of the window every few seconds. The logs are append-only, so line
+  // numbers stay stable and this is just "fetch offset hi+1" — a silent no-op
+  // when nothing new arrived.
+  function startLogFollow() {
+    if (logFollowTimer) return;
+    logFollowTimer = setInterval(() => {
+      if (el.logstab.classList.contains('hidden') || !el.logFollow.checked || !logWin) return;
+      logExtend(1);
+    }, 5000);
+  }
+  function stopLogFollow() {
+    clearInterval(logFollowTimer);
+    logFollowTimer = null;
+  }
+
+  // ===================== API page (vendored Swagger UI) =====================
   let swaggerReady = false;
   function initSwagger() {
     if (swaggerReady) return;
     swaggerReady = true;
     const css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = 'vendor/swagger-ui/swagger-ui.css';
+    css.rel = 'stylesheet'; css.href = 'vendor/swagger-ui/swagger-ui.css';
     document.head.appendChild(css);
     const s = document.createElement('script');
     s.src = 'vendor/swagger-ui/swagger-ui-bundle.js';
     s.onload = () => {
       window.SwaggerUIBundle({
-        url: 'openapi.yaml',
-        domNode: el.swagger,
-        presets: [window.SwaggerUIBundle.presets.apis],
-        layout: 'BaseLayout',
-        deepLinking: false,
-        tryItOutEnabled: true,
+        url: '/api/openapi.json', domNode: el.swagger,
+        presets: [window.SwaggerUIBundle.presets.apis], layout: 'BaseLayout',
+        deepLinking: false, tryItOutEnabled: true,
         requestInterceptor: async (req) => {
-          // Leave Swagger's OWN spec fetch alone — it loads openapi.yaml from this
-          // origin's webroot (static). Only the API calls below get proxied + signed.
           if (req.loadSpec) return req;
-          // Route through this origin's /api proxy regardless of the spec's servers.
           try {
             const u = new URL(req.url, location.origin);
-            req.url = location.origin + '/api' + u.pathname + u.search;
-          } catch { /* already same-origin relative */ }
-          // Sign the EXACT bytes Swagger will send.
+            let p = u.pathname;
+            if (p === '/api' || p.startsWith('/api/')) p = p.slice(4) || '/';
+            req.url = location.origin + '/api' + p + u.search;
+          } catch { /* already relative */ }
           const cred = loadCred();
           if (cred) {
-            const body = req.body == null ? ''
-              : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+            const body = req.body == null ? '' : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
             req.headers['X-Key-Id'] = cred.id;
             req.headers['X-Signature-256'] = await sign(cred.secret, enc.encode(body));
           }
@@ -402,136 +2146,13 @@
         },
       });
     };
-    s.onerror = () => { el.swagger.innerHTML = '<p class="meta">Could not load the API explorer bundle.</p>'; };
+    s.onerror = () => { el.swagger.innerHTML = '<p class="meta" style="padding:22px">Could not load the API explorer bundle.</p>'; };
     document.body.appendChild(s);
   }
 
-  // Bucket the configs by category and fill the CATEGORY dropdown. The files
-  // themselves go into a second dropdown once a category is picked, so neither
-  // list is ever long — even for a folder with hundreds of files.
-  function populate(items) {
-    grouped = new Map();
-    for (const it of items) {
-      const c = (typeof it === 'string') ? { group: 'General', name: it, label: it } : it;
-      if (!c || !c.name) continue;
-      const g = c.group || 'General';
-      if (!grouped.has(g)) grouped.set(g, []);
-      grouped.get(g).push(c);
-    }
-    el.groups.innerHTML = '';
-    resetFiles();
-    if (!grouped.size) { el.groups.innerHTML = '<span class="meta">No configs exposed</span>'; return; }
-    let i = 0;
-    for (const [g, list] of grouped) {
-      const color = PALETTE[i++ % PALETTE.length];
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip';
-      chip.style.setProperty('--c', color);
-      chip.style.setProperty('--cbg', hexToRgba(color, 0.16));
-      const dot = document.createElement('span');
-      dot.className = 'dot';
-      chip.appendChild(dot);
-      chip.appendChild(document.createTextNode(`${g} (${list.length})`));
-      chip.onclick = () => selectGroup(g, chip);
-      el.groups.appendChild(chip);
-    }
-  }
-
-  function selectGroup(g, chip) {
-    for (const c of el.groups.children) c.classList.toggle('active', c === chip);
-    fillFiles(g);
-  }
-
-  function resetFiles() {
-    el.file.innerHTML = '<option value="">—</option>';
-    el.file.disabled = true;
-    el.pane.classList.add('hidden');
-  }
-
-  // A category chip was clicked -> fill the FILE dropdown with just its files, grouped
-  // by SUBFOLDER. A config's label is its path within the category's folder (e.g.
-  // "db/globals.xml"), so the part before the last "/" is its subfolder. Those become
-  // <optgroup> headers and each option shows only the filename — the folder structure
-  // stands out as headers instead of being buried in inline path text.
-  function fillFiles(g) {
-    const list = grouped.get(g) || [];
-    el.file.innerHTML = '';
-    el.pane.classList.add('hidden');
-    const f0 = document.createElement('option');
-    f0.value = '';
-    f0.textContent = list.length ? 'Select a config…' : '—';
-    el.file.appendChild(f0);
-
-    const bySub = new Map();            // subfolder ('' = top level) -> [{ name, file }]
-    for (const c of list) {
-      const label = c.label || c.name;
-      const slash = label.lastIndexOf('/');
-      const sub = slash >= 0 ? label.slice(0, slash) : '';
-      const file = slash >= 0 ? label.slice(slash + 1) : label;
-      if (!bySub.has(sub)) bySub.set(sub, []);
-      bySub.get(sub).push({ name: c.name, file });
-    }
-
-    const addOption = (parent, item) => {
-      const o = document.createElement('option');
-      o.value = item.name;
-      o.textContent = item.file;
-      parent.appendChild(o);
-    };
-
-    // Top-level files sit directly under the picker; each subfolder is a labelled
-    // optgroup (sorted), so a category with nested folders reads as clear sections.
-    for (const item of bySub.get('') || []) addOption(el.file, item);
-    for (const sub of [...bySub.keys()].filter(Boolean).sort()) {
-      const og = document.createElement('optgroup');
-      og.label = sub;
-      for (const item of bySub.get(sub)) addOption(og, item);
-      el.file.appendChild(og);
-    }
-    el.file.disabled = list.length === 0;
-  }
-
-  async function loadList(cred) {
-    el.viewerMsg.className = 'msg';
-    el.viewerMsg.textContent = 'Loading configs…';
-    try {
-      const { configs } = await apiPost('/dayz/configs', cred);
-      populate(configs || []);
-      el.viewerMsg.textContent = '';
-    } catch (err) {
-      if (handle(err)) return;
-      el.viewerMsg.className = 'msg err';
-      el.viewerMsg.textContent = 'Could not load list: ' + err.message;
-    }
-  }
-
-  async function loadConfig(cred, name) {
-    el.pane.classList.add('hidden');
-    el.viewerMsg.className = 'msg';
-    el.viewerMsg.textContent = 'Loading ' + name + '…';
-    try {
-      const r = await apiPost('/dayz/config?name=' + encodeURIComponent(name), cred);
-      el.viewerMsg.textContent = '';
-      currentRaw = r.content ?? '';
-      const lang = detectLang(r.path || name);
-      el.meta.textContent = r.path || name;
-      el.lang.textContent = lang;
-      el.content.innerHTML = highlight(currentRaw, lang);   // escaped inside highlight()
-      el.pane.classList.remove('hidden');
-    } catch (err) {
-      if (handle(err)) return;
-      el.viewerMsg.className = 'msg err';
-      el.viewerMsg.textContent = 'Could not load ' + name + ': ' + err.message;
-    }
-  }
-
-  // --- wire up -------------------------------------------------------------
-  function start(cred) {
-    showViewer();
-    el.file.onchange = () => { if (el.file.value) loadConfig(cred, el.file.value); };
-    el.refresh.onclick = () => loadList(cred);
-    loadList(cred);
+  // ===================== wire up =====================
+  function start() {
+    showViewer();               // showTab('files') triggers the initial loadFiles
   }
 
   el.loginForm.addEventListener('submit', async (e) => {
@@ -544,43 +2165,160 @@
     el.loginMsg.className = 'msg';
     el.loginMsg.textContent = 'Checking…';
     try {
-      await apiPost('/dayz/configs', cred);   // probe: valid creds?
+      await apiPost('/dayz/configs/list', cred);
       saveCred(cred);
-      start(cred);
+      start();
     } catch (err) {
       if (err.status === 401) showLogin('Those credentials were rejected.');
       else { el.loginMsg.className = 'msg err'; el.loginMsg.textContent = 'Error: ' + err.message; }
-    } finally {
-      el.connect.disabled = false;
-    }
+    } finally { el.connect.disabled = false; }
   });
 
   el.signout.addEventListener('click', () => { clearCred(); showLogin('Signed out.'); });
-  // Tab buttons just set the hash; hashchange (below) does the actual switch, so a
-  // click and a pasted /…#api link take the exact same path.
-  el.tabConfigs.addEventListener('click', () => { location.hash = 'configs'; });
+  el.themeToggle.addEventListener('click', toggleTheme);
+  el.sbArm.addEventListener('change', armRestart);
+  el.sbRestart.addEventListener('click', restartServer);
+  el.tabFiles.addEventListener('click', () => { location.hash = 'files'; });
   el.tabApi.addEventListener('click', () => { location.hash = 'api'; });
-  // Follow the hash on back/forward or a hand-edited URL — but only once authed, since
-  // the tabs (and the views they toggle) don't exist on the login card.
-  window.addEventListener('hashchange', () => {
-    if (!el.tabs.classList.contains('hidden')) showTab(tabFromHash());
+  el.tabMap.addEventListener('click', () => { location.hash = 'map'; });
+  el.tabLogs.addEventListener('click', () => { location.hash = 'logs'; });
+
+  // Logs tab: sidebar picks the file; the pane's top edge pages back; filter and
+  // goto re-anchor the window; the line-number gutter copies the line.
+  el.logsNav.addEventListener('click', (e) => { const r = e.target.closest('.lg-item'); if (r && r.dataset.name !== logCurFile) openLog(r.dataset.name); });
+  el.logPane.addEventListener('scroll', () => {
+    if (!logWin) return;
+    if (el.logPane.scrollTop < 120) logExtend(-1);
+    else if (el.logPane.scrollTop + el.logPane.clientHeight >= el.logPane.scrollHeight - 120 && logWin.hi < logWin.matched) logExtend(1);
+  });
+  el.logFilter.addEventListener('keydown', (e) => { if (e.key === 'Enter') logJump(0); });
+  el.logCase.addEventListener('click', () => {
+    logCaseSensitive = !logCaseSensitive;
+    el.logCase.classList.toggle('on', logCaseSensitive);
+    if (el.logFilter.value.trim()) logJump(0);
+  });
+  el.logGoto.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const n = parseInt(el.logGoto.value, 10);
+    if (n >= 1) logJump(n);
+  });
+  el.logRefresh.addEventListener('click', () => { loadLogsTab(true); if (logCurFile) logJump(0); });
+  el.logLines.addEventListener('click', (e) => {
+    const ln = e.target.closest('.ln');
+    if (!ln) return;
+    const text = ln.textContent + ': ' + ln.parentElement.querySelector('.lt').textContent;
+    navigator.clipboard.writeText(text).then(() => toast('Line copied', 'ok'), () => toast(text));
   });
 
-  // Copy the RAW config text (not the highlighted markup) to the clipboard.
-  let copyTimer;
-  el.copy.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(currentRaw); el.copy.textContent = 'Copied'; }
-    catch { el.copy.textContent = 'Copy failed'; }
-    clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => { el.copy.textContent = 'Copy'; }, 1400);
+  // Map tab: selector, refresh, and the canvas camera (drag pan, wheel/pinch
+  // zoom, hover tooltip, click select, right-click copy).
+  el.mapSel.addEventListener('change', () => setMapMission(el.mapSel.value));
+  el.mapRefresh.addEventListener('click', () => { mapData = null; loadMapTab(true); });
+  (() => {
+    const c = el.mapCanvas;
+    const touches = new Map();                            // active pointers (pinch = 2)
+    let drag = null;                                      // { id, sx, sy, cx0, cz0, moved }
+    let pinch = null;                                     // { d0, ppm0 }
+    const dist = () => {
+      const [a, b] = [...touches.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    };
+    c.addEventListener('pointerdown', (e) => {
+      if (!mapView || e.button === 2) return;
+      c.setPointerCapture(e.pointerId);
+      touches.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (touches.size === 2) { drag = null; pinch = { d0: dist(), ppm0: mapView.ppm }; }
+      else if (touches.size === 1) drag = { id: e.pointerId, sx: e.offsetX, sy: e.offsetY, cx0: mapView.cx, cz0: mapView.cz, moved: false };
+    });
+    c.addEventListener('pointermove', (e) => {
+      if (!mapView) return;
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (pinch && touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        mapView.ppm = mapClampPpm(pinch.ppm0 * (dist() / pinch.d0));
+        mapClampCenter();
+        mapCursor = mapToWorld((a.x + b.x) / 2, (a.y + b.y) / 2);
+        requestMapDraw();
+        return;
+      }
+      if (drag && e.pointerId === drag.id) {
+        const dx = e.offsetX - drag.sx, dy = e.offsetY - drag.sy;
+        if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+        if (drag.moved) {
+          mapView.cx = drag.cx0 - dx / mapView.ppm;
+          mapView.cz = drag.cz0 + dy / mapView.ppm;
+          mapClampCenter();
+        }
+      }
+      mapCursor = mapToWorld(e.offsetX, e.offsetY);
+      const hov = (drag && drag.moved) ? -1 : mapHitTest(e.offsetX, e.offsetY);
+      if (hov !== mapHover) {
+        mapHover = hov;
+        c.style.cursor = hov > -1 ? 'pointer' : 'crosshair';
+        if (hov > -1) { el.mapTip.innerHTML = mapTipHtml(mapPts[hov]); el.mapTip.style.display = 'block'; }
+        else el.mapTip.style.display = 'none';
+      }
+      if (mapHover > -1) moveMapTip(e);
+      requestMapDraw();
+    });
+    const endPointer = (e) => {
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinch = null;
+      if (drag && e.pointerId === drag.id) {
+        if (!drag.moved && e.type === 'pointerup') {
+          const i = mapHitTest(e.offsetX, e.offsetY);
+          if (i > -1) selectMapPt(i);
+        }
+        drag = null;
+      }
+    };
+    c.addEventListener('pointerup', endPointer);
+    c.addEventListener('pointercancel', endPointer);
+    c.addEventListener('pointerleave', () => {
+      mapCursor = null;
+      if (mapHover > -1) { mapHover = -1; el.mapTip.style.display = 'none'; c.style.cursor = 'crosshair'; }
+      requestMapDraw();
+    });
+    c.addEventListener('wheel', (e) => {
+      if (!mapView) return;
+      e.preventDefault();
+      mapZoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0016));
+    }, { passive: false });
+    c.addEventListener('dblclick', (e) => { if (mapView) mapZoomAt(e.offsetX, e.offsetY, 2); });
+    c.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (mapView) copyMapCoords(mapToWorld(e.offsetX, e.offsetY));
+    });
+    window.addEventListener('resize', () => { if (!el.maptab.classList.contains('hidden')) requestMapDraw(); });
+    // Follow the OS while no explicit choice is stored; a pinned theme ignores OS changes.
+    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      try { if (!localStorage.getItem('cfgview-theme')) { document.documentElement.dataset.theme = e.matches ? 'dark' : 'light'; updateThemeToggle(); } } catch { /* ignore */ }
+      requestMapDraw();
+    });
+  })();
+  el.mapNav.addEventListener('click', (e) => { const r = e.target.closest('.mp-item'); if (r) selectMapPt(+r.dataset.i, true); });
+  el.mapLayerSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-layer]'); if (b) setMapLayer(b.dataset.layer); });
+  window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) showTab(tabFromHash()); });
+  // Unsaved-changes guard: reloading or closing the tab drops in-memory override edits.
+  window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+  el.filesNav.addEventListener('click', (e) => {
+    const it = e.target.closest('.side-item'); if (!it || !it.dataset.key) return;
+    if (it.dataset.key !== selKey) selectRow(it.dataset.key);
+  });
+  el.ownSave.addEventListener('click', () => saveOwnFile());
+  el.ovrVersions.addEventListener('click', (e) => {
+    const b = e.target.closest('button.ovr-roll'); if (!b) return;
+    rollbackTo(b.dataset.ver);
   });
 
-  // Boot: reuse a stored credential if we have one, else ask.
+  // Boot
+  updateThemeToggle();   // match the toggle icon to the theme the head script resolved
   if (!window.crypto || !crypto.subtle) {
     showLogin('This browser has no Web Crypto (needs HTTPS) — cannot sign requests.');
   } else {
     const cred = loadCred();
-    if (cred) start(cred); else showLogin();
+    if (cred) start(); else showLogin();
   }
 })();
 </script>
