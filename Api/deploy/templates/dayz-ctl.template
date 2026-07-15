@@ -14,6 +14,7 @@ CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist 
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (deploy.config.json Configs entries flagged "writable")
+NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 
 die() { echo "dayz-ctl: $*" >&2; exit 1; }
 
@@ -240,20 +241,30 @@ case "$verb" in
     ;;
 
   log-read)
-    # log-read <name|rpt|adm> <start> <count> [pattern] [ci] — read a LINE RANGE of
-    # one server log, optionally only the lines matching an ERE pattern (grep -E).
-    # <name> is either the literal rpt/adm (= the newest log of that type, same rule
-    # as `log`) or a bare *.RPT/*.ADM filename that must already exist under the
+    # log-read <name|rpt|adm> <start> <count> [pattern] [ci] [raw] — read a LINE
+    # RANGE of one server log, optionally only the lines matching an ERE pattern
+    # (grep -E). <name> is either the literal rpt/adm (= the newest log of that
+    # type) or a bare *.RPT/*.ADM filename that must already exist under the
     # fixed profiles dir — the caller never forms a path, and any name with a slash,
     # dots-tricks or a foreign extension dies before touching the filesystem.
-    # <start> is 1-based within the (filtered) line stream; 0 = "the last <count>
-    # lines" (tail mode). <count> is hard-capped at 500, pattern at 256 chars,
-    # 'ci' as arg 5 makes the match case-insensitive. Output contract:
+    #
+    # NOISE PRE-FILTER: lines matching NOISE_RE (engine spam like Sakhal's
+    # "Unknown object class 'pond'") are hidden by default — dropped BEFORE
+    # counting and paging, so offsets index the visible stream and returned lines
+    # keep their original numbers. 'raw' as arg 7 disables it. NOISE_RE is
+    # prefix-safe by contract (no ^, can't match a "1234:" prefix — enforced at
+    # render time), so applying it to numbered streams is exact.
+    #
+    # <start> is 1-based within the visible/matched line stream; 0 = "the last
+    # <count> lines" (tail mode). <count> is hard-capped at 500, pattern at 256
+    # chars, 'ci' as arg 6 makes the match case-insensitive. Output contract:
     #   line 1: the file's full path
-    #   line 2: total<TAB>matched<TAB>start   (matched = total when unfiltered)
+    #   line 2: total<TAB>matched<TAB>start<TAB>hidden
+    #           (total = raw file lines; matched = pageable lines after noise +
+    #            pattern; hidden = lines the noise filter removed)
     #   rest:   <original-line-number>:<line text>
     # Exit 2 = no such log, 3 = bad pattern.
-    start="${3:-0}"; count="${4:-100}"; pattern="${5:-}"; ci="${6:-}"
+    start="${3:-0}"; count="${4:-100}"; pattern="${5:-}"; ci="${6:-}"; rawmode="${7:-}"
     case "$start" in ''|*[!0-9]*) die "log start must be a number (0 = tail)" ;; esac
     case "$count" in ''|*[!0-9]*|0) die "log count must be a number >= 1" ;; esac
     [ "$count" -le 500 ] || count=500
@@ -272,24 +283,39 @@ case "$verb" in
       *) die "log name must end in .RPT or .ADM (or be rpt/adm for the newest)" ;;
     esac
     ciflag=''; [ "$ci" != ci ] || ciflag='-i'
+    noise="$NOISE_RE"
+    [ "$rawmode" != raw ] || noise=''
     total="$(wc -l < "$file")"
+    hidden=0
+    if [ -n "$noise" ]; then
+      set +e; hidden="$(grep -cE -e "$noise" "$file")"; set -e
+      hidden="${hidden:-0}"
+    fi
     if [ -n "$pattern" ]; then
       # Probe the regex once against /dev/null: grep exit 2 = invalid pattern.
       set +e; grep -nE $ciflag -e "$pattern" /dev/null >/dev/null 2>&1; rc=$?; set -e
       [ "$rc" -le 1 ] || { echo "dayz-ctl: bad pattern (grep -E syntax)" >&2; exit 3; }
-      set +e; matched="$(grep -cE $ciflag -e "$pattern" "$file")"; set -e
+      if [ -n "$noise" ]; then
+        set +e; matched="$({ grep -E $ciflag -e "$pattern" "$file" || true; } | grep -cvE -e "$noise")"; set -e
+      else
+        set +e; matched="$(grep -cE $ciflag -e "$pattern" "$file")"; set -e
+      fi
       matched="${matched:-0}"
     else
-      matched="$total"
+      matched=$(( total - hidden ))
     fi
     [ "$start" -ge 1 ] || start=$(( matched - count + 1 ))
     [ "$start" -ge 1 ] || start=1
     end=$(( start + count - 1 ))
     printf '%s\n' "$file"
-    printf '%s\t%s\t%s\n' "$total" "$matched" "$start"
-    if [ -n "$pattern" ]; then
-      # grep may exit 1 (no match) or 141 (SIGPIPE from sed's early quit) — both fine.
+    printf '%s\t%s\t%s\t%s\n' "$total" "$matched" "$start" "$hidden"
+    # grep may exit 1 (no match) or 141 (SIGPIPE from sed's early quit) — both fine.
+    if [ -n "$pattern" ] && [ -n "$noise" ]; then
+      { grep -nE $ciflag -e "$pattern" "$file" || true; } | { grep -vE -e "$noise" || true; } | sed -n "${start},${end}p;${end}q"
+    elif [ -n "$pattern" ]; then
       { grep -nE $ciflag -e "$pattern" "$file" || true; } | sed -n "${start},${end}p;${end}q"
+    elif [ -n "$noise" ]; then
+      { grep -nvE -e "$noise" "$file" || true; } | sed -n "${start},${end}p;${end}q"
     else
       awk -v s="$start" -v e="$end" 'NR>e{exit} NR>=s{print NR":"$0}' "$file"
     fi

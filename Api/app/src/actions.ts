@@ -303,7 +303,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'logs/read': {
       destructive: false,
       readOnly: true,
-      describe: 'read a slice of one server log: range, filter, scroll. Params: file (a name from "logs/files") or type rpt|adm (newest, default rpt); offset = 1-based line to start at (omit for the tail); limit 1-500 (default 100); filter = grep -E regex matched per line; ignoreCase. With a filter, offset/limit page through the MATCHED lines; every returned line keeps its original line number (n), and nextOffset/prevOffset are ready-made cursors for scrolling.',
+      describe: 'read a slice of one server log: range, filter, scroll. Params: file (a name from "logs/files") or type rpt|adm (newest, default rpt); offset = 1-based line to start at (omit for the tail); limit 1-500 (default 100); filter = grep -E regex matched per line; ignoreCase; raw = include the known-noise lines the box-side pre-filter hides by default (engine spam like Sakhal\'s "Unknown object class" — pattern set in deploy.config.json Dayz.LogNoiseFilter; noiseHidden reports how many were dropped). With a filter, offset/limit page through the MATCHED lines; every returned line keeps its original line number (n), and nextOffset/prevOffset are ready-made cursors for scrolling.',
       schema: {
         query: { type: 'object', properties: {
           file: { type: 'string', description: 'exact log filename from the "logs/files" action (e.g. DayZServer_x64_2026_07_14.RPT)' },
@@ -312,10 +312,12 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           limit: { type: 'integer', minimum: 1, maximum: 500, description: 'lines per page (default 100, max 500)' },
           filter: { type: 'string', maxLength: 256, description: 'ERE regex (grep -E syntax) — only matching lines come back' },
           ignoreCase: { type: 'boolean', description: 'case-insensitive filter matching' },
+          raw: { type: 'boolean', description: 'disable the box-side noise pre-filter (deploy.config.json Dayz.LogNoiseFilter) and include the hidden engine-spam lines' },
         } },
         response: { type: 'object', properties: {
           file: { type: 'string' }, path: { type: 'string' },
           totalLines: { type: 'integer' }, matchedLines: { type: 'integer' },
+          noiseHidden: { type: 'integer', description: 'lines hidden by the noise pre-filter (0 when raw is set or no filter is configured)' },
           offset: { type: 'integer' }, count: { type: 'integer' },
           nextOffset: { type: 'integer', nullable: true }, prevOffset: { type: 'integer', nullable: true },
           lines: { type: 'array', items: { type: 'object', properties: { n: { type: 'integer' }, text: { type: 'string' } } } },
@@ -327,6 +329,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const filter = String(params.filter ?? '');
         if (filter.length > 256) throw fail(400, '"filter" too long (max 256 chars)');
         const ci = params.ignoreCase === true || String(params.ignoreCase ?? '') === 'true';
+        const raw = params.raw === true || String(params.raw ?? '') === 'true';
         // Target: an exact filename from logs/files, or rpt/adm = newest of that type.
         // Shape check here; dayz-ctl re-validates and never forms a path from anything
         // that isn't a bare existing *.RPT/*.ADM name in its fixed profiles dir.
@@ -337,17 +340,17 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         } else {
           target = String(params.type ?? 'rpt') === 'adm' ? 'adm' : 'rpt';
         }
-        const args = [target, String(offset), String(limit)];
-        if (filter) args.push(filter, ci ? 'ci' : '');
+        // Positional verb args — empty placeholders keep 'raw' in slot 7.
+        const args = [target, String(offset), String(limit), filter, ci ? 'ci' : '', raw ? 'raw' : ''];
         const r = await dayz.ctl('log-read', ...args);
         if (r.code === 2) throw fail(404, `log not found: ${target}`);
         if (r.code === 3) throw fail(400, 'invalid "filter" (grep -E syntax)');
         if (r.code !== 0) throw fail(502, `log-read failed: ${(r.stderr || r.stdout).trim()}`);
-        // dayz-ctl's contract: line 1 = path, line 2 = total<TAB>matched<TAB>start,
+        // dayz-ctl's contract: line 1 = path, line 2 = total<TAB>matched<TAB>start<TAB>hidden,
         // rest = "<original-line-number>:<text>".
         const out = r.stdout.split('\n');
         const path = (out[0] ?? '').trim();
-        const [total, matched, start] = (out[1] ?? '').split('\t').map((s) => parseInt(s, 10) || 0);
+        const [total, matched, start, hidden] = (out[1] ?? '').split('\t').map((s) => parseInt(s, 10) || 0);
         const lines = out.slice(2)
           .filter((l) => l !== '')
           .map((l) => {
@@ -363,6 +366,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           path,
           totalLines: total,
           matchedLines: matched,
+          noiseHidden: hidden,
           offset: start,
           count: lines.length,
           nextOffset: next,

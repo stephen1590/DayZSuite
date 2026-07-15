@@ -28,7 +28,7 @@ Trigger one with `POST /dayz/<action>` - grouped actions with
 | `status`                   | server info: uptime, players, map, mods, next restart                       | no           |
 | `players`                  | online player count + roster                                                | no           |
 | `positions`                | live player map positions, anonymized to coordinates only                   | no           |
-| `logs/files` / `logs/read` | list every log file / read any slice - range, regex filter, scroll cursors  | no           |
+| `logs/files` / `logs/read` | list every log file / read any slice - engine noise pre-filtered            | no           |
 | `configs/*`                | read allowlisted config files - replace the editable ones (with rollback)   | no           |
 | `terrain/*`                | baked heightmap lookup - terrain height at world X/Z                        | no           |
 | `broadcast`                | in-game message to all players                                              | no           |

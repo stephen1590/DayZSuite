@@ -436,6 +436,11 @@
         <span class="ph-title">Map</span>
         <select id="mapSel" class="map-head-sel"></select>
         <span class="map-seg hidden" id="mapLayerSeg"></span>
+        <span class="map-seg" id="mapGridSeg" title="Grid lines">
+          <button type="button" data-grid="off">Grid off</button>
+          <button type="button" data-grid="subtle">Subtle</button>
+          <button type="button" data-grid="bold">Bold</button>
+        </span>
         <span class="meta">drag pan · scroll zoom · right-click copies X Y Z · Δ = bookmark Y − heightmap Y</span>
         <span class="spacer"></span>
         <button id="mapRefresh" class="ghost" type="button">Refresh</button>
@@ -514,7 +519,7 @@
     apitab: $('apitab'), swagger: $('swagger'),
     maptab: $('maptab'), mapSel: $('mapSel'), mapRefresh: $('mapRefresh'), mapSum: $('mapSum'),
     mapStage: $('mapStage'), mapCanvas: $('mapCanvas'), mapEmpty: $('mapEmpty'), mapBar: $('mapBar'),
-    mapLayerSeg: $('mapLayerSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'),
+    mapLayerSeg: $('mapLayerSeg'), mapGridSeg: $('mapGridSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'),
   };
 
   let toastTimer;
@@ -1644,7 +1649,26 @@
   }
 
   // ---------- grid (spacing rescales with zoom) ----------
+  // Each line is a light halo under a dark core so it reads on dark forest and
+  // bright snow alike. Intensity is user-set (Off/Subtle/Bold, persisted).
+  const MAP_GRIDS = {
+    off: null,
+    subtle: { halo: 0.30, minor: 0.32, major: 0.58, wMaj: 1 },
+    bold: { halo: 0.62, minor: 0.62, major: 0.95, wMaj: 2 },
+  };
+  let mapGrid = 'bold';
+  try { mapGrid = localStorage.getItem('cfgview-mapgrid') || 'bold'; } catch { /* default */ }
+  if (!(mapGrid in MAP_GRIDS)) mapGrid = 'bold';
+  function setMapGrid(mode) {
+    if (!(mode in MAP_GRIDS)) mode = 'bold';
+    mapGrid = mode;
+    try { localStorage.setItem('cfgview-mapgrid', mode); } catch { /* private mode */ }
+    for (const b of el.mapGridSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.grid === mode);
+    requestMapDraw();
+  }
   function drawMapGrid(ctx, w, h) {
+    const G = MAP_GRIDS[mapGrid];
+    if (!G) return;
     const mv = mapView;
     const steps = [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10];
     let step = steps[0];
@@ -1653,9 +1677,18 @@
     const wx0 = mv.cx - w / 2 / mv.ppm, wx1 = mv.cx + w / 2 / mv.ppm;
     const wzB = mv.cz - h / 2 / mv.ppm, wzT = mv.cz + h / 2 / mv.ppm;
     const fmtC = (v) => (v >= 1000 && v % 1000 === 0) ? (v / 1000) + 'k' : String(v);
-    ctx.lineWidth = 1;
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textBaseline = 'middle';
+    const line = (x0, y0, x1, y1, isMaj) => {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.lineWidth = (isMaj ? G.wMaj : 1) + 2;
+      ctx.strokeStyle = 'rgba(255,255,255,' + G.halo + ')';
+      ctx.stroke();
+      ctx.lineWidth = isMaj ? G.wMaj : 1;
+      ctx.strokeStyle = 'rgba(20,32,44,' + (isMaj ? G.major : G.minor) + ')';
+      ctx.stroke();
+    };
     const chip = (x, y, txt, alignRight) => {
       const tw = ctx.measureText(txt).width;
       const bx = alignRight ? x - tw - 8 : x - tw / 2 - 4;
@@ -1669,15 +1702,13 @@
     for (let gx = Math.ceil(Math.max(0, wx0) / step) * step; gx <= Math.min(mapWs, wx1); gx += step) {
       const isMaj = gx % major === 0;
       const sx = Math.round(mapToScreen(gx, 0)[0]) + 0.5;
-      ctx.strokeStyle = isMaj ? 'rgba(20,32,44,0.32)' : 'rgba(20,32,44,0.14)';
-      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+      line(sx, 0, sx, h, isMaj);
       if (isMaj) chip(sx, h - 12, fmtC(gx));
     }
     for (let gz = Math.ceil(Math.max(0, wzB) / step) * step; gz <= Math.min(mapWs, wzT); gz += step) {
       const isMaj = gz % major === 0;
       const sy = Math.round(mapToScreen(0, gz)[1]) + 0.5;
-      ctx.strokeStyle = isMaj ? 'rgba(20,32,44,0.32)' : 'rgba(20,32,44,0.14)';
-      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+      line(0, sy, w, sy, isMaj);
       if (isMaj) chip(12, sy, fmtC(gz));
     }
   }
@@ -2298,6 +2329,8 @@
   })();
   el.mapNav.addEventListener('click', (e) => { const r = e.target.closest('.mp-item'); if (r) selectMapPt(+r.dataset.i, true); });
   el.mapLayerSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-layer]'); if (b) setMapLayer(b.dataset.layer); });
+  el.mapGridSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-grid]'); if (b) setMapGrid(b.dataset.grid); });
+  setMapGrid(mapGrid);   // mark the persisted choice active
   window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) showTab(tabFromHash()); });
   // Unsaved-changes guard: reloading or closing the tab drops in-memory override edits.
   window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });

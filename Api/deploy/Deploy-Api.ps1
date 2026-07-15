@@ -62,6 +62,13 @@ if (-not $cfg.Dayz -or -not $cfg.Dayz.Unit -or -not $cfg.Dayz.ServerDir) {
 }
 $restartWarnSec = if ($cfg.Dayz.RestartWarningSeconds) { [int]$cfg.Dayz.RestartWarningSeconds } else { 15 }
 
+# Log-noise pre-filter (ERE) baked into dayz-ctl's log-read. Single-quote-escaped
+# for the bash assignment. Absent/empty = filter off.
+$logNoise = if ($cfg.Dayz.LogNoiseFilter) { "$($cfg.Dayz.LogNoiseFilter)" } else { '' }
+if ($logNoise -match "`t|`n") { throw "Api Dayz.LogNoiseFilter must not contain tabs or newlines." }
+if ($logNoise -match '\^') { throw "Api Dayz.LogNoiseFilter must not use ^ anchors (it also runs against numbered 'N:text' streams)." }
+$logNoiseSq = $logNoise.Replace("'", "'\''")
+
 # Config-retrieval allowlist, baked into dayz-ctl as two tables. THIS is the mask:
 # only these are retrievable, only relative to ServerDir. Two entry shapes:
 #   { name, path }  -> a single file          -> CONFIG_MAP  "name<TAB>relpath"
@@ -173,6 +180,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__CONFIG_DIRS__' = $configDirs
         '__IGNORE_EXT__'  = $ignoreExt
         '__WRITE_MAP__'   = $writeMap
+        '__LOG_NOISE__'   = $logNoiseSq
     })
 
 Set-Content -NoNewline -Path (Join-Path $stageDir 'api.sudoers') -Value (
