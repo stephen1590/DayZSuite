@@ -17,4 +17,4 @@ Watch the eyes. Some of them watch back.
 - **[Game Servers]({{< relref "/docs/game-servers" >}})** - dedicated game servers. Currently [DayZ]({{< relref "/docs/game-servers/dayz" >}}).
 - **[Mumble]({{< relref "/docs/mumble" >}})** - voice chat for coordinating.
 - **[CryptPad]({{< relref "/docs/cryptpad" >}})** - end-to-end encrypted docs (coming soon).
-- **[API]({{< relref "/docs/api" >}})** - signed HTTP control for the DayZ server.
+- **[API]({{< relref "/docs/api" >}})** - signed HTTP control for the box's services. DayZ first.

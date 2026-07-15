@@ -27,12 +27,14 @@ export interface AppConfig {
   cooldownSeconds: Record<string, number>;
   /** Refuse destructive actions while players are online (unless {force:true}). */
   playerGuard: boolean;
-  /** Seconds to broadcast-warn and wait before a restart/stop/map action, if anyone's on. 0 = skip. */
+  /** Seconds to broadcast-warn and wait before a restart/stop/mapchange action, if anyone's on. 0 = skip. */
   restartWarningSeconds: number;
   /** Directory for the CSV audit trail. */
   auditDir: string;
   /** Server-side store for derived API keys (minted via /keys/create). */
   keysFile: string;
+  /** Per-map baked terrain grids for the surface-y action (see heightmap.ts). */
+  heightmapsDir: string;
   rateLimit: { max: number; windowMs: number };
   /** HMAC-SHA256 shared secret for the /dayz command API (from env). */
   secret: string;
@@ -62,6 +64,7 @@ export function loadConfig(): AppConfig {
     restartWarningSeconds: Number(raw.dayz?.restartWarningSeconds ?? 15),
     auditDir: raw.auditDir ?? '/var/log/api',
     keysFile: raw.keysFile ?? '/var/lib/api/keys.json',
+    heightmapsDir: raw.heightmapsDir ?? '/var/lib/api/heightmaps',
     rateLimit: {
       max: Number(raw.rateLimit?.max ?? 30),
       windowMs: Number(raw.rateLimit?.windowMs ?? 60_000),

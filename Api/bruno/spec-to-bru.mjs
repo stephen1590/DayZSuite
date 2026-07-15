@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Scaffold .bru request files from ../openapi.yaml - the spec is the source of
-// truth for the HTTP surface; this script turns it into Bruno requests so new
-// endpoints don't mean hand-writing collection files.
+// Scaffold .bru request files from ../openapi.json - the GENERATED spec (from
+// ../app/src/spec.ts) mirrors the code's HTTP surface; this turns it into Bruno
+// requests so new endpoints don't mean hand-writing collection files.
 //
 // EXISTING .bru files are never touched: hand-tuned docs, bodies, and seq
 // ordering stay yours. Delete a file (or pass --force) to regenerate it.
 //
-// Workflow for a new endpoint: implement it in ../app/src/actions.ts, document
-// it in ../openapi.yaml, run `npm run generate` here, tune the new .bru.
+// Workflow for a new endpoint: implement it in ../app/src/actions.ts (schema
+// included), run `npm run spec` in ../app to regenerate ../openapi.json, then
+// `npm run generate` here and tune the new .bru.
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ import lang from '@usebruno/lang';
 const { jsonToBruV2, bruToJsonV2 } = lang;
 const root = dirname(fileURLToPath(import.meta.url));
 const force = process.argv.includes('--force');
-const spec = parse(readFileSync(join(root, '../openapi.yaml'), 'utf8'));
+const spec = parse(readFileSync(join(root, '../openapi.json'), 'utf8'));
 
 // Next free meta.seq in a folder, so generated requests append after existing ones.
 function nextSeq(dir) {

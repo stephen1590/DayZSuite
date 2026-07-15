@@ -9,7 +9,8 @@
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "typecheck": "tsc -p . --noEmit"
+    "typecheck": "tsc -p . --noEmit",
+    "spec": "tsx src/spec-emit.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^10.2.0",

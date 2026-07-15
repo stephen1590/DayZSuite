@@ -8,7 +8,7 @@
 //
 // Pipeline:  signature -> action exists -> namespace -> capability -> player guard
 //            (destructive) -> cooldown -> run -> audit (attributed to wizard/key id).
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../config.js';
 import type { Action } from '../actions.js';
 import type { DayzBridge } from '../dayz.js';
@@ -17,6 +17,11 @@ import type { Audit } from '../audit.js';
 import type { KeyStore } from '../keys.js';
 import { namespaceAllowed } from '../namespaces.js';
 import { authenticateRequest } from '../auth-request.js';
+import { responseDrift } from '../spec.js';
+
+// Dev-only guard: does a handler still return what its OpenAPI schema promises? Prod
+// (NODE_ENV=production) skips it entirely, so there's zero runtime cost in production.
+const DEV = process.env.NODE_ENV !== 'production';
 
 // The namespace this route module serves. One string, in one place.
 const NAMESPACE = 'dayz';
@@ -41,8 +46,13 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
     ),
   }));
 
-  app.post('/dayz/:action', async (req, reply) => {
-    const name = (req.params as { action: string }).action;
+  // One handler, two routes: flat actions (/dayz/restart) and grouped actions
+  // (/dayz/terrain/surface-y — registry name 'terrain/surface-y'). Fastify's :params
+  // never match slashes, so grouped names need their own route; the pipeline is
+  // identical because the registry key IS the URL suffix either way.
+  const handleAction = async (req: FastifyRequest, reply: FastifyReply) => {
+    const p = req.params as { action: string; group?: string };
+    const name = p.group ? `${p.group}/${p.action}` : p.action;
 
     // 1. Authenticate (shared helper: wizard secret or an X-Key-Id derived key).
     const auth = authenticateRequest(req, keyStore, cfg.secret);
@@ -83,14 +93,13 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
       });
     }
 
-    // Action params: the signed JSON body, plus — for NON-destructive actions only —
-    // URL query params (body wins on a clash). The query string is NOT covered by the
-    // HMAC signature, so destructive actions must ignore it: a captured signed request
-    // could otherwise be replayed with e.g. a different ?mission=. For reads
-    // (/dayz/log?lines=200) the worst a tampered query changes is how much log comes
-    // back. `force` stays body-only for the same reason.
+    // Action params: the signed JSON body. READ-ONLY actions may ALSO fold in URL query
+    // params (body wins on a clash) — the query is not HMAC-signed, but for a read the worst
+    // a tampered query changes is e.g. how much log comes back (/dayz/logs/read?limit=200). Any
+    // action that CHANGES state (non-readOnly: restart/mapchange/broadcast/set-overrides/rollback…)
+    // is body-ONLY, so no unsigned query param can steer a write or a replayed request.
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const params = action.destructive ? body : { ...(req.query as Record<string, unknown>), ...body };
+    const params = action.readOnly ? { ...(req.query as Record<string, unknown>), ...body } : body;
     const force = body.force === true;
 
     // 3. Player guard (destructive only). A null count = "cannot verify" = refuse,
@@ -135,6 +144,10 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
     // 5. Run + audit.
     try {
       const result = await action.run(params);
+      if (DEV) {
+        const drift = responseDrift(action.schema?.response, result);
+        if (drift.length) req.log.warn({ action: name, drift }, 'response drift vs openapi schema — update actions.ts schema');
+      }
       audit('ok', name, ctx, result);
       return reply.send({ ok: true, action: name, ...result });
     } catch (e) {
@@ -143,5 +156,8 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
       audit('error', name, ctx, { status, message });
       return reply.code(status).send({ ok: false, error: 'action_failed', message });
     }
-  });
+  };
+
+  app.post('/dayz/:action', handleAction);
+  app.post('/dayz/:group/:action', handleAction);
 }

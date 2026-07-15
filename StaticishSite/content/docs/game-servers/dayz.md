@@ -55,21 +55,20 @@ you connect.
 | **Community Framework (CF)** | Required framework dependency for the other mods | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036)            |
 | **VPPAdminTools**            | Server administration & moderation tools         | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124)            |
 | **AI Bandits**               | Hostile roaming AI - patrols and ambushes        | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769)            |
+| **Knock Knock**              | AI Bandits add-on - currently off (config)       | [3638393043](https://steamcommunity.com/sharedfiles/filedetails/?id=3638393043)            |
 | **AIB Unleashed**            | AI Bandits add-on (expanded AI)                  | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844)            |
 | **AI Bandit Voices**         | AI Bandits add-on - voice lines for the bandits  | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
 | **Code Lock**                | Combination locks for doors, gates, and stashes  | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754)            |
 | **DayZ-Dog**                 | Tameable companion dogs                          | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750)            |
 
-> [!NOTE]
-> **Knock Knock** (an AI Bandits add-on) is temporarily disabled - it'll be back soon.
-
 #### DayZ-Expansion
 
-A separate mod family - 16 pieces, each its own Workshop item, all required for **DayZ-Expansion**:
+A separate mod family - 20 pieces, each its own Workshop item, all required for **DayZ-Expansion**:
 
 | Mod                 | Role                                                                                     | Workshop                                                                        | Status  |
 | ------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- |
 | **Dabs Framework**  | Required framework dependency for DayZ-Expansion                                         | [2545327648](https://steamcommunity.com/sharedfiles/filedetails/?id=2545327648) | Enabled |
+| **Core**            | Shared core framework required by every Expansion module                                 | [2291785308](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785308) | Enabled |
 | **Expansion**       | Base package - new points of interest, kill feed, player list, quality-of-life additions | [2116151222](https://steamcommunity.com/sharedfiles/filedetails/?id=2116151222) | Enabled |
 | **Licensed**        | Licensed content pack required by several modules below                                  | [2116157322](https://steamcommunity.com/sharedfiles/filedetails/?id=2116157322) | Enabled |
 | **BaseBuilding**    | Territory system + expanded base building                                                | [2792982513](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982513) | Enabled |
@@ -77,6 +76,8 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
 | **Vehicles**        | Extra vehicles - helicopters, boats, cars, amphibious rides                              | [2291785437](https://steamcommunity.com/sharedfiles/filedetails/?id=2291785437) | Enabled |
 | **Groups**          | Party/group system with a shared HUD and map pings                                       | [2792983364](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983364) | Enabled |
 | **Missions**        | Dynamic missions - contamination zones, airdrops                                         | [2792984177](https://steamcommunity.com/sharedfiles/filedetails/?id=2792984177) | Enabled |
+| **AI**              | AI NPC framework - powers quest and mission AI                                           | [2792982069](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982069) | Enabled |
+| **Market**          | Trader market system - buy and sell at the safezone traders                              | [2572328470](https://steamcommunity.com/sharedfiles/filedetails/?id=2572328470) | Enabled |
 | **SpawnSelection**  | Pick your spawn point on the map after death                                             | [2804241648](https://steamcommunity.com/sharedfiles/filedetails/?id=2804241648) | Enabled |
 | **Chat**            | Extra chat channels (proximity, vehicle, party, admin)                                   | [2792982897](https://steamcommunity.com/sharedfiles/filedetails/?id=2792982897) | Enabled |
 | **Map-Assets**      | Decorative map objects                                                                   | [2792983824](https://steamcommunity.com/sharedfiles/filedetails/?id=2792983824) | Enabled |
@@ -88,7 +89,7 @@ A separate mod family - 16 pieces, each its own Workshop item, all required for 
 
 > [!NOTE]
 > **DayZ-Expansion-Bundle** (the all-in-one package) is intentionally not used. This
-> server runs the 16 modular pieces above instead - it won't show up in your subscribe
+> server runs the 20 modular pieces above instead - it won't show up in your subscribe
 > prompt.
 
 ### Gameplay notes

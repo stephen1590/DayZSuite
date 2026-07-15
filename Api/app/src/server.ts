@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { makeAudit } from './audit.js';
 import { makeDayz } from './dayz.js';
 import { buildActions } from './actions.js';
+import { HeightmapStore } from './heightmap.js';
 import { Cooldowns } from './guard.js';
 import { KeyStore } from './keys.js';
 import { registerCommands } from './routes/commands.js';
@@ -14,11 +15,13 @@ import { registerKeys } from './routes/keys.js';
 import { registerPublic } from './routes/public.js';
 import { registerHost } from './routes/host.js';
 import { NAMESPACES } from './namespaces.js';
+import { buildSpec } from './spec.js';
 
 const cfg = loadConfig();
 const audit = makeAudit(cfg.auditDir);
 const dayz = makeDayz(cfg);
-const actions = buildActions(dayz, cfg.restartWarningSeconds);
+const heightmaps = new HeightmapStore(cfg.heightmapsDir);
+const actions = buildActions(dayz, cfg.restartWarningSeconds, heightmaps);
 const cooldowns = new Cooldowns();
 const keyStore = new KeyStore(cfg.keysFile);
 
@@ -88,11 +91,27 @@ app.get('/', async () => ({
 
 app.get('/healthz', async () => ({ ok: true }));
 
+// The OpenAPI spec, generated from the live action registry — the single source the
+// Config Viewer's Swagger tab and the Bruno generator both consume. Public (docs only).
+app.get('/openapi.json', async () => buildSpec(actions));
+
 registerCommands(app, { cfg, actions, dayz, cooldowns, audit, keyStore });
 registerSources(app, { cfg, actions, audit });
 registerKeys(app, { cfg, audit, keyStore });
 registerHost(app, { cfg, dayz, audit, keyStore });
 registerPublic(app, { actions });
+
+// Dev completeness guard: every registered route must appear in the generated spec (the
+// /dayz/:action dispatcher is covered by the per-action paths). Catches a root route
+// added to the code but not to spec.ts ROOT_ROUTES — before it ships an incomplete spec.
+if (process.env.NODE_ENV !== 'production') {
+  const specPaths = new Set(Object.keys((buildSpec(actions).paths ?? {}) as Record<string, unknown>));
+  for (const r of routeTable) {
+    if (r.path === '/dayz/:action' || r.path === '/dayz/:group/:action') continue;
+    const p = r.path.replace(/:(\w+)/g, '{$1}');
+    if (!specPaths.has(p)) app.log.warn(`route ${r.method} ${r.path} missing from generated OpenAPI — add it to spec.ts ROOT_ROUTES`);
+  }
+}
 
 app.setNotFoundHandler((_req, reply) => reply.code(404).send({ ok: false, error: 'not_found' }));
 

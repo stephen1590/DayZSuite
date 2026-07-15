@@ -5,9 +5,10 @@ weight: 40
 
 ## API
 
-A signed HTTP API that controls the DayZ server - restart it, switch the map,
-broadcast a message, pull logs. Every call must be signed. Every action comes
-from a fixed allowlist - there is no arbitrary-command path.
+A signed HTTP API that controls the box's services. Each service gets its own
+path namespace - DayZ lives under `/dayz/*`. Every call must be signed. Every
+action comes from a fixed allowlist - there is no arbitrary-command path. The
+table below is the full set.
 
 ### Connect
 
@@ -19,18 +20,21 @@ from a fixed allowlist - there is no arbitrary-command path.
 
 ### Actions
 
-Trigger one with `POST /dayz/<action>`. `GET /dayz/actions` lists them live, no auth.
+Trigger one with `POST /dayz/<action>` - grouped actions with
+`POST /dayz/<group>/<action>`.
 
-| Action               | What it does                                           | Destructive? |
-| -------------------- | ------------------------------------------------------ | ------------ |
-| `status`             | server info: uptime, players, map, mods, next restart  | no           |
-| `players`            | current online player count                            | no           |
-| `log`                | tail the newest server log                             | no           |
-| `configs` / `config` | list / fetch allowlisted config files                  | no           |
-| `broadcast`          | in-game message to all players                         | no           |
-| `start`              | start the server                                       | no           |
-| `restart` / `stop`   | restart or stop the server                             | yes          |
-| `map`                | switch mission and restart                             | yes          |
+| Action                     | What it does                                                                | Destructive? |
+| -------------------------- | --------------------------------------------------------------------------- | ------------ |
+| `status`                   | server info: uptime, players, map, mods, next restart                       | no           |
+| `players`                  | online player count + roster                                                | no           |
+| `positions`                | live player map positions, anonymized to coordinates only                   | no           |
+| `logs/files` / `logs/read` | list every log file / read any slice - range, regex filter, scroll cursors  | no           |
+| `configs/*`                | read allowlisted config files - replace the editable ones (with rollback)   | no           |
+| `terrain/*`                | baked heightmap lookup - terrain height at world X/Z                        | no           |
+| `broadcast`                | in-game message to all players                                              | no           |
+| `start`                    | start the server                                                            | no           |
+| `restart` / `stop`         | restart or stop the server                                                  | yes          |
+| `mapchange`                | switch mission and restart                                                  | yes          |
 
 Host load is a **root** endpoint, not a `/dayz` action (it's about the whole box):
 `POST /sysload` - CPU, memory, disk, plus the game server's own footprint. Signed
@@ -50,13 +54,19 @@ curl -sS https://api.cytonicmushroom.ddns.net/dayz/broadcast \
   -d "$body"
 ```
 
-- Read actions also take query params: `POST /dayz/log?lines=200&type=adm`
+- Read actions also take query params: `POST /dayz/logs/read?limit=200&type=adm`
   (body wins on a clash). Destructive actions read the signed body only.
-- `GET /healthz` is a liveness probe - no auth.
-- `GET /dayz/server-info` is the public current-server-info snapshot - no auth, no
-  signing. Same payload as `status`: state, uptime, players, map, mod list, next
-  scheduled restart. It only exposes what the Steam server browser already
-  publishes. This is what powers the server-info panel on this site.
+
+Some reads need no auth at all:
+
+- `GET /` - the whole-API index: every endpoint plus the action list.
+- `GET /dayz/actions` - the DayZ action allowlist with descriptions.
+- `GET /openapi.json` - the full OpenAPI spec.
+- `GET /healthz` - liveness probe.
+- `GET /dayz/server-info` - the current-server-info snapshot: state, uptime,
+  players, map, mod list, next scheduled restart. Same payload as `status`, and
+  only what the Steam server browser already publishes. This is what powers the
+  server-info panel on this site.
 
 ### Guardrails
 
@@ -64,7 +74,7 @@ Hard to misuse by design:
 
 - **Player guard** - destructive actions refuse while anyone is online, or when
   the player count can't be verified. Override with `{"force": true}` in the body.
-- **Warning first** - if anyone is connected, `restart` / `stop` / `map`
+- **Warning first** - if anyone is connected, `restart` / `stop` / `mapchange`
   broadcast an in-game warning and wait 15 seconds before running.
 - **Cooldowns** - repeat an action too fast and you get a `409` with the seconds
   left to wait.

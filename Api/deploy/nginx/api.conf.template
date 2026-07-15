@@ -11,6 +11,8 @@ server {
     listen 80;
     listen [::]:80;
     server_name __SERVER_NAMES__;
+    
+    client_max_body_size 20M;
 
     location ^~ /.well-known/acme-challenge/ {
         root __ACME_WEBROOT__;
@@ -41,7 +43,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000" always;
 
     # Webhook payloads are tiny; a hard cap blunts abuse. The app also sets bodyLimit.
-    client_max_body_size 256k;
+    client_max_body_size 20M;
 
     location / {
         proxy_pass http://__UPSTREAM__;

@@ -74,14 +74,14 @@ would do. Add the apply flag to actually touch the box.
 | Api           | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service Api`           | `-Apply`   |
 | Api           | payload (app build)    | `Api/deploy/Deploy-Api.ps1`                  | `-Apply`   |
 
-The two services share **nothing** but the nginx daemon itself:
+The services share **nothing** but the nginx daemon itself:
 
 - different certs
 - different vhost files
-- different payload directories on the box (`/var/www/personal-projects` vs
-  `/opt/cryptpad` + `/var/lib/cryptpad`)
+- different payload directories on the box (`/var/www/personal-projects`,
+  `/opt/cryptpad` + `/var/lib/cryptpad`, `/opt/api`)
 
-Update either one at any time without touching the other.
+Update any one at any time without touching the others.
 
 ### First-time go-live (order does not matter)
 

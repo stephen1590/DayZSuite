@@ -30,13 +30,16 @@
   // Derived-API-key store (minted via /keys/create, wizard key only). Lives under
   // systemd's StateDirectory=api -- if you move it, update api.service.template too.
   "KeysFile":  "/var/lib/api/keys.json",
+  // Baked terrain grids for the terrain/surface-y action (per-map heightmap.bin + meta.json).
+  // Generated + shipped by the DayZHeightmap project; 404s cleanly while unshipped.
+  "HeightmapsDir": "/var/lib/api/heightmaps",
 
   // Which DayZ server dayz-ctl drives. ServerDir follows the DayZ deploy home
   // (/home/<SshUser>); Unit is the systemd unit name.
   "Dayz": {
     "Unit":      "dayz-server",
     "ServerDir": "/home/${SshUser}/servers/dayz-server",
-    // Broadcast a warning and wait this long before restart/stop/map actually run,
+    // Broadcast a warning and wait this long before restart/stop/mapchange actually run,
     // but only if someone's connected (RCon "players" > 0) -- nothing to warn
     // otherwise. Default 15s comfortably fits nginx's 30s proxy_read_timeout on this
     // vhost (deploy/nginx/api.conf.template); push it past ~25s and bump that
@@ -52,14 +55,18 @@
     "restart":   60,
     "stop":      60,
     "start":     10,
-    "map":       120,
+    "mapchange": 120,
     "broadcast": 5,
-    "config":    0,
-    "configs":   0,
+    "configs/get":  0,
+    "configs/list": 0,
+    "logs/files": 0,
+    "logs/read": 0,
+    "terrain/heightmaps": 0,
+    "terrain/surface-y": 0,
     "default":   3
   },
 
-  // Refuse destructive actions (restart/stop/map) while players are online,
+  // Refuse destructive actions (restart/stop/mapchange) while players are online,
   // unless the request body says {"force": true}. Uses the DayZ RCon player count.
   "PlayerGuard": true,
 
@@ -77,8 +84,8 @@
   // (no absolute paths, no "..", symlinks not followed), and dayz-ctl re-validates
   // every read. serverDZ.cfg is deliberately omitted (live join/admin passwords);
   // dayz-ctl also redacts common secret keys as a backstop. Fetch:
-  //   POST /dayz/configs                        -> grouped list of names
-  //   POST /dayz/config  { "name": "<name>" }   -> that file's contents
+  //   POST /dayz/configs/list                        -> grouped list of names
+  //   POST /dayz/configs/get  { "name": "<name>" }   -> that file's contents
   "Configs": [
     { "name": "overrides",   "path": "config-overrides.json" },
     { "name": "mods",        "path": "mods.conf" },

@@ -6,6 +6,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name __SERVER_NAMES__;
+    client_max_body_size 20M;
     location ^~ /.well-known/acme-challenge/ { root __ACME_WEBROOT__; default_type "text/plain"; try_files $uri =404; }
     location / { return 301 https://$host$request_uri; }
 }

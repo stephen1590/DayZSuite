@@ -3,7 +3,7 @@
 A small [Fastify](https://fastify.dev) (Node/TypeScript) service that turns **signed
 HTTP calls** into a **fixed set of server actions**, served at `api.<domain>`. Each
 SERVICE it fronts lives under its own path **namespace** - today that's DayZ
-(`/dayz/*`: restart, map switch, broadcast, log tail, host stats, …), with more to
+(`/dayz/*`: restart, mapchange, broadcast, log tail, host stats, …), with more to
 follow. Generic/host endpoints (`/healthz`, `/sysload`) and key management
 (`/keys/*`) sit at the root, outside any namespace. Adding a service is a new route
 module + a namespace entry, not a rewrite. (Formerly "Webhooks" on `hooks.<domain>` -
@@ -26,7 +26,7 @@ Api/
 │       ├── sysload.ts       host stats (/proc, statfs) + the dayz unit footprint
 │       ├── auth-request.ts  shared credential resolve + HMAC verify + attribution
 │       ├── namespaces.ts    the service-namespace registry (dayz, …) + scope checks
-│       ├── actions.ts       THE /dayz ALLOWLIST (restart/stop/start/status/players/map/broadcast/log/configs/config)
+│       ├── actions.ts       THE /dayz ALLOWLIST (restart/stop/start/status/players/mapchange/broadcast/logs/configs/terrain)
 │       └── routes/
 │           ├── commands.ts  POST /dayz/:action + GET /dayz/actions  (HMAC-signed trigger API)
 │           ├── keys.ts      POST /keys/:op            (wizard-only derived-key management)
@@ -57,10 +57,11 @@ plus the dayz action allowlist. `GET /dayz/actions` is the focused per-namespace
 | `restart` / `stop` / `start` | warn (if anyone's on) → `systemctl … dayz-server` | restart, stop |
 | `status` | server info: state, uptime, players, map, mod list (names from each mod's `meta.cpp`), next scheduled restart | no |
 | `players` | online player count + BattlEye's full reply (RCon) | no |
-| `map` | warn (if anyone's on) → write `map.env` → restart (`{ "mission": "dayzOffline.enoch" }`) | yes |
+| `mapchange` | warn (if anyone's on) → write `map.env` → restart (`{ "mission": "dayzOffline.enoch" }`) | yes |
 | `broadcast` | in-game message to all (`{ "message": "…" }`) | no |
-| `log` | tail of the newest DayZ RPT or ADM log (`lines` 1-500 default 100, `type` rpt\|adm) | no |
+| `logs/files` / `logs/read` | log browser: list all RPT/ADM files, then read any slice — `file` (exact name) or `type` rpt\|adm (newest), `offset` 1-based line (omit = tail), `limit` 1-500, `filter` grep -E regex (+ `ignoreCase`). With a filter, offset/limit page through the *matched* lines; each line returns with its original line number, plus `nextOffset`/`prevOffset` cursors for scrolling. A bare `logs/read` (no params) = tail the newest RPT | no |
 | `configs` / `config` | list / retrieve the allowlisted config files (secrets redacted) | no |
+| `terrain/heightmaps` / `terrain/surface-y` | list baked terrain grids / resolve terrain height Y at world X/Z (`map`, `x`, `z`) — offline lookup from `/var/lib/api/heightmaps`, no game-server involvement; grids baked + shipped by the DayZHeightmap project, engine-oracle-validated to ≤0.5 m | no |
 
 These are the `/dayz/*` **namespace** actions. Host load is **not** among them:
 `POST /sysload` lives at the **root** (it is about the whole box, not the game
@@ -80,7 +81,7 @@ gains privilege.
 shutdown deadline (the native scheduler restarts the server that many minutes after
 start). It is marked `estimated` - mission load shifts it by a minute or two.
 
-**Read-only actions accept URL query params** (e.g. `POST /dayz/log?lines=200&type=adm`
+**Read-only actions accept URL query params** (e.g. `POST /dayz/logs/read?limit=200&type=adm`
 with an empty signed body). Destructive actions read *only* the HMAC-signed JSON body -
 the query string isn't signed, and a replayed signed request must not be steerable by
 tampering with it.
@@ -130,10 +131,11 @@ This service can reboot a game server from the public internet, so it is layered
    ```
    api ALL=(root) NOPASSWD: /usr/local/bin/dayz-ctl
    ```
-   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log|config|config-list|info`)
+   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log-list|log-read|config|config-list|info`)
    and re-validates every argument (mission name whitelisted against installed
-   `mpmissions/`; broadcast text reduced to capped printable ASCII; log tail capped at
-   500 lines of the newest file in a fixed directory - caller input never forms a path)
+   `mpmissions/`; broadcast text reduced to capped printable ASCII; log reads capped at
+   500 lines, and only of a bare `*.RPT`/`*.ADM` filename that already exists in the
+   fixed profiles directory - caller input never forms a path)
    regardless of what the service already checked.
 6. **Rate limit + cooldown.** A coarse global IP rate limit, plus a **per-action
    cooldown** - a second `restart` inside the window gets a friendly `409` telling it
@@ -142,7 +144,7 @@ This service can reboot a game server from the public internet, so it is layered
    count can't be verified over RCon), unless the body says `{"force": true}` - the same
    conservative stance as the DayZ deploy's guard.
 8. **Warn before yanking anyone offline.** Once a destructive action actually runs
-   (guard passed, or `force: true` overrode it), `restart` / `stop` / `map` first check
+   (guard passed, or `force: true` overrode it), `restart` / `stop` / `mapchange` first check
    the live player count again - if anyone's connected, they get an in-game broadcast
    and `Dayz.RestartWarningSeconds` (default 15s) to reach safety *before* `dayz-ctl`
    is called. Skipped entirely when nobody's on. The actual data-safety comes from
@@ -243,7 +245,7 @@ curl -sS https://api.<domain>/dayz/broadcast \
 # Read-only actions can carry their params in the query string with an empty
 # signed body (query params are ignored on destructive actions - see above):
 sig=$(printf '' | openssl dgst -sha256 -hmac "$HMAC_SECRET" -hex | sed 's/^.* //')
-curl -sS -X POST "https://api.<domain>/dayz/log?lines=200&type=rpt" \
+curl -sS -X POST "https://api.<domain>/dayz/logs/read?limit=200&type=rpt" \
   -H "x-signature-256: sha256=$sig"
 
 # Host load is a ROOT endpoint (about the box, not dayz) - authed, empty signed body:

@@ -99,6 +99,15 @@ foreach ($x in @($cfg.ConfigIgnoreExt)) {
 $ignoreExt = if ($cfg.ConfigIgnoreExt) {
     (@($cfg.ConfigIgnoreExt | ForEach-Object { "$_".Trim().TrimStart('.').ToLower() } | Where-Object { $_ }) -join ',')
 } else { '' }
+# Whole-file WRITE mask -> WRITE_MAP "name<TAB>relpath": the Configs entries flagged
+# "writable": true (box-owned operational lists). Only these may be replaced whole
+# (snapshot-first) via set-file; dayz-ctl re-validates every write. None flagged =
+# feature off. Field-patch writes (config-overrides) are separate and need no flag.
+foreach ($c in @($allConfigs | Where-Object { $_.writable -and -not $_.path })) {
+    throw "Api Configs: 'writable' applies only to single-file entries (offender: group '$($c.group)$($c.dir)') — a folder can't be whole-file writable."
+}
+$writeEntries = @($fileEntries | Where-Object { $_.writable })
+$writeMap = ($writeEntries | ForEach-Object { "$($_.name)`t$($_.path)" }) -join "`n"
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
@@ -133,6 +142,7 @@ $appConfig = [ordered]@{
     playerGuard     = [bool]$cfg.PlayerGuard
     auditDir        = $cfg.AuditDir
     keysFile        = if ($cfg.KeysFile) { $cfg.KeysFile } else { '/var/lib/api/keys.json' }
+    heightmapsDir   = if ($cfg.HeightmapsDir) { $cfg.HeightmapsDir } else { '/var/lib/api/heightmaps' }
     rateLimit       = [ordered]@{ max = [int]$cfg.RateLimit.Max; windowMs = [int]$cfg.RateLimit.WindowMs }
     vpp             = [ordered]@{ enabled = [bool]$cfg.Vpp.Enabled; rules = @($cfg.Vpp.Rules) }
 }
@@ -162,6 +172,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__CONFIG_MAP__'  = $configMap
         '__CONFIG_DIRS__' = $configDirs
         '__IGNORE_EXT__'  = $ignoreExt
+        '__WRITE_MAP__'   = $writeMap
     })
 
 Set-Content -NoNewline -Path (Join-Path $stageDir 'api.sudoers') -Value (
