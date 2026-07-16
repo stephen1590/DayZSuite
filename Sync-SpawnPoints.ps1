@@ -1,14 +1,14 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Pull the LIVE spawn-points.json off the box into the repo — the deploy's pull-before-push
-    step so admin/web edits made at runtime (ConfigViewer Map editor -> configs/set-spawns)
-    are never clobbered by a dev deploy.
+    Pull the LIVE spawn-points.json off the box into the repo mirror — the backup path for
+    the box-owned spawn store (ConfigViewer Map editor -> configs/set-spawns).
 .DESCRIPTION
-    Roles are INVERTED from most of the deploy: the LIVE box is authoritative for spawn-points.json
-    (it is the definitive AI-bandit spawn store, written whole via the API's spawn-write verb and
-    snapshotted there). This pulls that copy DOWN so the repo mirrors it before the deploy re-ships
-    it. Same box-authoritative shape as Sync-ConfigOverrides.ps1.
+    The LIVE box is authoritative for spawn-points.json (the definitive AI-bandit spawn
+    store, written whole via the API's spawn-write verb and snapshotted there). This pulls
+    that copy DOWN into the repo MIRROR — a committed backup, and the seed a fresh box gets
+    (the deploy only ever seeds it to a box that has none; it never overwrites a live copy).
+    Same box-authoritative shape as Sync-ConfigOverrides.ps1.
 
     Read-only by default (shows what pulling WOULD change). -Execute writes:
       deploy/profiles/AI_Bandits/spawn-points.json   the working copy the deploy ships (= the box's)
@@ -19,13 +19,13 @@
 
     NO usable box copy (fresh box, empty, or invalid): the repo working copy is LEFT UNTOUCHED and
     ships as-is. There is no separate fallback seed because the repo copy already IS the seed — it
-    was migrated from the last VPP snapshot by Migrate-SpawnPoints.ps1 and is authoritative until
+    was migrated from the last VPP snapshot by deprecated/Migrate-SpawnPoints.ps1 and is authoritative until
     the box has real edits to mirror back. Every overwrite is snapshotted to backups/, so nothing
     is ever lost.
 
     TRANSITION NOTE: until an admin edits spawns on the box (via the web editor), the box copy is
     just the last-deployed one, so a pull is a no-op. Deprecates the old VPP pull path
-    (Sync-VPPCoordinates.ps1, now a one-shot importer, not part of the deploy).
+    (archived under deprecated/, not part of the deploy).
 .EXAMPLE
     ./Sync-SpawnPoints.ps1                     # dry-run: what pulling the box would change
 .EXAMPLE
@@ -112,3 +112,7 @@ if (-not $NoLog) {
         PullOk    = $pullOk
     })
 }
+
+# Explicit success: without this, $LASTEXITCODE from the last inner ssh/native call leaks
+# to callers that check it (Pull-Configs, Deploy).
+exit 0

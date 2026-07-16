@@ -6,18 +6,18 @@
 
 .DESCRIPTION
     A default is BORN on the box: Apply-ConfigOverrides captures the pristine file the first
-    time prestart patches it (see that script). This pulls those born defaults DOWN so the repo
-    has them - versioned, hand-editable, and shippable back.
+    time prestart patches it (see that script). This pulls those box-born defaults DOWN into
+    config-defaults/ - a committed MIRROR (backup + fresh-box seed).
 
-    CAPTURE-ONCE / repo-authoritative: a default the repo ALREADY has is LEFT ALONE (so a
-    hand-edit in config-defaults/ wins); only box defaults the repo LACKS are pulled in. The
-    deploy then ships config-defaults/ back to the ServerDir (repo -> box), so a hand-edited
-    default takes effect and the box's capture-if-missing never re-snapshots over it.
+    BOX-AUTHORITATIVE (pull-only config model, 2026-07-16): the mirror FOLLOWS the box - a
+    default the box re-captured (e.g. after a mod update: delete it on the box, restart,
+    prestart re-freezes the current pristine file) is pulled over the repo copy, reported
+    [DIFF]. The mirror is git-tracked, so history is the rollback path. The deploy ships
+    the mirror back ONLY to a box that lacks a baseline (seed-if-missing / disaster
+    recovery) - never over a live one. Hand-editing the mirror is a config push and gone
+    from the model; make config changes in the web editor instead.
 
-    To REFRESH a default after a mod update: delete it from BOTH config-defaults/ (repo) and the
-    box, then redeploy - prestart re-captures the current pristine file and this pulls it back in.
-
-    Read-only by default (shows what pulling WOULD capture); -Execute writes. A pulled default
+    Read-only by default (shows what pulling WOULD change); -Execute writes. A pulled default
     that is not valid for its kind (JSON/XML) is REJECTED - a corrupt baseline never enters the repo.
 
     Modelled on Sync-ConfigOverrides.ps1 (same box-authoritative shape). Only targets live under
@@ -89,21 +89,27 @@ $rels = @($rels | Where-Object {
 $captured = 0; $have = 0; $rejected = 0
 foreach ($rel in $rels) {
     $repoPath = Join-Path $MirrorDir $rel
-    if (Test-Path -LiteralPath $repoPath) { $have++; Write-Host "  [HAVE] $rel (repo authoritative - left as-is)"; continue }
     $raw = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$rel'" } | Out-String
     $raw = Remove-Bom $raw
     $ext = [IO.Path]::GetExtension($rel).ToLowerInvariant()
     if (-not (Test-Parses $raw $ext)) { $rejected++; Write-Warning "  [SKIP] $rel - unreadable or not valid $ext (not captured)"; continue }
+    $boxTrim = $raw.TrimEnd()
+    $tag = "PULL"
+    if (Test-Path -LiteralPath $repoPath) {
+        $curTrim = (Get-Content -Raw -LiteralPath $repoPath).TrimEnd()
+        if ($curTrim -eq $boxTrim) { $have++; Write-Host "  [SAME] $rel (mirror matches the box)"; continue }
+        $tag = "DIFF"   # box re-captured this baseline since the last pull - the mirror follows it
+    }
     if ($Execute) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $repoPath) | Out-Null
-        $raw.TrimEnd() | Set-Content -LiteralPath $repoPath -Encoding utf8
-        $captured++; Write-Host "  [PULL] $rel -> config-defaults/$rel"
+        $boxTrim | Set-Content -LiteralPath $repoPath -Encoding utf8
+        $captured++; Write-Host "  [$tag] $rel -> config-defaults/$rel$(if ($tag -eq 'DIFF') { ' (replaced - git history keeps the old one)' })"
     } else {
-        $captured++; Write-Host "  [PULL] $rel (dry-run - -Execute would capture it)"
+        $captured++; Write-Host "  [$tag] $rel (dry-run - -Execute would $(if ($tag -eq 'DIFF') { 'replace the mirror copy' } else { 'capture it' }))"
     }
 }
 $tag = if ($Execute) { 'pulled' } else { 'DRY-RUN' }
-Write-Host ("Config defaults: {0} to capture, {1} already in repo, {2} rejected, {3} foreign-skipped  [{4}]" -f $captured, $have, $rejected, $foreign, $tag)
+Write-Host ("Config defaults: {0} to pull, {1} in sync, {2} rejected, {3} foreign-skipped  [{4}]" -f $captured, $have, $rejected, $foreign, $tag)
 
 if (-not $NoLog) {
     $logDir = Join-Path $PSScriptRoot "logs"; New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -112,3 +118,7 @@ if (-not $NoLog) {
         Captured = $captured; Have = $have; Rejected = $rejected
     })
 }
+
+# Explicit success: without this, $LASTEXITCODE from the last inner ssh/native call leaks
+# to callers that check it (Pull-Configs, Deploy).
+exit 0

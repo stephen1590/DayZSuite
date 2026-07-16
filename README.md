@@ -13,9 +13,13 @@ field-level config-override system that survives mod/game updates.
   drives the systemd unit's `-mod=` line, steamcmd downloads, and drift checks together.
 - **Field-level config overrides** (`config-overrides.json`) — patch individual settings
   into mod/vanilla config files by name, so a mod update rewriting its baseline doesn't
-  wipe your tuning.
-- **VPP-driven AI bandit spawns** — capture spawn points in-game with admin tooling, sync
-  them into the repo, and a builder composes each map's bandit config at every boot.
+  wipe your tuning. Missing JSON keys are created at apply time, so new fields need no
+  repo plumbing.
+- **Pull-only config model** — the live box owns all game-config content (edited via the
+  ConfigViewer web UI); the repo keeps committed mirrors as backup. The deploy ships code,
+  seeds configs only to a box that lacks them, and never overwrites a live config.
+- **Web-edited AI bandit spawns** — place spawn points in the ConfigViewer Map tab, and a
+  builder composes each map's bandit config at every boot.
 - **Automatic map-switch handling** — character saves follow the server when you switch
   missions; world state stays per-map.
 - **Rolling save backups + daily log archiving**, both with automatic retention.
@@ -57,13 +61,15 @@ needs a one-time interactive login first.
 | Path | Purpose |
 | --- | --- |
 | `deploy/` | The deployable payload — source of truth for the live server (unit templates, `serverDZ.cfg`, mod registry, admin permissions, AI bandit configs). |
+| `config-registry.json` | The single registry of config surfaces (one row per file/folder, `scope` = shared or per-map). Read by the deploy seed step, the pulls, the validator, and the API's web allowlist — add a config in one place. |
 | `Deploy-DayZServer.ps1` | Read-only by default; reports drift. `-Fix` renders per-host templates from `host.env` and installs everything, with a player-online guard before any restart. |
 | `host.env` / `host.env.example` | Secrets and settings for the server this file lives on (passwords, Steam account). `host.env` is gitignored — copy the example and fill it in. |
 | `deployer.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`). Gitignored, never rsynced to the server. |
 | `Pull-DayZServer.ps1` | Pulls server saves/config down to a local machine over rsync/ssh — an off-box backup, or to work against real data locally. |
-| `Sync-SpawnPoints.ps1` | Pulls the live `spawn-points.json` (the definitive AI-bandit spawn store, edited in the ConfigViewer Map tab) off the box into the repo — the deploy's pull-before-push step. |
-| `Migrate-SpawnPoints.ps1` | One-shot seeder that built `spawn-points.json` from the last VPP snapshot. Re-run to re-seed from a fresh VPP import. |
-| `Sync-VPPCoordinates.ps1` | **Deprecated** one-shot VPP importer (no longer part of the deploy). Pulls admin-captured bookmarks into `vpp-coordinates.json`; feed that to `Migrate-SpawnPoints.ps1`. |
+| `Pull-Configs.ps1` | One command to pull the box's entire config state into the repo mirrors (overrides, spawn points, frozen defaults). Run after web-editing sessions, then commit — git history is the config backup. |
+| `Test-LiveConfigs.ps1` | Read-only validation of the live box: every override applies (zero-MISS), mirrors and seeds parse, composed artifacts are valid, unit active. Run after a deploy or restart. |
+| `Sync-SpawnPoints.ps1` | Pulls the live `spawn-points.json` (the definitive AI-bandit spawn store, edited in the ConfigViewer Map tab) off the box into the repo mirror. |
+| `deprecated/` | Retired tooling, kept for history. Never shipped (excluded from the rsync). Holds the old VPP-coordinate spawn source (`Sync-VPPCoordinates.ps1`, `Migrate-SpawnPoints.ps1`, `VPPCoordinates/`), superseded by `spawn-points.json` on 2026-07-15. See `deprecated/README.md`. |
 | `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + `spawn-points.json` (or per-map placements). Runs automatically on every server boot. |
 | `Apply-ConfigOverrides.ps1` | Applies `config-overrides.json`'s field-level patches to live config files. Runs automatically on every server boot. |
 | `_DZSync.ps1` | Shared rsync/host-resolution helpers for the Pull/Sync scripts. |
@@ -80,7 +86,9 @@ every enabled mod, in the same order, to join.
 - [docs/MODS.md](docs/MODS.md) — full mod list and load order
 - [docs/NETWORKING.md](docs/NETWORKING.md) — firewall rules and port requirements
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — `host.env` vs `deployer.env`, config
-  overrides, AI bandit tuning, map switching, log archiving
+  ownership (pull-only model), overrides, AI bandit tuning, map switching, log archiving
+- [docs/RECOVERY.md](docs/RECOVERY.md) — rebuild a dead server from the repo: one deploy
+  restores the full config state; what to restore by hand
 
 ## Config file reference
 

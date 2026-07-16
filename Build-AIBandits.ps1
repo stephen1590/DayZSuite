@@ -33,6 +33,14 @@
   new files or allowlist changes. The mod stays loaded; to unload it entirely, comment its lines
   in deploy/mods.conf instead.
 
+  PER-TYPE OFF SWITCH: common/DynamicAIB.common.json -> flags.spawnTypes, a map of
+  groupTemplate/sniperTemplate NAME -> 0/1 (missing or 1 = spawn normally; 0 = every placement of
+  that type emits no bandits). Finer-grained than useSpawnLocations - kill just 'sniper' or just
+  'raider_heavy' while the rest spawn. Reversible (flip back to 1), authored placements untouched,
+  builder-read only (stripped from the composed file), and editable in the same 'Aib-common' UI
+  item. Does NOT affect native full-file maps (raw GroupLocations have no templates to gate) - the
+  build logs that explicitly so it is never a silent no-op.
+
   For a LOCAL look at what would be built (e.g. -ServerDir './deploy' to preview against this
   repo), don't use -Fix — that writes inside deploy/profiles/AI_Bandits/, which looks like a
   shipped source but isn't (confusing). Use -PreviewOut <path> instead: writes the composed
@@ -60,7 +68,7 @@ if (-not $Mission) {
     if (-not $Mission) { $Mission = 'dayzOffline.chernarusplus' }
 }
 
-$stats = [ordered]@{ Groups = 0; Snipers = 0; Overlaid = 0; Created = 0; CreatedBase = 0; Removed = 0; Warn = 0 }
+$stats = [ordered]@{ Groups = 0; Snipers = 0; Overlaid = 0; Created = 0; CreatedBase = 0; Removed = 0; SkippedType = 0; Warn = 0 }
 function Show-Warn($m) { $script:stats.Warn++; Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function Show-Info($m) { Write-Host $m }
 function Read-Json($path) { Get-Content -Raw -LiteralPath $path | ConvertFrom-Json }
@@ -108,6 +116,18 @@ if (-not (Test-Path $commonPath)) {
     # flags.useSpawnLocations = 0 -> emit EMPTY Dynamic + Static (no bandits, reversible); absent
     # or non-zero -> compose placements as normal. Authored placements are never deleted.
     if ($common.flags -and $null -ne $common.flags.useSpawnLocations) { $spawnsEnabled = ([int]$common.flags.useSpawnLocations -ne 0) }
+    # Per-TYPE spawn toggle (finer than the master switch): flags.spawnTypes maps a
+    # groupTemplate/sniperTemplate NAME -> 0/1. Missing key or non-zero = spawn normally; 0 =
+    # every placement of that type emits nothing (reversible; authored placement kept). Builder-
+    # read only - never copied into the composed file (like useSpawnLocations). '_readme' is docs.
+    $typeEnabled = @{}
+    if ($common.flags -and $common.flags.spawnTypes) {
+        foreach ($tp in $common.flags.spawnTypes.PSObject.Properties) {
+            if ($tp.Name -eq '_readme') { continue }
+            $typeEnabled[[string]$tp.Name] = ([int]$tp.Value -ne 0)
+        }
+    }
+    $disabledTypes = @($typeEnabled.Keys | Where-Object { -not $typeEnabled[$_] } | Sort-Object)
     $groupsSpec = @()
     $native = $false
     if (-not $spawnsEnabled) {
@@ -127,6 +147,7 @@ if (-not (Test-Path $commonPath)) {
             # coexists with our compose model on other maps.
             $native = $true
             Show-Info "DynamicAIB[$Mission]: native full-file passthrough - $(@($mapDoc.GroupLocations).Count) group(s), $(@($mapDoc.SniperLocations).Count) sniper(s)$(if (-not $Fix) { ' (report-only)' })."
+            if ($disabledTypes.Count) { Show-Info "DynamicAIB[$Mission]: NOTE - flags.spawnTypes ($($disabledTypes -join ', ')) does NOT apply to a native full-file map (raw GroupLocations, no templates to gate)." }
             if ($Fix) {
                 New-Item -ItemType Directory -Force -Path (Split-Path $outPath) | Out-Null
                 Copy-Item -LiteralPath $mapPath -Destination $outPath -Force
@@ -139,8 +160,8 @@ if (-not (Test-Path $commonPath)) {
     }
 
     # --- spawn-points OVERLAY (non-destructive) -------------------------------------------
-    # spawn-points.json is the DEFINITIVE spawn store: repo/web-edited (see Migrate-SpawnPoints.ps1
-    # for the seed and the ConfigViewer Map tab for the editor). Update/create placements IN
+    # spawn-points.json is the DEFINITIVE spawn store: repo/web-edited (see deprecated/Migrate-SpawnPoints.ps1
+    # for the historical seed and the ConfigViewer Map tab for the editor). Update/create placements IN
     # MEMORY from it; the authored maps/*.json on disk is NEVER rewritten - we only mutate the
     # parsed $groupsSpec before composing. Match is by name (point .name == group .name, the
     # stable unique key). A point with a 'category' sets template (+ 'size' when given); a point
@@ -194,8 +215,16 @@ if (-not (Test-Path $commonPath)) {
     if (-not $native) {
         $groupLocations = @()
         $templateByName = @{}   # name -> template, for the preview table only (never written to the composed JSON)
+        $skippedByType  = @()   # placements dropped by flags.spawnTypes (kind/name/type), for the report
         foreach ($g in $groupsSpec) {
             try {
+                # Per-type toggle: a placement whose template is switched off in flags.spawnTypes
+                # emits nothing. Reversible - flip the type back to 1. Authored placement untouched.
+                if ($g.template -and $typeEnabled.ContainsKey([string]$g.template) -and -not $typeEnabled[[string]$g.template]) {
+                    $script:stats.SkippedType++
+                    $skippedByType += [pscustomobject]@{ Kind = 'group'; Name = [string]$g.name; Type = [string]$g.template }
+                    continue
+                }
                 # A placement may reference a global groupTemplate and inherit its fields; any field
                 # set on the placement overrides. Placements with no 'template' work as before.
                 $tmpl = $null
@@ -239,6 +268,12 @@ if (-not (Test-Path $commonPath)) {
         $snipersSpec = @( if ($mapDoc -and ($mapDoc.PSObject.Properties.Name -contains 'snipers')) { $mapDoc.snipers } )
         foreach ($s in $snipersSpec) {
             try {
+                # Per-type toggle (same as groups) for sniper-nest templates.
+                if ($s.template -and $typeEnabled.ContainsKey([string]$s.template) -and -not $typeEnabled[[string]$s.template]) {
+                    $script:stats.SkippedType++
+                    $skippedByType += [pscustomobject]@{ Kind = 'sniper'; Name = [string]$s.name; Type = [string]$s.template }
+                    continue
+                }
                 $tmpl = $null
                 if ($s.template) {
                     $tmpl = $common.sniperTemplates.$($s.template)
@@ -283,7 +318,11 @@ if (-not (Test-Path $commonPath)) {
                 ForEach-Object { [pscustomobject]@{ Name = $_.name; Template = $templateByName[$_.name]; Faction = $_.faction; Size = @($_.npcclasses).Count; Pos = @($_.waypoints)[0] } } |
                 Sort-Object Name | Format-Table -AutoSize | Out-Host
         }
-        Show-Info "DynamicAIB[$Mission]: $($stats.Groups) group(s), $($stats.Snipers) sniper(s), $($stats.Warn) warning(s)$(if (-not $Fix) { ' (report-only)' })."
+        if ($skippedByType.Count) {
+            Show-Info "DynamicAIB[$Mission]: $($skippedByType.Count) placement(s) skipped by flags.spawnTypes (off: $($disabledTypes -join ', ')):"
+            $skippedByType | Sort-Object Kind, Name | Format-Table -AutoSize | Out-Host
+        }
+        Show-Info "DynamicAIB[$Mission]: $($stats.Groups) group(s), $($stats.Snipers) sniper(s), $($stats.SkippedType) skipped by type, $($stats.Warn) warning(s)$(if (-not $Fix) { ' (report-only)' })."
         $json = $null
         if ($Fix -or $PreviewOut) { $json = $out | ConvertTo-Json -Depth 100 }
         if ($Fix) {

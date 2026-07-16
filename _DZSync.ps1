@@ -1,4 +1,4 @@
-# Shared helpers for Pull-DayZServer.ps1 / Sync-VPPCoordinates.ps1 — dot-source, not a run
+# Shared helpers for Pull-DayZServer.ps1 / Sync-SpawnPoints.ps1 — dot-source, not a run
 # target. ONE place for the exclude categories and deployer.env resolution so callers can't drift.
 
 # Runtime logs / crash dumps — noise, never synced in either direction.

@@ -97,6 +97,19 @@ if [ -f "$SERVER/Apply-ConfigOverrides.ps1" ] && command -v pwsh >/dev/null 2>&1
     pwsh -NoProfile -File "$SERVER/Apply-ConfigOverrides.ps1" -ServerDir "$SERVER" -Fix || true
 fi
 
+# Babaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Drop the
+# ACTIVE map's source into that path so a map switch can never leave the previous map's spawns;
+# a map with no Babaku source gets an empty-but-valid file (spawns nothing). Runs AFTER
+# Apply-ConfigOverrides so a UI override on the per-map source is included in the copy. `|| true`.
+BABAKU_SRC="$SERVER/profiles/SpawnerBubaku/maps/$TARGET/SpawnerBubakuV2.json"
+BABAKU_DST="$SERVER/profiles/SpawnerBubaku/SpawnerBubakuV2.json"
+mkdir -p "$(dirname "$BABAKU_DST")" || true
+if [ -f "$BABAKU_SRC" ]; then
+    cp -f "$BABAKU_SRC" "$BABAKU_DST" || true
+else
+    printf '{ "loglevel": 0, "BubakLocations": [] }\n' > "$BABAKU_DST" || true
+fi
+
 # AI bandit configs (DynamicAIB/StaticAIB) are RAW per-map world coords, but the mod reads one
 # fixed path. Compose the active map's flat config from common + maps/$TARGET NOW, before the
 # engine reads it, so a map switch can never leave another map's coords in place. Fail-soft +

@@ -96,8 +96,8 @@ click empty map to add one, edit fields in the panel, and **Save**. Save writes 
 the next restart. The deploy pulls the box copy back into the repo (`Sync-SpawnPoints.ps1`) so git
 stays the durable record. You can also hand-edit `spawn-points.json` directly.
 
-`spawn-points.json` was seeded from the last VPP snapshot by `Migrate-SpawnPoints.ps1`. VPP is no
-longer the source — `Sync-VPPCoordinates.ps1` is a deprecated one-shot importer, not part of the
+`spawn-points.json` was seeded once from the last VPP snapshot. VPP is no longer the source — the
+old importer/migrator is archived under `deprecated/` (see `deprecated/README.md`), not part of the
 deploy. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays per-map.
 
 Schema note: on a mod update that changes the flat-file schema, adjust the builder's output shape

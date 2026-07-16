@@ -23,6 +23,12 @@
     summary line makes any failures loud, and the returned object carries the counts so
     the caller (Deploy) can surface them.
 
+    FORCE-CREATE (JSON only): a dotted selector whose key doesn't exist yet is CREATED,
+    intermediate objects included, and reported [NEW]. New feature fields therefore never
+    ship from the repo - the web editor adds the override and the next boot creates the
+    key (pull-only config model, 2026-07-16). An intermediate that exists but is not an
+    object stays a WARN (typo guard). XML/XPath selectors remain match-only.
+
     Manifest shape (see config-overrides.json _readme):
       files.<relpath>              : { selector -> value }   (one file under ServerDir)
       mpmissions.common            : { <mission-rel-file> -> { selector -> value } }  (all DECLARED missions)
@@ -44,8 +50,9 @@ $ErrorActionPreference = 'Stop'
 $mode = if ($Fix) { 'APPLY' } else { 'REPORT' }
 
 # --- counters -------------------------------------------------------------------
-$stats = [ordered]@{ Changed = 0; Same = 0; Warn = 0; Captured = 0 }
+$stats = [ordered]@{ Changed = 0; Created = 0; Same = 0; Warn = 0; Captured = 0 }
 function Show-Change  { $script:stats.Changed++;  Write-Host ("  [OK]   {0}" -f $args[0]) -ForegroundColor Green }
+function Show-Create  { $script:stats.Created++;  Write-Host ("  [NEW]  {0}" -f $args[0]) -ForegroundColor Green }
 function Show-Same    { $script:stats.Same++;     Write-Host ("  [SAME] {0}" -f $args[0]) -ForegroundColor DarkGray }
 function Show-Warn    { $script:stats.Warn++;     Write-Host ("  [WARN] {0}" -f $args[0]) -ForegroundColor Yellow }
 function Show-Capture { $script:stats.Captured++; Write-Host ("  [DEF]  {0}" -f $args[0]) -ForegroundColor Cyan }
@@ -159,16 +166,38 @@ function Set-XmlNode($doc, [string]$selector, $value, [string]$label) {
     }
 }
 
+# FORCE-CREATE: a dotted path that doesn't exist in the target JSON is CREATED (missing
+# intermediate objects included), reported as [NEW]. This is how a brand-new feature field
+# enters a config under the pull-only model — the web editor writes the override, the next
+# boot creates the key; no config content ever ships from a dev machine. The baseline
+# (.defaults) never has the key, so every rebuild re-creates it — idempotent by value.
+# Guardrail: an intermediate that EXISTS but is not an object (scalar/array) is a WARN,
+# never clobbered — that's a typo'd selector, not a new field. XML/XPath stays match-only
+# (you can't sanely force-create an XPath).
 function Set-JsonKey($root, [string]$dotted, $value, [string]$label) {
     $parts = $dotted.Split('.')
     $cur = $root
     for ($i = 0; $i -lt $parts.Count - 1; $i++) {
         $k = $parts[$i]
-        if ($null -eq $cur.PSObject.Properties[$k]) { Show-Warn "$label : path '$dotted' - '$k' not found"; return $false }
-        $cur = $cur.$k
+        $prop = $cur.PSObject.Properties[$k]
+        if ($null -eq $prop -or $null -eq $prop.Value) {
+            $child = [pscustomobject]@{}
+            if ($null -eq $prop) { $cur | Add-Member -NotePropertyName $k -NotePropertyValue $child }
+            else { $cur.$k = $child }   # a JSON null parent is claimed by the new object
+            $cur = $child
+            continue
+        }
+        if ($prop.Value -isnot [System.Management.Automation.PSCustomObject]) {
+            Show-Warn "$label : path '$dotted' - '$k' is not an object (won't create keys beneath it)"; return $false
+        }
+        $cur = $prop.Value
     }
     $leaf = $parts[-1]
-    if ($null -eq $cur.PSObject.Properties[$leaf]) { Show-Warn "$label : key '$dotted' not found"; return $false }
+    if ($null -eq $cur.PSObject.Properties[$leaf]) {
+        Show-Create "$label : $dotted (created)"
+        $cur | Add-Member -NotePropertyName $leaf -NotePropertyValue $value
+        return $true
+    }
     $want = ConvertTo-CompareKey $value
     $have = ConvertTo-CompareKey $cur.$leaf
     if ($have -eq $want) { Show-Same "$label : $dotted (unchanged)"; return $false }
@@ -261,7 +290,7 @@ foreach ($grp in ($jobs | Group-Object File)) {
 
 # --- summary (loud on any warning) ----------------------------------------------
 $tag = if ($Fix) { 'applied' } else { 'REPORT ONLY - re-run under -Fix to write' }
-$line = "Config overrides: {0} changed, {1} same-as-default, {2} default(s) captured, {3} warning(s)  [{4}]" -f $stats.Changed, $stats.Same, $stats.Captured, $stats.Warn, $tag
+$line = "Config overrides: {0} changed, {1} created, {2} same-as-default, {3} default(s) captured, {4} warning(s)  [{5}]" -f $stats.Changed, $stats.Created, $stats.Same, $stats.Captured, $stats.Warn, $tag
 if ($stats.Warn -gt 0) { Write-Host $line -ForegroundColor Yellow } else { Write-Host $line -ForegroundColor Green }
 
 return [pscustomobject]$stats

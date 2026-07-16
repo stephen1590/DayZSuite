@@ -1,26 +1,28 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Apply the COMMON custom Central Economy types file to the active mission, update-safe.
+  Register extra Central Economy types files on the active mission, update-safe.
 
 .DESCRIPTION
   DayZ only loads extra CE types when a <ce folder="..."> block in the mission's
-  cfgeconomycore.xml registers them - you cannot just append to the vanilla db/types.xml
-  (a game/mod update rewrites it and your additions vanish). So we keep ONE map-agnostic
-  custom types file (custom-ce/custom_types.xml) and, at prestart, apply it to whatever
-  mission is active:
+  cfgeconomycore.xml registers them - you cannot append to vanilla db/types.xml (a game
+  update rewrites it). This reads custom-ce/custom-ce.json (a list of types files), and at
+  prestart, for the active mission:
 
-    1. copy  custom-ce/custom_types.xml  ->  mpmissions/<mission>/custom/custom_types.xml
-    2. ensure that mission's cfgeconomycore.xml registers  <ce folder="custom">
+    1. copy each listed 'from' file  ->  mpmissions/<mission>/custom/<name>
+    2. regenerate ONE <ce folder="custom"> block in that mission's cfgeconomycore.xml
+       listing every file that copied successfully
 
-  Both steps are IDEMPOTENT and NON-DESTRUCTIVE: the vanilla db/types.xml is never touched,
-  the registration is injected ONLY when missing (so a vanilla rewrite re-adds it next boot),
-  and any other <ce> blocks are left alone. Add modded item types to custom_types.xml and
-  they spawn on every live map.
+  'from' is relative to the server dir: custom-ce/<file> for our own repo-authored types
+  (e.g. custom_types.xml = CodeLock), or a mod's own doc file (e.g. @aibandits/doc/
+  bandit_types.xml) so it tracks the INSTALLED mod version instead of a hand-duplicated copy.
 
-  Read-only by default (reports what it WOULD do). -Fix performs the copy + inject. Run by
-  prestart.sh with the active mission, wrapped in `|| true` so it can NEVER block server boot.
-  A malformed custom_types.xml is reported and skipped, never shipped into the mission.
+  IDEMPOTENT and NON-DESTRUCTIVE: vanilla db/types.xml is never touched; the block is
+  REGENERATED each run (so adding/removing a manifest line just works, and a vanilla rewrite
+  re-adds it next boot); other <ce> blocks are left alone. Read-only by default (reports what
+  it WOULD do); -Fix performs the copies + edit. Run by prestart.sh with the active mission,
+  wrapped in `|| true` so it can NEVER block boot. A missing/invalid source is skipped
+  fail-soft, never shipped into the mission.
 #>
 [CmdletBinding()]
 param(
@@ -44,44 +46,58 @@ if (-not $Mission) {
     if (-not $Mission) { $Mission = 'dayzOffline.chernarusplus' }
 }
 
-$CE_FOLDER = 'custom'                 # folder registered in cfgeconomycore, relative to the mission root
-$CE_FILE   = 'custom_types.xml'
+$CE_FOLDER    = 'custom'                 # folder registered in cfgeconomycore, relative to the mission root
+$manifestPath = Join-Path $ServerDir 'custom-ce/custom-ce.json'
+$missionDir   = Join-Path $ServerDir "mpmissions/$Mission"
+$corePath     = Join-Path $missionDir 'cfgeconomycore.xml'
+$destDir      = Join-Path $missionDir $CE_FOLDER
 
-$src        = Join-Path $ServerDir "custom-ce/$CE_FILE"
-$missionDir = Join-Path $ServerDir "mpmissions/$Mission"
-$corePath   = Join-Path $missionDir 'cfgeconomycore.xml'
-$destDir    = Join-Path $missionDir $CE_FOLDER
-$destFile   = Join-Path $destDir $CE_FILE
+if (-not (Test-Path $manifestPath)) { Show-Warn "no custom-ce/custom-ce.json under $ServerDir - nothing to register."; return }
+if (-not (Test-Path $missionDir))   { Show-Warn "mission dir not found: mpmissions/$Mission - skipped."; return }
+if (-not (Test-Path $corePath))     { Show-Warn "no cfgeconomycore.xml for '$Mission' - cannot register custom types; skipped."; return }
 
-if (-not (Test-Path $src))        { Show-Warn "no custom-ce/$CE_FILE under $ServerDir - nothing to apply."; return }
-if (-not (Test-Path $missionDir)) { Show-Warn "mission dir not found: mpmissions/$Mission - skipped."; return }
-if (-not (Test-Path $corePath))   { Show-Warn "no cfgeconomycore.xml for '$Mission' - cannot register custom types; skipped."; return }
+try { $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json }
+catch { Show-Warn "custom-ce.json is not valid JSON - skipped ($($_.Exception.Message))."; return }
+$entries = @($manifest.files)
+if (-not $entries.Count) { Show-Warn "custom-ce.json lists no files - nothing to register."; return }
 
-# Refuse to ship a malformed types file (a bad db read breaks the whole economy). Parse first.
-$typeCount = $null
-try { $typeCount = @(([xml](Get-Content -Raw -LiteralPath $src)).types.type).Count }
-catch { Show-Warn "custom-ce/$CE_FILE is not valid <types> XML - skipped ($($_.Exception.Message))."; return }
-
-# --- 1. custom types file -> mpmissions/<mission>/custom/ ---
-Show-Info "CustomCE[$Mission]: $typeCount custom type(s) from custom-ce/$CE_FILE -> $CE_FOLDER/$CE_FILE$(if (-not $Fix) { ' (report-only)' })."
-if ($Fix) {
-    New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-    Copy-Item -LiteralPath $src -Destination $destFile -Force
+# --- 1. copy each source into mpmissions/<mission>/custom/, collecting the ones that stick ---
+$registered = @()
+foreach ($e in $entries) {
+    $name = [string]$e.name
+    $type = if ($e.type) { [string]$e.type } else { 'types' }
+    $src  = Join-Path $ServerDir ([string]$e.from)
+    if (-not $name -or -not $e.from) { Show-Warn "manifest entry missing name/from - skipped."; continue }
+    if (-not (Test-Path $src))      { Show-Warn "source not found for '$name': $($e.from) - skipped (mod not installed?)."; continue }
+    try { [xml](Get-Content -Raw -LiteralPath $src) | Out-Null }
+    catch { Show-Warn "source for '$name' ($($e.from)) is not valid XML - skipped ($($_.Exception.Message))."; continue }
+    $count = @(([xml](Get-Content -Raw -LiteralPath $src)).types.type).Count
+    Show-Info "CustomCE[$Mission]: $name <- $($e.from) ($count type(s), type=$type)$(if (-not $Fix) { ' (report-only)' })."
+    if ($Fix) {
+        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+        Copy-Item -LiteralPath $src -Destination (Join-Path $destDir $name) -Force
+    }
+    $registered += [pscustomobject]@{ name = $name; type = $type }
 }
+if (-not $registered.Count) { Show-Warn "no valid types files to register for '$Mission' - leaving cfgeconomycore.xml unchanged."; return }
 
-# --- 2. register <ce folder="custom"> in cfgeconomycore.xml, only if missing ---
+# --- 2. regenerate the single <ce folder="custom"> block from what copied ---
 $core = Get-Content -Raw -LiteralPath $corePath
-if ($core -match ('folder\s*=\s*"' + [regex]::Escape($CE_FOLDER) + '"')) {
-    Show-Info "CustomCE[$Mission]: cfgeconomycore.xml already registers folder='$CE_FOLDER' - no change."
-    return
-}
-Show-Info "CustomCE[$Mission]: registering <ce folder='$CE_FOLDER'> in cfgeconomycore.xml$(if (-not $Fix) { ' (report-only)' })."
+if ($core -notmatch '</economycore>') { Show-Warn "cfgeconomycore.xml has no </economycore> close tag - refusing to edit."; return }
+
+$fileLines = ($registered | ForEach-Object { "`t`t<file name=`"$($_.name)`" type=`"$($_.type)`" />" }) -join "`r`n"
+$block     = "`t<ce folder=`"$CE_FOLDER`">`r`n$fileLines`r`n`t</ce>`r`n"
+
+# Strip any existing folder="custom" block (regenerate, so add/remove in the manifest is reflected),
+# leave every other <ce> alone, then insert the fresh block right before </economycore>.
+$stripped = [regex]::Replace($core, '(?s)[\t ]*<ce\s+folder="' + [regex]::Escape($CE_FOLDER) + '">.*?</ce>\s*\r?\n', '')
+$patched  = $stripped.Replace('</economycore>', $block + '</economycore>')
+
+$names = ($registered.name -join ', ')
+Show-Info "CustomCE[$Mission]: cfgeconomycore.xml registers <ce folder='$CE_FOLDER'> -> [$names]$(if (-not $Fix) { ' (report-only)' })."
 if (-not $Fix) { return }
 
-if ($core -notmatch '</economycore>') { Show-Warn "cfgeconomycore.xml has no </economycore> close tag - refusing to edit."; return }
-$block   = "`t<ce folder=`"$CE_FOLDER`">`r`n`t`t<file name=`"$CE_FILE`" type=`"types`" />`r`n`t</ce>`r`n"
-$patched = $core.Replace('</economycore>', $block + '</economycore>')
-try { [xml]$patched | Out-Null }            # never write XML we just broke
+try { [xml]$patched | Out-Null }             # never write XML we just broke
 catch { Show-Warn "patched cfgeconomycore.xml would be invalid XML - refusing to write ($($_.Exception.Message))."; return }
 Set-Content -LiteralPath $corePath -Value $patched -Encoding utf8 -NoNewline
 Show-Info "CustomCE[$Mission]: cfgeconomycore.xml updated."

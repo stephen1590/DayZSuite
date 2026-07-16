@@ -19,8 +19,8 @@ etc.) without touching `host.env` at all.
 
 Deliberately **not** in `host.env`. Which host to reach isn't a setting the server has
 about itself — it's config for whichever machine is *initiating* a deploy (your laptop,
-a CI runner, wherever you run `Deploy-DayZServer.ps1`, `Pull-DayZServer.ps1`, or
-`Sync-VPPCoordinates.ps1` without `-Local`). Putting it in `host.env` would mean the file
+a CI runner, wherever you run `Deploy-DayZServer.ps1` or `Pull-DayZServer.ps1`
+without `-Local`). Putting it in `host.env` would mean the file
 that lives on the server also has to somehow tell other machines how to reach that same
 server — the two roles don't fit in one file, and a global machine dotfile doesn't fit
 either (it's config for *this repo checkout*, not your whole machine).
@@ -75,15 +75,79 @@ ignored (used for the schema's own `_readme` field).
 
 **Applied at runtime, not at deploy time** — `prestart.sh` runs
 `Apply-ConfigOverrides.ps1 -Fix` on every server start, before the engine reads the
-files. Editing `config-overrides.json` and restarting is enough; no redeploy needed.
-`Deploy-DayZServer.ps1` only *reports* the pending diff, so a deploy shows you what the
-next restart will apply without a second writer touching the live files.
+files. Editing overrides in the web editor (or the box copy directly) and restarting is
+enough; no redeploy needed. `Deploy-DayZServer.ps1` only *reports* the pending diff, so
+a deploy shows you what the next restart will apply without a second writer touching the
+live files.
 
 Fail-soft by design: a missing file or an unmatched selector is logged as a warning and
 skipped — one broken override never blocks the others or the server boot.
 
 **Not managed here:** full-file-owned configs — see the AI bandit section below — are
 authored wholesale under `deploy/`, not patched.
+
+### Who owns what — the pull-only config model (2026-07-16)
+
+One rule: **the deploy ships code and overwrites it; it never overwrites config content.**
+Every file is in exactly one class, and the class decides the direction it moves:
+
+- **Code (repo-owned, ships on drift):** scripts, systemd units, PBOs, `update.sh`,
+  `prestart.sh`, `serverDZ.cfg` (rendered from `host.env`), `mods.conf`, the `custom-ce/`
+  injection layer, VPP permission files. Only the deploy writes these — edit in the repo,
+  redeploy.
+- **Config content (box-owned, seed-if-missing):** `config-overrides.json`,
+  `spawn-points.json`, the AI_Bandits source tree, the Babaku per-map sources,
+  `messages.xml`, every mod-generated settings file, and the frozen `.defaults`
+  baselines. The box writes these (web editor, prestart's capture); the deploy copies
+  one to the box **only when it's missing there** (fresh box / disaster recovery —
+  reported `BoxOwned` otherwise) and pulls them back into committed repo **mirrors**.
+- **Host-local (never moves):** `host.env`, `deployer.env`, `map.env`, battleye configs.
+
+To change a config value: **use the web editor (ConfigViewer) and restart.** It writes
+the box's live document; the next deploy's pull mirrors it into the repo for backup. To
+add a brand-new field: same thing — the overrides engine **force-creates** missing JSON
+keys at boot (reported `[NEW]`), so nothing needs to pre-exist anywhere. Repo-side edits
+to seed files affect *future fresh boxes only*.
+
+**Never edit the repo `config-overrides.json` by hand.** The sync records the hash it
+last wrote (`backups/config-overrides/last-synced.sha256`); unexplained local edits
+make it refuse to run — and abort the deploy — instead of silently pulling over them.
+`-AcceptLocalLoss` discards them (a snapshot lands in `backups/` first).
+
+Backups: run `./Pull-Configs.ps1 -Execute` after a web-editing session worth keeping and
+commit the mirrors — git history is the long-term config backup. Validation: run
+`./Test-LiveConfigs.ps1` after a deploy or restart — it asserts every live override will
+apply (zero-MISS), the mirrors parse, and the box-side builders produced valid artifacts.
+Recovery: see [RECOVERY.md](RECOVERY.md).
+
+### The config registry — one list
+
+Every config surface is declared once, in `config-registry.json`, and four consumers read
+that one file. Add or change a config there and nothing else needs editing:
+
+- **the web allowlist** — `NginxService/Api`'s `Deploy-Api.ps1` reads the registry by
+  sibling reference at deploy time (config is a DayZ-Server dependency; the API references
+  it, so the list lives with the server it describes). Rows with `web` != `none` become the
+  read/write allowlist baked into `dayz-ctl`.
+- **the deploy seed** — rows with a `seed` are copied to a fresh box if missing.
+- **the pulls** — the `mirror` tag says which pull backs each file up.
+- **the validator** — rows with a `check` are parse-asserted by `Test-LiveConfigs.ps1`.
+
+Each row carries a `scope`: **`shared`** (one file applied to every map — edit once) or
+**`map:<mission>`** (belongs to that mission only). The AI-bandit shared templates
+(`common/`) are `shared`; per-map placements (`maps/<mission>/`) are `map:<mission>`. Adding
+a map is a few `map:<mission>` rows; the shared layer stays a single file. See the
+`_readme` in `config-registry.json` for the full field reference.
+
+### Frozen baselines
+
+Prestart rebuilds every patched file as *frozen default + patches*
+(`<stem>.defaults<ext>` beside the live file, captured from the live file the first time
+it is patched). The baselines are **box-born and box-owned**: `Sync-ConfigDefaults.ps1`
+pulls them into the `config-defaults/` mirror (committed), and the deploy seeds one back
+only when the box lacks it. To refresh a baseline after a mod update, delete the
+`.defaults` file on the box and restart — prestart re-captures the current pristine
+file, and the next pull updates the mirror.
 
 ## AI bandit spawns
 
@@ -129,8 +193,8 @@ pwsh ./Sync-SpawnPoints.ps1            # dry-run: what pulling the box's spawn-p
 pwsh ./Sync-SpawnPoints.ps1 -Execute   # pull the box's live spawn-points.json into the repo
 ```
 
-VPP is no longer the source: `Sync-VPPCoordinates.ps1` is a deprecated one-shot importer (feed
-its `vpp-coordinates.json` to `Migrate-SpawnPoints.ps1` to re-seed). The live TeleportLocation
+VPP is no longer the source. The old one-shot importer/migrator is archived under
+`deprecated/` (see `deprecated/README.md`) and never runs in the deploy. The live TeleportLocation
 store is read-only from this tooling's side — it also holds
 admins' personal teleport bookmarks, so it's never written back to.
 

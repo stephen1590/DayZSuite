@@ -7,9 +7,13 @@
     locations (server dir + systemd units). -Fix copies the payload into place (sudo
     for units), reloads systemd, and restarts the service unless -NoRestart.
 
-    Every run also pulls the live spawn-points.json off the box first (Sync-SpawnPoints.ps1)
-    so runtime edits from the ConfigViewer Map editor aren't clobbered by re-shipping the repo
-    copy — see that script for the snapshot-before-overwrite + no-op-when-unchanged behavior.
+    OWNERSHIP RULE (pull-only config model, 2026-07-16): the deploy ships CODE and
+    overwrites it on drift; it never overwrites CONFIG CONTENT. Config-content items
+    ($items entries flagged Seed, plus the config-defaults/ mirror) are copied only to a
+    box that doesn't have them — fresh box or disaster recovery — and reported BoxOwned
+    otherwise. Config changes are made in the web editor (ConfigViewer), which writes the
+    box directly; the deploy's sync steps pull those box copies back into the repo as
+    committed mirrors/backups. See docs/CONFIGURATION.md + docs/RECOVERY.md.
 
     Host portability: the systemd units in the payload are TEMPLATES with
     {{DEPLOY_USER}}/{{DEPLOY_GROUP}}/{{DEPLOY_HOME}} placeholders; per-host values
@@ -72,13 +76,11 @@ if (-not $Local) {
     $RemoteTarget = "${RemoteUser}@${RemoteHost}"
     $sshOpt = "ssh -o ConnectTimeout=10"
 
-    # Spawn points: the live box is authoritative for AI-bandit spawn locations (admins/the web
-    # editor write spawn-points.json at runtime via the API — roles are inverted from the rest of
-    # this deploy). Pull it DOWN FIRST so edits made since the last deploy aren't clobbered by the
-    # rsync re-shipping the repo copy. Report-only unless -Fix; the sync validates JSON, snapshots
-    # the repo copy before overwriting, and leaves the repo seed untouched for a fresh/empty box.
-    # (Replaces the old Sync-VPPCoordinates pull — VPP is no longer the source; see that script,
-    # now a one-shot importer, and Migrate-SpawnPoints.ps1 for the original seed.)
+    # Spawn points: the live box is authoritative for AI-bandit spawn locations (the web Map
+    # editor writes spawn-points.json at runtime via the API). Pull it DOWN into the repo
+    # mirror — committed backup + fresh-box seed; the deploy below only ever SEEDS it to a
+    # box that has none. Report-only unless -Fix; the sync validates JSON and snapshots the
+    # mirror before overwriting.
     $spawnSync = Join-Path $PSScriptRoot "Sync-SpawnPoints.ps1"
     if (Test-Path $spawnSync) {
         Write-Host "--- spawn points (pull-before-push: box authoritative) ---"
@@ -87,32 +89,46 @@ if (-not $Local) {
         Write-Host ""
     }
 
-    # Config overrides: the live box is authoritative (an admin sets overrides at runtime via
-    # the ConfigViewer). Pull the box's config-overrides.json DOWN before the rsync re-ships it,
-    # so admin edits aren't clobbered. Read-only unless -Fix; the sync validates JSON, snapshots
-    # the repo copy before overwriting, and falls back to config-overrides.fallback.json for a
-    # fresh/empty/invalid box.
+    # Config overrides: the live box is authoritative (the web editor writes the document at
+    # runtime). Pull the box's config-overrides.json DOWN into the repo MIRROR — the committed
+    # backup, and the seed a fresh box gets. Read-only unless -Fix; the sync validates JSON and
+    # snapshots the mirror before overwriting. The deploy below only ever SEEDS this file to a
+    # box that doesn't have one — it never overwrites a live document.
     $ovrSync = Join-Path $PSScriptRoot "Sync-ConfigOverrides.ps1"
     if (Test-Path $ovrSync) {
-        Write-Host "--- config overrides (pull-before-push: box authoritative) ---"
+        Write-Host "--- config overrides (pull: box authoritative, repo = mirror/seed) ---"
         if ($Fix) { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
+        # The sync exits non-zero when it REFUSES to run: hand edits on the box-owned mirror
+        # (exit 3). Proceeding would ship a mirror that silently loses either the hand edits or
+        # the box's state — stop the whole deploy and surface its message instead.
+        if ($LASTEXITCODE) { Write-Error "config-overrides sync blocked the deploy (exit $LASTEXITCODE) — see above."; exit $LASTEXITCODE }
         Write-Host ""
     }
 
     # Frozen defaults: the box-born baselines behind the reversible overrides (config-defaults/).
-    # Same pull-before-push — capture the ones the repo lacks (repo authoritative once captured);
-    # the rsync + the -Local step below ship config-defaults/ back to the ServerDir.
+    # Same pull: the mirror follows the box (new captures and re-captures come down); the -Local
+    # step below only ever seeds a baseline the box LACKS back from the mirror.
     $defSync = Join-Path $PSScriptRoot "Sync-ConfigDefaults.ps1"
     if (Test-Path $defSync) {
-        Write-Host "--- config defaults (pull-before-push: box-born, repo-authoritative once captured) ---"
+        Write-Host "--- config defaults (pull: box authoritative, repo = mirror/seed) ---"
         if ($Fix) { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
         Write-Host ""
     }
 
+    # PULL-ONLY CONFIG MODEL (2026-07-16): the dev box does not push config content, full
+    # stop (MAINTENANCE-PLAN.md addendum 2026-07-16b). Config-content items in $items below
+    # are flagged Seed=$true: copied only when MISSING on the box (fresh box / disaster
+    # recovery), never overwriting a live copy. New config fields are created box-side by
+    # the overrides engine (force-create) via the web editor — nothing config-shaped ships
+    # from here to an existing box.
+
     Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (Fix=$Fix)`n"
-    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=host.env --exclude=deployer.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
+    # --exclude=deprecated: ./deprecated/ is an archive of retired tooling (e.g. the old VPP-coordinate
+    # importer + its data, superseded by spawn-points.json on 2026-07-15). Kept in the repo for history,
+    # NEVER shipped to the box and never read by the server.
+    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=deprecated --exclude=host.env --exclude=deployer.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "tooling rsync failed (exit $LASTEXITCODE)"; exit 1 }
     $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
@@ -276,51 +292,40 @@ $items = @(
     @{ Src = "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
        Dst = Join-Path $ServerDir "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
        Sudo = $false; Exec = $false }
-    # AI_Bandits DynamicAIB/StaticAIB are per-map (raw world coords) and the mod reads one fixed
-    # path, so the flat profiles/AI_Bandits/*.json is NOT shipped - it's a generated artifact,
-    # composed each start by Build-AIBandits.ps1 (prestart) from common + maps/<mission>. We ship
-    # the SOURCE tree; add a new maps/<mission>/DynamicAIB.json (+ line here) to cover another map.
-    @{ Src = "profiles/AI_Bandits/common/DynamicAIB.common.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/common/DynamicAIB.common.json"; Sudo = $false; Exec = $false }
-    # Spawn classification (category token -> template, size letter -> count) + the definitive
-    # spawn-points.json store. Build-AIBandits composes groups from these by name at prestart, so
-    # both must be on the box. spawn-points.json is pulled-before-push (box authoritative — the web
-    # editor writes it live); the pull happens in the remote block above before this rsync/copy.
-    @{ Src = "profiles/AI_Bandits/common/classification.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/common/classification.json"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/AI_Bandits/spawn-points.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/spawn-points.json"; Sudo = $false; Exec = $false }
-    # Sakhal has NO per-map DynamicAIB.json: its dynamic spawns come ENTIRELY from spawn-points.json
-    # (with classification.json above), composed into groups by the builder at prestart.
-    # Only StaticAIB (fixed sentry NPCs) is per-map for Sakhal.
-    @{ Src = "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json"
-       Dst = Join-Path $ServerDir "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json"; Sudo = $false; Exec = $false }
-    # Chernarus: PARKED — kept in the repo but intentionally NOT deployed (its $items ship line was
-    # removed 2026-07-12). It's a working compose-schema config (scalespeeder coordinates + shared
-    # common templates), dormant until someone runs dayzOffline.chernarusplus. To reactivate:
-    # re-add its ship line here and switch map.env. See maps/dayzOffline.chernarusplus/PARKED.md.
-    # KnockKnock settings are NOT a full-file item: it's the mod's own generated config, so
-    # we PATCH only chanceToSpawn via config-overrides.json (survives mod updates). See the
-    # Apply-ConfigOverrides step below.
-    @{ Src = "messages.xml";        Dst = Join-Path $ServerDir "messages.xml";  Sudo = $false; Exec = $false }
+    # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, spawn-points.json, classification,
+    # per-map StaticAIB, messages.xml, config-overrides.json, the Babaku per-map sources) is NO
+    # LONGER listed here. It is declared once in config-registry.json and seeded-if-missing by the
+    # "Config content" section below (single source; the API allowlist + pulls + validator read the
+    # same file). $items now carries CODE only (ships on drift). Architecture recap that used to
+    # live here: AI_Bandits DynamicAIB/StaticAIB are per-map raw coords composed at prestart from
+    # common (shared templates, scope:shared) + maps/<mission> (per-map, scope:map:<mission>);
+    # Sakhal's dynamic spawns come entirely from spawn-points.json; Chernarus is PARKED (map.env +
+    # its registry/seed present but not the active mission — see maps/dayzOffline.chernarusplus/PARKED.md);
+    # KnockKnock/AIB_UL/etc. are mod-generated, patched via config-overrides.json (not seeded).
     @{ Src = "dayz-rcon.ps1";       Dst = Join-Path $ServerDir "dayz-rcon.ps1"; Sudo = $false; Exec = $true  }
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
-    # Override engine + manifest live in the SERVER dir so prestart.sh applies them on every
-    # start (Src '..' = tooling root, the parent of deploy/). An admin can edit
-    # config-overrides.json and just restart — prestart patches the live files pre-boot.
+    # Override engine lives in the SERVER dir so prestart.sh applies the overrides document on
+    # every start (Src '..' = tooling root, the parent of deploy/). The engine is CODE (ships,
+    # overwrites); the DOCUMENT is box-owned config content - the web editor writes it live,
+    # the pull above mirrors it back, and it is only ever SEEDED to a box that has none
+    # (fresh box / disaster recovery: the mirror carries every web edit back onto the box).
     @{ Src = "../Apply-ConfigOverrides.ps1"; Dst = Join-Path $ServerDir "Apply-ConfigOverrides.ps1"; Sudo = $false; Exec = $true }
-    @{ Src = "../config-overrides.json";     Dst = Join-Path $ServerDir "config-overrides.json";     Sudo = $false; Exec = $false }
+    # (config-overrides.json itself is box-owned content — seeded from config-registry.json below,
+    #  not shipped here; the engine above is code and ships on drift.)
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     @{ Src = "../Build-AIBandits.ps1";       Dst = Join-Path $ServerDir "Build-AIBandits.ps1";       Sudo = $false; Exec = $true }
-    # Common custom CE types (modded items like CodeLock): the map-agnostic source + its applier
-    # live in the server dir; prestart copies the types into the active mission's custom/ folder
-    # and registers <ce folder="custom"> in that mission's cfgeconomycore.xml (never the vanilla
-    # types.xml). Add modded types to custom-ce/custom_types.xml - no new ship line per item.
+    # Custom CE types (modded loot like CodeLock + the AI Bandits mod's bandit_types.xml): the
+    # manifest (custom-ce.json) lists every extra types file; our own live in custom-ce/, mod ones
+    # are pulled from their doc folder at prestart. Apply-CustomCE copies them into the active
+    # mission's custom/ folder and regenerates <ce folder="custom"> in its cfgeconomycore.xml
+    # (never the vanilla types.xml). Add a modded types file = one line in custom-ce.json.
+    @{ Src = "custom-ce/custom-ce.json";     Dst = Join-Path $ServerDir "custom-ce/custom-ce.json";   Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/custom_types.xml";   Dst = Join-Path $ServerDir "custom-ce/custom_types.xml"; Sudo = $false; Exec = $false }
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
+    # (Babaku per-map sources are box-owned content — seeded from config-registry.json below.)
     @{ Src = "dayz-server.service"; Dst = $UnitPath;                            Sudo = $true;  Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.service"; Dst = "/etc/systemd/system/dayz-logarchive.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.timer";   Dst = "/etc/systemd/system/dayz-logarchive.timer";   Sudo = $true; Exec = $false }
@@ -370,28 +375,60 @@ foreach ($i in $items) {
     }
 }
 
-# --- Frozen defaults: ship config-defaults/ (the repo mirror) into the ServerDir, so a
-# hand-edited default takes effect and prestart has the baseline it rebuilds live = default +
-# patches from. Repo-authoritative: the dev-side Sync-ConfigDefaults.ps1 pulled box-born
-# defaults up first. Paths beneath config-defaults/ are server-relative and map 1:1. -Fix writes.
+# --- Config content: box-owned, SEEDED from the single registry (config-registry.json). Every
+# surface with a 'seed' is copied to the box ONLY when missing there (fresh box / disaster
+# recovery); an existing box copy is authoritative and reported BoxOwned (never overwritten -
+# the web editor owns config changes). This is the ONE list of config files: the API allowlist,
+# the pulls, and Test-LiveConfigs all read the same config-registry.json. Add a config = one row.
+$registryPath = Join-Path $PSScriptRoot "config-registry.json"
+if (Test-Path $registryPath) {
+    Write-Host "`n--- Config content (config-registry.json -> seed-if-missing) ---"
+    $seedRows = @((Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json).surfaces | Where-Object { $_.seed })
+    foreach ($s in $seedRows) {
+        $src = Join-Path $PSScriptRoot $s.seed      # seed paths are repo-root-relative
+        $dst = Join-Path $ServerDir $s.box
+        if (-not (Test-Path $src)) {
+            Write-Host ("{0,-8} {1,-9} {2}" -f "SEEDGONE", "none", $s.box)
+            Write-Warning "registry seed source missing: $($s.seed) (a fresh box could not be seeded with '$($s.name)')."
+            $results += [PSCustomObject]@{ Timestamp = Get-Date -Format "s"; File = $s.seed; State = "SeedGone"; Action = "none" }
+            continue
+        }
+        $state = if (Test-Path $dst) { "BoxOwned" } else { "Missing" }
+        $action = "none"
+        if ($Fix -and $state -eq "Missing") {
+            New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+            Copy-Item $src $dst -Force
+            $action = "seeded"
+        }
+        Write-Host ("{0,-8} {1,-9} {2}" -f $state, $action, $s.box)
+        $results += [PSCustomObject]@{ Timestamp = Get-Date -Format "s"; File = $s.seed; State = $state; Action = $action }
+    }
+} else {
+    Write-Warning "config-registry.json not found next to Deploy — no config content will be seeded (fresh-box restore would be incomplete)."
+}
+
+# --- Frozen defaults: config-defaults/ is a PULLED MIRROR of the box-born <stem>.defaults<ext>
+# baselines (Sync-ConfigDefaults.ps1) - box-owned config content like the rest. SEED ONLY: a
+# baseline missing on the box (fresh box / disaster recovery) is restored from the mirror so
+# prestart rebuilds live = that exact default + patches; an existing box baseline is
+# authoritative and never overwritten (a re-capture after a mod update must stick).
 $defaultsDir = Join-Path $PSScriptRoot "config-defaults"
 if (Test-Path $defaultsDir) {
-    Write-Host "`n--- Frozen defaults (config-defaults/ -> ServerDir) ---"
-    $defFiles = @(Get-ChildItem -Path $defaultsDir -Recurse -File)
+    Write-Host "`n--- Frozen defaults (config-defaults/ mirror -> seed-if-missing) ---"
+    $defFiles = @(Get-ChildItem -Path $defaultsDir -Recurse -File | Where-Object Name -ne 'README.md')
     foreach ($f in $defFiles) {
         $rel = $f.FullName.Substring($defaultsDir.Length).TrimStart('/', '\')
         $dst = Join-Path $ServerDir $rel
-        $state = if (-not (Test-Path $dst)) { "Missing" }
-                 elseif ((Get-FileHash $f.FullName).Hash -eq (Get-FileHash $dst).Hash) { "InSync" } else { "Drift" }
+        $state = if (Test-Path $dst) { "BoxOwned" } else { "Missing" }
         $action = "none"
-        if ($Fix -and $state -ne "InSync") {
+        if ($Fix -and $state -eq "Missing") {
             New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
             Copy-Item $f.FullName $dst -Force
-            $action = "deployed"
+            $action = "seeded"
         }
         Write-Host ("{0,-8} {1,-9} {2}" -f $state, $action, $rel)
     }
-    if (-not $defFiles.Count) { Write-Host "  (none yet - born on first prestart, pulled into the repo by Sync-ConfigDefaults on the next deploy)" }
+    if (-not $defFiles.Count) { Write-Host "  (none yet - born on first prestart, pulled into the repo by Sync-ConfigDefaults)" }
 }
 
 # Mods referenced by the unit but missing on disk: in -Fix mode, download them NOW by
@@ -430,7 +467,12 @@ if ($missingMods.Count) {
 $applier = Join-Path $PSScriptRoot "Apply-ConfigOverrides.ps1"
 if (Test-Path $applier) {
     Write-Host "`n--- Config overrides (pending — applied by prestart on next start) ---"
-    $ovr = & $applier -ServerDir $ServerDir      # report-only, no -Fix
+    # Pull-only model: prestart applies the BOX's own document ($ServerDir/config-overrides.json),
+    # so report against that copy. Fall back to the repo mirror only when the box has none yet
+    # (fresh box — the mirror is exactly what -Fix seeds there).
+    $liveManifest = Join-Path $ServerDir 'config-overrides.json'
+    if (-not (Test-Path $liveManifest)) { $liveManifest = Join-Path $PSScriptRoot 'config-overrides.json' }
+    $ovr = & $applier -ServerDir $ServerDir -Manifest $liveManifest      # report-only, no -Fix
     if ($ovr.Warn -gt 0) { Write-Warning "config overrides: $($ovr.Warn) override(s) will fail at apply time (see [WARN] lines above)." }
 } else {
     Write-Warning "Apply-ConfigOverrides.ps1 not found next to Deploy — skipping config override report."
@@ -457,7 +499,7 @@ if ($Fix) {
         Write-Host "Service state after restart: $active"
         $restarted = $true
     }
-} elseif (($results | Where-Object State -ne "InSync")) {
+} elseif (($results | Where-Object { $_.State -notin 'InSync', 'BoxOwned' })) {
     Write-Host "`nDrift detected. Re-run with -Fix to deploy."
 }
 

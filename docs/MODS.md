@@ -17,7 +17,7 @@ in the same order, to join (`verifySignatures = 2` enforces matching signatures)
 | Folder | Workshop ID | Mod | Notes |
 |---|---|---|---|
 | `@cf` | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036) | Community Framework | Base dependency for most mods below. |
-| `@vppadmintools` | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124) | VPPAdminTools | Requires CF. Admin teleport/spawn tooling; feeds `Sync-VPPCoordinates.ps1`. |
+| `@vppadmintools` | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124) | VPPAdminTools | Requires CF. Admin teleport/spawn tooling. |
 | `@aibandits` | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769) | AI Bandits | Requires CF. |
 | `@aibunleashed` | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844) | AIB_Unleashed | Squad tactics / stealth / breaching add-on, loads after `@aibandits`. Server-side only. |
 | `@aibvoices` | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) | AI Bandit Voices | Marked `optional` in `mods.conf` — no longer listed on the Workshop, so steamcmd may never fetch it. Client-side too; with `verifySignatures = 2` a missing key fails signature checks for anyone running it. |

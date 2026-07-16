@@ -13,7 +13,7 @@
     `sudo cat /etc/api/secrets.env` on the box, see
     ../NginxService/Api/README.md), re-run this with -Execute to pull the real
     file(s) down into deploy/profiles/VPPAdminTools/WebHooks/ -- same pull-then-track
-    pattern Sync-VPPCoordinates.ps1 uses for TeleportLocation.json.
+    pattern Sync-SpawnPoints.ps1 uses for the box-authoritative spawn-points.json.
 
     This script deliberately does NOT author or push a webhook config: the plugin has
     never written a file here, so its schema is unknown, and guessing risks shipping
@@ -81,7 +81,7 @@ if (-not $files.Count) {
         }
         Write-Host "`nPulled into $OutDir. Capture-only -- NOT yet wired into Deploy-DayZServer.ps1's deploy" -ForegroundColor Green
         Write-Host "list. Review the file(s) and decide push-every-deploy vs. admin-owned/pull-only, same as" -ForegroundColor Green
-        Write-Host "the TeleportLocation.json / vpp-coordinates.json split above it does." -ForegroundColor Green
+        Write-Host "the read-only-pull vs. push-every-deploy split the other Sync scripts make." -ForegroundColor Green
     } else {
         Write-Host "`nDry-run -- nothing written. Re-run with -Execute to pull into $OutDir."
     }

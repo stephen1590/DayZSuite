@@ -11,8 +11,14 @@
 # Local run logs / transcripts
 /logs/
 backups/
-# Local-only build previews (Sync-VPPCoordinates.ps1 -Build) — disposable, never shipped
+# Local-only build previews (deprecated/Sync-VPPCoordinates.ps1 -Build) — disposable, never shipped
 /preview/
+
+# Stray per-map dirs at the repo root are never legitimate — real missions live under
+# mpmissions/ on the box and deploy/profiles/.../maps/ in the repo. A root dayzOffline.*
+# is a misdirected write (a builder/prestart run with ServerDir pointed at the repo root);
+# ignore it so a regeneration can't be committed. Fix the wrong path, don't keep the dir.
+/dayzOffline.*/
 
 # OS / editor cruft
 .DS_Store

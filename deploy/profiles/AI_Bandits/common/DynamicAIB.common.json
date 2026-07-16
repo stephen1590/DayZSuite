@@ -7,7 +7,22 @@
         "showtriggers": 0,
         "cleanzerovector": 0,
         "crashsitegroup": "Random",
-        "cardamage": 1
+        "cardamage": 1,
+        "spawnTypes": {
+            "_readme": "Per-type spawn switch (builder-read, stripped from the composed file - like useSpawnLocations). Key = a groupTemplates/sniperTemplates NAME (patrol, holdout, raider_heavy, scavenger, desperate, roadblock, patrol_akm, airfield_m4, guard_patrol, hermit, sniper, svd_nest). Absent or 1 = that type spawns normally; 0 = every placement of that type emits no bandits, reversibly (authored placements untouched). Does NOT affect native full-file maps (e.g. Chernarus), which carry raw GroupLocations with no templates. Editable in the Server Files UI as the 'Aib-common' item. Example: set \"sniper\": 0 to turn off all sniper nests.",
+            "scavenger": 1,
+            "raider_heavy": 1,
+            "patrol": 1,
+            "holdout": 1,
+            "desperate": 1,
+            "roadblock": 1,
+            "patrol_akm": 1,
+            "airfield_m4": 1,
+            "guard_patrol": 1,
+            "hermit": 1,
+            "sniper": 1,
+            "svd_nest": 1
+        }
     },
     "weapons": [
         {

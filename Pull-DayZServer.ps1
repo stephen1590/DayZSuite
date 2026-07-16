@@ -14,8 +14,14 @@
       -Execute         do the pull for real (overwrites local)
       -Execute -Force  also pull the DayZ app + @mods + binaries (rarely needed)
 
-    --delete makes local mirror the server within the pulled set. If you have local
-    config edits in flight, push them first — a pull will overwrite them.
+    --delete makes local mirror the server within the pulled set, overwriting the local
+    working copy — that's the point (the box is authoritative on live state).
+
+    NOT the repo's config backup. Config content lives on the box (web editor) and is
+    mirrored into the REPO — with committed history — by Pull-Configs.ps1. THIS tool is
+    the off-box FULL working mirror: the whole server tree including saves/persistence the
+    repo never carries. It's the disaster-recovery grab for player/world state that
+    docs/RECOVERY.md points at, not a config sync.
 .EXAMPLE
     ./Pull-DayZServer.ps1                 # dry-run: what would come down
 .EXAMPLE
