@@ -71,28 +71,13 @@
   "PlayerGuard": true,
 
   // Coarse global rate limit (per source IP) in front of the per-action cooldowns.
-  "RateLimit": { "Max": 30, "WindowMs": 60000 },
+  "RateLimit": { "Max": 120, "WindowMs": 60000 },
 
-  // Read-only config retrieval. Two entry shapes, both relative to Dayz.ServerDir:
-  //   { "name": "overrides", "path": "config-overrides.json" }          ONE file
-  //   { "group": "Map - Sakhal", "dir": "mpmissions/dayzOffline.sakhal",
-  //     "subfolders": ["db"] }                                          A FOLDER
-  // A folder lists the files in its ROOT (non-recursive), plus the root of each
-  // named subfolder — so a mission's huge persistence/binary tree stays out unless
-  // you name that subfolder. Enumerated ON THE BOX at read time, shown under the
-  // group label. THIS LIST IS THE ALLOWLIST/MASK — nothing outside it is readable
-  // (no absolute paths, no "..", symlinks not followed), and dayz-ctl re-validates
-  // every read. serverDZ.cfg is deliberately omitted (live join/admin passwords);
-  // dayz-ctl also redacts common secret keys as a backstop. Fetch:
-  //   POST /dayz/configs/list                        -> grouped list of names
-  //   POST /dayz/configs/get  { "name": "<name>" }   -> that file's contents
-  "Configs": [
-    { "name": "overrides",   "path": "config-overrides.json" },
-    { "name": "mods",        "path": "mods.conf" },
-    { "name": "messages",    "path": "messages.xml" },
-    { "group": "Expansion Settings", "dir": "profiles/ExpansionMod/Settings" },
-    { "group": "Map - Sakhal", "dir": "mpmissions/dayzOffline.sakhal", "subfolders": ["db"] }
-  ],
+  // Config retrieval + write allowlist: NOT defined here. It is the single
+  // config-registry.json in the DayZ Server repo, read by Deploy-Api at deploy time
+  // (config is a DayZ-Server dependency). Add/change config surfaces there. Default
+  // path assumes DayZ Server is checked out beside NginxService; override if not:
+  //   "ConfigRegistry": "../../../DayZ Server/config-registry.json",
 
   // Global ignore-filetype for FOLDER listings: files with these extensions are
   // never shown in the picker (single "path" entries above are always shown).

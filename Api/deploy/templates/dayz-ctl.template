@@ -10,15 +10,16 @@ set -euo pipefail
 UNIT='__UNIT__'
 SERVER_DIR='__SERVER_DIR__'
 RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
-CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (deploy.config.json Configs)
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (config-registry.json, DayZ Server repo)
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
-WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (deploy.config.json Configs entries flagged "writable")
+WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
 DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
 DOCS_NAMES='__DOCS_NAMES__'        # space list of doc basename prefixes (Docs.Names, e.g. readme license) - catches extensionless files
 DOCS_MAXDEPTH='__DOCS_MAXDEPTH__'  # find maxdepth within each root (Docs.MaxDepth)
+LOG_SOURCES='__LOG_SOURCES__'      # rendered "id<TAB>reldir<TAB>glob<TAB>label" log-source registry (deploy.config.json Dayz.LogSources); log-sources/log-list/log-read resolve an id to its dir + filename glob
 
 die() { echo "dayz-ctl: $*" >&2; exit 1; }
 
@@ -76,6 +77,15 @@ is_doc() {
   case ",${DOCS_EXT,,}," in *",${_e,,},"*) return 0 ;; esac
   for _p in $DOCS_NAMES; do case "$_lc" in "${_p,,}"*) return 0 ;; esac; done
   return 1
+}
+
+# Resolve a log-source id (deploy.config.json Dayz.LogSources) to its "reldir<TAB>glob".
+# Prints nothing and returns 1 for an unknown id. The id set is a closed rendered table,
+# so log-list/log-read never form a dir or glob from caller input - only the id is matched.
+log_source_lookup() {
+  _hit="$(printf '%s\n' "$LOG_SOURCES" | awk -F'\t' -v id="$1" '$1==id{print $2"\t"$3; exit}')"
+  [ -n "$_hit" ] || return 1
+  printf '%s\n' "$_hit"
 }
 
 # Read config-overrides.json and print its TARGET-FILE keys as TAB tokens:
@@ -359,60 +369,81 @@ case "$verb" in
     exec systemctl restart "$UNIT"
     ;;
 
+  log-sources)
+    # log-sources — the browsable log-source registry (deploy.config.json Dayz.LogSources),
+    # one per line: id<TAB>label. Feeds the viewer's source selector. No caller input.
+    printf '%s\n' "$LOG_SOURCES" | awk -F'\t' 'NF>=4{print $1"\t"$4}'
+    ;;
+
   log-list)
     # These log verbs exist because the service user cannot traverse into the game
     # user's home (0750), so log reads cross the same sudo bridge as everything else.
-    # log-list — enumerate the server logs (RPT + ADM), newest first, capped at 200
-    # entries. No caller input reaches this. Output per file:
-    #   type<TAB>name<TAB>bytes<TAB>mtime-iso
-    find "$SERVER_DIR/profiles" -maxdepth 1 -type f \( -name '*.RPT' -o -name '*.ADM' \) -printf '%T@\t%s\t%f\n' 2>/dev/null \
+    # log-list <source-id> — enumerate ONE source's files (deploy.config.json
+    # Dayz.LogSources), newest first, capped at 200. The id selects a fixed dir + glob
+    # from the rendered registry; no caller input forms a path. Output per file:
+    #   name<TAB>bytes<TAB>mtime-iso
+    # Exit 2 = unknown source id.
+    src="${arg:-rpt}"
+    meta="$(log_source_lookup "$src")" || { echo "dayz-ctl: unknown log source: $src" >&2; exit 2; }
+    dir="${meta%%$'\t'*}"; glob="${meta#*$'\t'}"
+    find "$SERVER_DIR/$dir" -maxdepth 1 -type f -name "$glob" -printf '%T@\t%s\t%f\n' 2>/dev/null \
       | sort -rn | head -n 200 | while IFS="$(printf '\t')" read -r ts sz name; do
-        case "$name" in *.RPT) t=rpt ;; *.ADM) t=adm ;; *) continue ;; esac
-        printf '%s\t%s\t%s\t%s\n' "$t" "$name" "$sz" "$(date -u -d "@${ts%.*}" +%Y-%m-%dT%H:%M:%SZ)"
+        printf '%s\t%s\t%s\n' "$name" "$sz" "$(date -u -d "@${ts%.*}" +%Y-%m-%dT%H:%M:%SZ)"
       done
     ;;
 
   log-read)
-    # log-read <name|rpt|adm> <start> <count> [pattern] [ci] [raw] — read a LINE
-    # RANGE of one server log, optionally only the lines matching an ERE pattern
-    # (grep -E). <name> is either the literal rpt/adm (= the newest log of that
-    # type) or a bare *.RPT/*.ADM filename that must already exist under the
-    # fixed profiles dir — the caller never forms a path, and any name with a slash,
-    # dots-tricks or a foreign extension dies before touching the filesystem.
+    # log-read <source-id> <name|@newest> <start> <count> [pattern] [ci] [raw] — read a
+    # LINE RANGE of one log file within a declared source (deploy.config.json
+    # Dayz.LogSources), optionally only the lines matching an ERE pattern (grep -E).
+    # <source-id> selects a fixed dir + filename glob; <name> is either @newest (the
+    # newest file of that source) or a bare filename that MUST match the source's glob
+    # and already exist in the source dir — the caller never forms a path, and any name
+    # with a slash, dots-trick or a shape the source glob rejects dies before touching
+    # the filesystem.
     #
     # NOISE PRE-FILTER: lines matching NOISE_RE (engine spam like Sakhal's
     # "Unknown object class 'pond'") are hidden by default — dropped BEFORE
     # counting and paging, so offsets index the visible stream and returned lines
-    # keep their original numbers. 'raw' as arg 7 disables it. NOISE_RE is
+    # keep their original numbers. 'raw' as arg 8 disables it. NOISE_RE is
     # prefix-safe by contract (no ^, can't match a "1234:" prefix — enforced at
-    # render time), so applying it to numbered streams is exact.
+    # render time), so applying it to numbered streams is exact. It is inert on mod
+    # logs whose lines don't match the RPT-oriented pattern.
     #
     # <start> is 1-based within the visible/matched line stream; 0 = "the last
     # <count> lines" (tail mode). <count> is hard-capped at 500, pattern at 256
-    # chars, 'ci' as arg 6 makes the match case-insensitive. Output contract:
+    # chars, 'ci' as arg 7 makes the match case-insensitive. Output contract:
     #   line 1: the file's full path
     #   line 2: total<TAB>matched<TAB>start<TAB>hidden
     #           (total = raw file lines; matched = pageable lines after noise +
     #            pattern; hidden = lines the noise filter removed)
     #   rest:   <original-line-number>:<line text>
-    # Exit 2 = no such log, 3 = bad pattern.
-    start="${3:-0}"; count="${4:-100}"; pattern="${5:-}"; ci="${6:-}"; rawmode="${7:-}"
+    # Exit 2 = unknown source or no such log, 3 = bad pattern.
+    src="$arg"
+    name="${3:-@newest}"; start="${4:-0}"; count="${5:-100}"; pattern="${6:-}"; ci="${7:-}"; rawmode="${8:-}"
+    meta="$(log_source_lookup "$src")" || { echo "dayz-ctl: unknown log source: $src" >&2; exit 2; }
+    dir="${meta%%$'\t'*}"; glob="${meta#*$'\t'}"
     case "$start" in ''|*[!0-9]*) die "log start must be a number (0 = tail)" ;; esac
     case "$count" in ''|*[!0-9]*|0) die "log count must be a number >= 1" ;; esac
     [ "$count" -le 500 ] || count=500
     [ "${#pattern}" -le 256 ] || die "log pattern too long (max 256 chars)"
-    case "$arg" in
-      rpt|adm)
-        ext=RPT; [ "$arg" != adm ] || ext=ADM
-        file="$(ls -t "$SERVER_DIR/profiles/"*."$ext" 2>/dev/null | head -1)"
-        [ -n "$file" ] || { echo "dayz-ctl: no .$ext logs under profiles/" >&2; exit 2; }
+    case "$name" in
+      @newest)
+        # shellcheck disable=SC2086  # $glob must stay unquoted so the shell expands it
+        file="$(ls -t "$SERVER_DIR/$dir/"$glob 2>/dev/null | head -1)"
+        [ -n "$file" ] || { echo "dayz-ctl: no files for log source: $src" >&2; exit 2; }
         ;;
       *[!A-Za-z0-9._-]*|''|.*) die "log name must be a bare filename" ;;
-      *.RPT|*.ADM)
-        file="$SERVER_DIR/profiles/$arg"
-        [ -f "$file" ] || { echo "dayz-ctl: no such log: $arg" >&2; exit 2; }
+      *)
+        # The name must match the source's own declared glob (defence in depth on top
+        # of the bare-filename check) and resolve to an existing file in the source dir.
+        case "$name" in
+          $glob) ;;
+          *) die "log name does not match the source pattern" ;;
+        esac
+        file="$SERVER_DIR/$dir/$name"
+        [ -f "$file" ] || { echo "dayz-ctl: no such log: $name" >&2; exit 2; }
         ;;
-      *) die "log name must end in .RPT or .ADM (or be rpt/adm for the newest)" ;;
     esac
     ciflag=''; [ "$ci" != ci ] || ciflag='-i'
     noise="$NOISE_RE"

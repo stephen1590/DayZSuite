@@ -59,7 +59,7 @@ plus the dayz action allowlist. `GET /dayz/actions` is the focused per-namespace
 | `players` | online player count + BattlEye's full reply (RCon) | no |
 | `mapchange` | warn (if anyone's on) → write `map.env` → restart (`{ "mission": "dayzOffline.enoch" }`) | yes |
 | `broadcast` | in-game message to all (`{ "message": "…" }`) | no |
-| `logs/files` / `logs/read` | log browser: list all RPT/ADM files, then read any slice — `file` (exact name) or `type` rpt\|adm (newest), `offset` 1-based line (omit = tail), `limit` 1-500, `filter` grep -E regex (+ `ignoreCase`). With a filter, offset/limit page through the *matched* lines; each line returns with its original line number, plus `nextOffset`/`prevOffset` cursors for scrolling. A bare `logs/read` (no params) = tail the newest RPT. Known engine noise (`Dayz.LogNoiseFilter` — Sakhal's "Unknown object class 'pond'/'thing'" spam, ~13k lines/session) is pre-filtered box-side before counting and paging; `noiseHidden` reports the dropped count, `raw: true` disables the filter | no |
+| `logs/sources` / `logs/files` / `logs/read` | log browser: `logs/sources` lists the browsable log families (server rpt/adm + each mod that keeps its own logs — declared in `Dayz.LogSources`, add one entry to expose a new mod log). `logs/files` lists one `source`'s files (default rpt), newest first. `logs/read` reads any slice — `source` (id from `logs/sources`; default rpt), `file` (exact name from `logs/files`; omit = the source's newest), `offset` 1-based line (omit = tail), `limit` 1-500, `filter` grep -E regex (+ `ignoreCase`). With a filter, offset/limit page through the *matched* lines; each line returns with its original line number, plus `nextOffset`/`prevOffset` cursors for scrolling. A bare `logs/read` (no params) = tail the newest RPT. Known engine noise (`Dayz.LogNoiseFilter` — Sakhal's "Unknown object class 'pond'/'thing'" spam, ~13k lines/session) is pre-filtered box-side before counting and paging; `noiseHidden` reports the dropped count, `raw: true` disables the filter | no |
 | `configs` / `config` | list / retrieve the allowlisted config files (secrets redacted) | no |
 | `terrain/heightmaps` / `terrain/surface-y` | list baked terrain grids / resolve terrain height Y at world X/Z (`map`, `x`, `z`) — offline lookup from `/var/lib/api/heightmaps`, no game-server involvement; grids baked + shipped by the DayZHeightmap project, engine-oracle-validated to ≤0.5 m | no |
 
@@ -81,7 +81,7 @@ gains privilege.
 shutdown deadline (the native scheduler restarts the server that many minutes after
 start). It is marked `estimated` - mission load shifts it by a minute or two.
 
-**Read-only actions accept URL query params** (e.g. `POST /dayz/logs/read?limit=200&type=adm`
+**Read-only actions accept URL query params** (e.g. `POST /dayz/logs/read?limit=200&source=adm`
 with an empty signed body). Destructive actions read *only* the HMAC-signed JSON body -
 the query string isn't signed, and a replayed signed request must not be steerable by
 tampering with it.
@@ -131,7 +131,7 @@ This service can reboot a game server from the public internet, so it is layered
    ```
    api ALL=(root) NOPASSWD: /usr/local/bin/dayz-ctl
    ```
-   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log-list|log-read|bandit-log|bandit-live|config|config-list|config-target|file-list|file-write|override-write|override-versions|override-rollback|info`)
+   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log-sources|log-list|log-read|bandit-log|bandit-live|config|config-list|config-target|file-list|file-write|override-write|override-versions|override-rollback|info`)
    and re-validates every argument (mission name whitelisted against installed
    `mpmissions/`; broadcast text reduced to capped printable ASCII; log reads capped at
    500 lines, and only of a bare `*.RPT`/`*.ADM` filename that already exists in the
@@ -245,7 +245,7 @@ curl -sS https://api.<domain>/dayz/broadcast \
 # Read-only actions can carry their params in the query string with an empty
 # signed body (query params are ignored on destructive actions - see above):
 sig=$(printf '' | openssl dgst -sha256 -hmac "$HMAC_SECRET" -hex | sed 's/^.* //')
-curl -sS -X POST "https://api.<domain>/dayz/logs/read?limit=200&type=rpt" \
+curl -sS -X POST "https://api.<domain>/dayz/logs/read?limit=200&source=rpt" \
   -H "x-signature-256: sha256=$sig"
 
 # Host load is a ROOT endpoint (about the box, not dayz) - authed, empty signed body:

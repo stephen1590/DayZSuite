@@ -309,9 +309,9 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         } },
       },
       async run() {
-        // Tail the newest ADM via log-read (tail mode: start 0). Contract: line 1 =
-        // path, line 2 = totals header, rest = "N:text" — strip the line numbers.
-        const r = await dayz.ctl('log-read', 'adm', '0', '500');
+        // Tail the newest ADM via log-read (source 'adm', @newest file, tail mode: start 0).
+        // Contract: line 1 = path, line 2 = totals header, rest = "N:text" — strip the numbers.
+        const r = await dayz.ctl('log-read', 'adm', '@newest', '0', '500');
         if (r.code === 2) throw fail(404, 'no .ADM log found (server not started, or -adminlog off)');
         if (r.code !== 0) throw fail(502, `log read failed: ${(r.stderr || r.stdout).trim()}`);
         const tail = r.stdout.split('\n').slice(2).map((l) => l.replace(/^\d+:/, ''));
@@ -369,27 +369,58 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     // Logs group — the scroll/query surface over the server logs. `log` (above) stays
     // as the simple "tail the newest" shortcut; these add file choice, line ranges,
     // filtering and cursor-style paging for a log-viewer UI.
+    'logs/sources': {
+      destructive: false,
+      readOnly: true,
+      describe: 'list the browsable log sources (server rpt/adm + each mod that keeps its own logs) — ids feed the "source" param of the "logs/files" and "logs/read" actions. Add a source in deploy.config.json Dayz.LogSources.',
+      schema: { response: { type: 'object', properties: { sources: { type: 'array', items: { type: 'object', properties: {
+        id: { type: 'string' }, label: { type: 'string' },
+      } } } } } },
+      async run() {
+        const r = await dayz.ctl('log-sources');
+        if (r.code !== 0) throw fail(502, `log-sources failed: ${(r.stderr || r.stdout).trim()}`);
+        // dayz-ctl emits "id<TAB>label", one per declared source, registry order.
+        const sources = r.stdout
+          .split('\n')
+          .map((l) => l.replace(/\r$/, ''))
+          .filter(Boolean)
+          .map((line) => {
+            const [id, label] = line.split('\t');
+            return { id, label: label || id };
+          })
+          .filter((s) => s.id && /^[a-z0-9_-]+$/.test(s.id));
+        return { sources };
+      },
+    },
+
     'logs/files': {
       destructive: false,
       readOnly: true,
-      describe: 'list the server log files (rpt + adm), newest first — names feed the "logs/read" action',
-      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'object', properties: {
-        name: { type: 'string' }, type: { type: 'string', enum: ['rpt', 'adm'] },
-        sizeBytes: { type: 'integer' }, modified: { type: 'string' },
-      } } } } } },
-      async run() {
-        const r = await dayz.ctl('log-list');
+      describe: 'list one log source\'s files, newest first — names feed the "logs/read" action. Params: source (an id from "logs/sources"; default rpt)',
+      schema: {
+        query: { type: 'object', properties: {
+          source: { type: 'string', description: 'log source id from the "logs/sources" action (default rpt)' },
+        } },
+        response: { type: 'object', properties: { files: { type: 'array', items: { type: 'object', properties: {
+          name: { type: 'string' }, sizeBytes: { type: 'integer' }, modified: { type: 'string' },
+        } } } } },
+      },
+      async run(params) {
+        const source = String(params.source ?? 'rpt') || 'rpt';
+        if (!/^[a-z0-9_-]+$/.test(source)) throw fail(400, 'invalid "source" (use an id from the "logs/sources" action)');
+        const r = await dayz.ctl('log-list', source);
+        if (r.code === 2) throw fail(404, `unknown log source: ${source} (see the "logs/sources" action)`);
         if (r.code !== 0) throw fail(502, `log-list failed: ${(r.stderr || r.stdout).trim()}`);
-        // dayz-ctl emits "type<TAB>name<TAB>bytes<TAB>mtime-iso", newest first.
+        // dayz-ctl emits "name<TAB>bytes<TAB>mtime-iso", newest first.
         const files = r.stdout
           .split('\n')
           .map((l) => l.replace(/\r$/, ''))
           .filter(Boolean)
           .map((line) => {
-            const [type, name, bytes, modified] = line.split('\t');
-            return { name, type, sizeBytes: parseInt(bytes, 10) || 0, modified };
+            const [name, bytes, modified] = line.split('\t');
+            return { name, sizeBytes: parseInt(bytes, 10) || 0, modified };
           })
-          .filter((f) => f.name && (f.type === 'rpt' || f.type === 'adm'));
+          .filter((f) => f.name);
         return { files };
       },
     },
@@ -397,11 +428,11 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'logs/read': {
       destructive: false,
       readOnly: true,
-      describe: 'read a slice of one server log: range, filter, scroll. Params: file (a name from "logs/files") or type rpt|adm (newest, default rpt); offset = 1-based line to start at (omit for the tail); limit 1-500 (default 100); filter = grep -E regex matched per line; ignoreCase; raw = include the known-noise lines the box-side pre-filter hides by default (engine spam like Sakhal\'s "Unknown object class" — pattern set in deploy.config.json Dayz.LogNoiseFilter; noiseHidden reports how many were dropped). With a filter, offset/limit page through the MATCHED lines; every returned line keeps its original line number (n), and nextOffset/prevOffset are ready-made cursors for scrolling.',
+      describe: 'read a slice of one log: range, filter, scroll. Params: source (an id from "logs/sources"; default rpt) picks which log family; file (a name from "logs/files") or omit to read that source\'s newest file; offset = 1-based line to start at (omit for the tail); limit 1-500 (default 100); filter = grep -E regex matched per line; ignoreCase; raw = include the known-noise lines the box-side pre-filter hides by default (engine spam like Sakhal\'s "Unknown object class" — pattern set in deploy.config.json Dayz.LogNoiseFilter; noiseHidden reports how many were dropped). With a filter, offset/limit page through the MATCHED lines; every returned line keeps its original line number (n), and nextOffset/prevOffset are ready-made cursors for scrolling.',
       schema: {
         query: { type: 'object', properties: {
-          file: { type: 'string', description: 'exact log filename from the "logs/files" action (e.g. DayZServer_x64_2026_07_14.RPT)' },
-          type: { type: 'string', enum: ['rpt', 'adm'], description: 'used when "file" is omitted: read the newest log of this type (default rpt)' },
+          source: { type: 'string', description: 'log source id from the "logs/sources" action (default rpt)' },
+          file: { type: 'string', description: 'exact log filename from the "logs/files" action; omit to read the source\'s newest file' },
           offset: { type: 'integer', minimum: 0, description: '1-based line to start at — within the matched lines when "filter" is set; 0/omitted = the last "limit" lines (tail)' },
           limit: { type: 'integer', minimum: 1, maximum: 500, description: 'lines per page (default 100, max 500)' },
           filter: { type: 'string', maxLength: 256, description: 'ERE regex (grep -E syntax) — only matching lines come back' },
@@ -424,20 +455,22 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         if (filter.length > 256) throw fail(400, '"filter" too long (max 256 chars)');
         const ci = params.ignoreCase === true || String(params.ignoreCase ?? '') === 'true';
         const raw = params.raw === true || String(params.raw ?? '') === 'true';
-        // Target: an exact filename from logs/files, or rpt/adm = newest of that type.
-        // Shape check here; dayz-ctl re-validates and never forms a path from anything
-        // that isn't a bare existing *.RPT/*.ADM name in its fixed profiles dir.
+        const source = String(params.source ?? 'rpt') || 'rpt';
+        if (!/^[a-z0-9_-]+$/.test(source)) throw fail(400, 'invalid "source" (use an id from the "logs/sources" action)');
+        // Target: an exact filename from logs/files, or @newest = the source's newest file.
+        // Shape check here; dayz-ctl re-validates the name against the source's own glob and
+        // never forms a path from anything that isn't a bare existing name in the source dir.
         let target: string;
         if (params.file !== undefined && String(params.file) !== '') {
           target = String(params.file);
-          if (!/^[A-Za-z0-9._-]+\.(RPT|ADM)$/.test(target)) throw fail(400, 'invalid "file" (use a name from the "logs/files" action)');
+          if (!/^[A-Za-z0-9._-]+$/.test(target)) throw fail(400, 'invalid "file" (use a name from the "logs/files" action)');
         } else {
-          target = String(params.type ?? 'rpt') === 'adm' ? 'adm' : 'rpt';
+          target = '@newest';
         }
-        // Positional verb args — empty placeholders keep 'raw' in slot 7.
-        const args = [target, String(offset), String(limit), filter, ci ? 'ci' : '', raw ? 'raw' : ''];
+        // Positional verb args: source, name, then offset/limit/filter — empty placeholders keep 'raw' in slot 8.
+        const args = [source, target, String(offset), String(limit), filter, ci ? 'ci' : '', raw ? 'raw' : ''];
         const r = await dayz.ctl('log-read', ...args);
-        if (r.code === 2) throw fail(404, `log not found: ${target}`);
+        if (r.code === 2) throw fail(404, `log not found: ${source}/${target}`);
         if (r.code === 3) throw fail(400, 'invalid "filter" (grep -E syntax)');
         if (r.code !== 0) throw fail(502, `log-read failed: ${(r.stderr || r.stdout).trim()}`);
         // dayz-ctl's contract: line 1 = path, line 2 = total<TAB>matched<TAB>start<TAB>hidden,

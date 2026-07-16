@@ -125,21 +125,28 @@ export function registerCommands(app: FastifyInstance, deps: Deps): void {
       }
     }
 
-    // 4. Cooldown — the custom "you already asked for this" reply.
-    const cdSec = cfg.cooldownSeconds[name] ?? cfg.cooldownSeconds.default;
-    const cd = cooldowns.check(name, cdSec);
-    if (!cd.ok) {
-      audit('reject:cooldown', name, ctx, { retryAfter: cd.retryAfter });
-      reply.header('Retry-After', String(cd.retryAfter));
-      return reply.code(409).send({
-        ok: false,
-        error: 'cooldown',
-        action: name,
-        message: `'${name}' was already triggered ${cd.agoSec}s ago — wait ${cd.retryAfter}s before trying again`,
-        retryAfter: cd.retryAfter,
-      });
+    // 4. Cooldown — throttles repeated STATE CHANGES ("you already asked for this").
+    //    READ-ONLY actions are exempt by rule: they're idempotent and safe to poll, and the
+    //    global per-IP rate limit already covers read floods. Without this a polled read
+    //    (e.g. /dayz/status on the dashboard, /dayz/update/status) cools ITSELF down and 409s
+    //    on the next tick. The per-read `0` entries in cooldownSeconds are now redundant but
+    //    harmless — this rule is the source of truth, not the config list.
+    if (!action.readOnly) {
+      const cdSec = cfg.cooldownSeconds[name] ?? cfg.cooldownSeconds.default;
+      const cd = cooldowns.check(name, cdSec);
+      if (!cd.ok) {
+        audit('reject:cooldown', name, ctx, { retryAfter: cd.retryAfter });
+        reply.header('Retry-After', String(cd.retryAfter));
+        return reply.code(409).send({
+          ok: false,
+          error: 'cooldown',
+          action: name,
+          message: `'${name}' was already triggered ${cd.agoSec}s ago — wait ${cd.retryAfter}s before trying again`,
+          retryAfter: cd.retryAfter,
+        });
+      }
+      cooldowns.mark(name);
     }
-    cooldowns.mark(name);
 
     // 5. Run + audit.
     try {

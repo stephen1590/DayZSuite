@@ -75,7 +75,26 @@ $logNoiseSq = $logNoise.Replace("'", "'\''")
 #   { group, dir }  -> a whole folder (its files, recursively, enumerated on the
 #                      box at read time)       -> CONFIG_DIRS "group<TAB>reldir"
 # Validate here; dayz-ctl re-checks every read. Absent = feature off.
-$allConfigs   = @($cfg.Configs) | Where-Object { $_ }
+#
+# SOURCE = the SINGLE config registry in the DayZ Server repo (config is a DayZ-Server
+# dependency; the API references it by SIBLING PATH at deploy time — read here on the dev
+# machine, rendered into the box's dayz-ctl; nothing extra lands on the box). Default path
+# assumes the standard checkout (DayZ Server beside NginxService under UbuntuHost); override
+# with "ConfigRegistry" in deploy.config.json. Rows map to the two shapes above:
+#   box (single file), web != 'none'  -> { name, path=box, writable }
+#   dir (folder)                       -> { group, dir, subfolders }
+# web:'none' rows are deploy-seeded-but-not-web-exposed (e.g. per-map StaticAIB) — skipped.
+$registryPath = if ($cfg.ConfigRegistry) {
+    if ([IO.Path]::IsPathRooted($cfg.ConfigRegistry)) { $cfg.ConfigRegistry } else { Join-Path $PSScriptRoot $cfg.ConfigRegistry }
+} else { Join-Path $PSScriptRoot '../../../DayZ Server/config-registry.json' }
+if (-not (Test-Path $registryPath)) {
+    throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in the DayZ Server repo (config-registry.json). Check that repo out beside NginxService, or set 'ConfigRegistry' in deploy.config.json."
+}
+$registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
+$allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {
+    if ($_.dir) { [pscustomobject]@{ group = $_.group; dir = $_.dir; subfolders = $_.subfolders } }
+    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable } }
+}
 $fileEntries  = @($allConfigs | Where-Object { $_.path })
 $dirEntries   = @($allConfigs | Where-Object { $_.dir -and -not $_.path })
 foreach ($c in $fileEntries) {
@@ -135,6 +154,30 @@ if ($docs) {
     $docsExt   = (@($docs.Extensions | ForEach-Object { "$_".Trim().TrimStart('.').ToLower() } | Where-Object { $_ }) -join ',')
     $docsNames = (@($docs.Names     | ForEach-Object { "$_".Trim().ToLower() } | Where-Object { $_ }) -join ' ')
     if ($null -ne $docs.MaxDepth) { $docsMaxDepth = "$([int]$docs.MaxDepth)" }
+}
+
+# Log-source registry (Dayz.LogSources) -> "id<TAB>reldir<TAB>glob<TAB>label" rows for
+# dayz-ctl's log-sources/log-list/log-read. The id set is closed here, so the box never
+# forms a dir or glob from caller input - only a matched id selects a fixed dir + pattern.
+# Same field guards as Docs.Roots (ServerDir-relative, no '..', no whitespace). Labels may
+# carry spaces but no single quote (they render into a single-quoted bash var) or TAB/NL.
+$logSources = ''
+if ($cfg.Dayz.LogSources) {
+    $seenLogId = @{}
+    foreach ($s in @($cfg.Dayz.LogSources)) {
+        $id = "$($s.id)".Trim(); $dir = "$($s.dir)".Trim(); $glob = "$($s.glob)".Trim(); $label = "$($s.label)".Trim()
+        if ($id -notmatch '^[a-z0-9_-]+$') { throw "Api Dayz.LogSources: id '$id' must be [a-z0-9_-]." }
+        if ($seenLogId.ContainsKey($id)) { throw "Api Dayz.LogSources: duplicate id '$id'." }
+        $seenLogId[$id] = $true
+        if (-not $dir -or $dir -match '^\s*/' -or $dir -match '\.\.') { throw "Api Dayz.LogSources[$id]: dir must be a ServerDir-relative path with no '..': '$dir'." }
+        if ($dir -match "[\s`t`n]") { throw "Api Dayz.LogSources[$id]: dir must not contain whitespace: '$dir'." }
+        if (-not $glob -or $glob -match '/' -or $glob -match '\.\.') { throw "Api Dayz.LogSources[$id]: glob must be a bare filename pattern (no '/' or '..'): '$glob'." }
+        if ($glob -match "[\s`t`n]") { throw "Api Dayz.LogSources[$id]: glob must not contain whitespace: '$glob'." }
+        if (-not $label) { $label = $id }
+        if ($label -match "['`t`n]") { throw "Api Dayz.LogSources[$id]: label must not contain single quotes, tabs or newlines: '$label'." }
+        $logSources += "$id`t$dir`t$glob`t$label`n"
+    }
+    $logSources = $logSources.TrimEnd("`n")
 }
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
@@ -206,6 +249,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__DOCS_EXT__'      = $docsExt
         '__DOCS_NAMES__'    = $docsNames
         '__DOCS_MAXDEPTH__' = $docsMaxDepth
+        '__LOG_SOURCES__'   = $logSources
     })
 
 Set-Content -NoNewline -Path (Join-Path $stageDir 'api.sudoers') -Value (
