@@ -28,6 +28,7 @@ Trigger one with `POST /dayz/<action>` - grouped actions with
 | `status`                   | server info: uptime, players, map, mods, next restart                       | no           |
 | `players`                  | online player count + roster                                                | no           |
 | `positions`                | live player map positions, anonymized to coordinates only                   | no           |
+| `missions`                 | installed missions - the candidates a `mapchange` can switch to             | no           |
 | `logs/files` / `logs/read` | list every log file / read any slice - engine noise pre-filtered            | no           |
 | `configs/*`                | read allowlisted config files - replace the editable ones (with rollback)   | no           |
 | `terrain/*`                | baked heightmap lookup - terrain height at world X/Z                        | no           |
@@ -35,10 +36,17 @@ Trigger one with `POST /dayz/<action>` - grouped actions with
 | `start`                    | start the server                                                            | no           |
 | `restart` / `stop`         | restart or stop the server                                                  | yes          |
 | `mapchange`                | switch mission and restart                                                  | yes          |
+| `update`                   | queue a game update for the next restart (arms it - does not restart now)   | no           |
+| `update/status`            | installed vs latest build, whether one is queued, and the last update result| no           |
+| `update/cancel`            | cancel a queued update                                                      | no           |
 
 Host load is a **root** endpoint, not a `/dayz` action (it's about the whole box):
 `POST /sysload` - CPU, memory, disk, plus the game server's own footprint. Signed
 like the actions above.
+
+`POST /whoami` is another root endpoint: it returns the calling key's own identity,
+scope (`full` or `observe`), and namespaces. An access-aware UI reads it to show operator
+vs read-only controls instead of probing with a write it may not be allowed to make.
 
 ### Calling it
 
@@ -80,3 +88,19 @@ Hard to misuse by design:
   left to wait.
 - **Rate limit** - 30 requests per minute per IP, across everything.
 - **Audited** - every call is logged, accepted or rejected.
+
+### Updates
+
+Updates ride the reboot, they are not a separate disruptive event. `update` arms a flag; the
+next server start pulls the latest server build and mods before the engine comes up, then
+clears the flag. That next start can be the scheduled restart, a manual `restart`, or a forced
+one - any of them applies a queued update.
+
+- **Nothing is kicked by `update`.** Arming only sets the flag, so it is non-destructive. The
+  disruption is the restart you choose to run, gated by the normal player guard.
+- **Auto-check.** The box checks Steam on a timer (default every 4 hours). If the installed
+  build is behind, it arms the flag automatically and broadcasts a heads-up. The update then
+  applies on the next restart with no API call at all.
+- **Read the result.** `update/status` reports the installed build, the latest known build,
+  whether an update is queued, and the last applied update's outcome plus a log tail. On a
+  failure the server boots on the old build and the next auto-check re-arms.

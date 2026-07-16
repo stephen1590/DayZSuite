@@ -15,11 +15,17 @@ CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" 
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (deploy.config.json Configs entries flagged "writable")
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
+DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
+DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
+DOCS_NAMES='__DOCS_NAMES__'        # space list of doc basename prefixes (Docs.Names, e.g. readme license) - catches extensionless files
+DOCS_MAXDEPTH='__DOCS_MAXDEPTH__'  # find maxdepth within each root (Docs.MaxDepth)
 
 die() { echo "dayz-ctl: $*" >&2; exit 1; }
 
 OVERRIDES="$SERVER_DIR/config-overrides.json"
 OVR_VERSIONS="$SERVER_DIR/.overrides-versions"
+SPAWNS="$SERVER_DIR/profiles/AI_Bandits/spawn-points.json"   # definitive AI-bandit spawn store (prestart Build-AIBandits reads it)
+SPAWN_VERSIONS="$SERVER_DIR/.spawn-versions"
 
 # Snapshot the current config-overrides.json into the versions dir (keep the 10 newest),
 # restoring the server-dir owner so a later ubuntu-run deploy can still replace it. Best-effort.
@@ -31,6 +37,17 @@ snapshot_overrides() {
     | while IFS= read -r _old; do rm -f "$_old"; done
   _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
   [ -n "$_own" ] && chown -R "$_own" "$OVR_VERSIONS" 2>/dev/null || true
+}
+
+# Same pattern for spawn-points.json (keep the 10 newest). A save is reversible from these.
+snapshot_spawns() {
+  [ -f "$SPAWNS" ] || return 0
+  mkdir -p "$SPAWN_VERSIONS"
+  cp -p "$SPAWNS" "$SPAWN_VERSIONS/spawn-points.$(date -u +%Y%m%dT%H%M%S%NZ).json"
+  find "$SPAWN_VERSIONS" -maxdepth 1 -name 'spawn-points.*.json' | sort -r | tail -n +11 \
+    | while IFS= read -r _old; do rm -f "$_old"; done
+  _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+  [ -n "$_own" ] && chown -R "$_own" "$SPAWN_VERSIONS" 2>/dev/null || true
 }
 
 # Read + print ONE config file: the resolved relpath on line 1, then the contents with
@@ -50,6 +67,15 @@ print_config_file() {
   [ "$_sz" -le 786432 ] || { echo "dayz-ctl: config too large ($_sz bytes): $_rel" >&2; exit 3; }
   printf '%s\n' "$_rel"
   sed -E 's/((passwordadmin|password|token|secret|apikey|api_key)"?[[:space:]]*[:=][[:space:]]*")[^"]*/\1REDACTED/Ig' "$_file"
+}
+
+# True if a path's BASENAME qualifies as documentation: extension in DOCS_EXT, or the name
+# starts with a DOCS_NAMES prefix (catches extensionless LICENSE/NOTICE). Case-insensitive.
+is_doc() {
+  _b="${1##*/}"; _lc="${_b,,}"; _e="${_b##*.}"
+  case ",${DOCS_EXT,,}," in *",${_e,,},"*) return 0 ;; esac
+  for _p in $DOCS_NAMES; do case "$_lc" in "${_p,,}"*) return 0 ;; esac; done
+  return 1
 }
 
 # Read config-overrides.json and print its TARGET-FILE keys as TAB tokens:
@@ -185,6 +211,112 @@ emit_allowed() {
     done
   fi
   return 0
+}
+
+# --- Update system helpers (see the update-arm/disarm/status verbs) ----------------
+# The DayZ deploy owns the update MACHINERY (update.sh + prestart.sh apply it, update-check.sh
+# arms it on a timer). dayz-ctl only crosses the privilege bridge to: arm/disarm the pending
+# flag (the server dir is the game user's, unwritable by the API service account) and read the
+# status the machinery leaves behind. State files, all under SERVER_DIR:
+#   .update-pending  present = an update is queued for the next start (first line = reason)
+#   .update-check    last auto-check: installedBuild/latestBuild/checkedAt/checkOk (KEY=VALUE)
+#   .update-lastrun  last applied update: started/finished/exitCode/ok/from/to/reason (KEY=VALUE)
+#   .update-lastlog  tail of the last update's steamcmd output (plain text)
+UPDATE_PENDING="$SERVER_DIR/.update-pending"
+UPDATE_MANIFEST="$SERVER_DIR/steamapps/appmanifest_223350.acf"
+
+# Value for KEY from a KEY=VALUE file (first match; keeps any '=' in the value). Fail-safe
+# under set -e: a missing file (sed exits 2) or SIGPIPE from head must yield empty, not abort.
+_kv() { [ -f "$2" ] || return 0; sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1 || true; }
+
+# Installed server APP build id from the Steam manifest on disk (empty if absent). Must be
+# fail-safe: this script runs under `set -e`, so guard the missing-file / no-match / SIGPIPE
+# cases so a status read never aborts just because the manifest isn't there yet.
+_installed_build() {
+  [ -f "$UPDATE_MANIFEST" ] || return 0
+  grep -oE '"buildid"[[:space:]]*"[0-9]+"' "$UPDATE_MANIFEST" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true
+}
+
+# Emit the update status as one JSON object on stdout. Values come from the manifest +
+# the state files; string fields go through jq/python3 so arbitrary log/reason text is
+# safely escaped. jq preferred, python3 fallback (matching this script's other JSON paths).
+emit_update_status() {
+  local installed latest checkedAt checkOkRaw updateAvailable pending pendingReason
+  installed="$(_installed_build)"
+  latest="$(_kv latestBuild "$SERVER_DIR/.update-check")"
+  checkedAt="$(_kv checkedAt "$SERVER_DIR/.update-check")"
+  checkOkRaw="$(_kv checkOk "$SERVER_DIR/.update-check")"
+  updateAvailable=false
+  [ "$checkOkRaw" = 1 ] && [ -n "$latest" ] && [ -n "$installed" ] && [ "$latest" != "$installed" ] && updateAvailable=true
+  pending=false; pendingReason=""
+  [ -f "$UPDATE_PENDING" ] && { pending=true; pendingReason="$(head -1 "$UPDATE_PENDING" 2>/dev/null || true)"; }
+
+  local hasLast=false lrStarted="" lrFinished="" lrExit="" lrOkRaw="" lrFrom="" lrTo="" lrReason="" lrLog=""
+  if [ -f "$SERVER_DIR/.update-lastrun" ]; then
+    hasLast=true
+    lrStarted="$(_kv startedAt "$SERVER_DIR/.update-lastrun")"
+    lrFinished="$(_kv finishedAt "$SERVER_DIR/.update-lastrun")"
+    lrExit="$(_kv exitCode "$SERVER_DIR/.update-lastrun")"
+    lrOkRaw="$(_kv ok "$SERVER_DIR/.update-lastrun")"
+    lrFrom="$(_kv fromBuild "$SERVER_DIR/.update-lastrun")"
+    lrTo="$(_kv toBuild "$SERVER_DIR/.update-lastrun")"
+    lrReason="$(_kv reason "$SERVER_DIR/.update-lastrun")"
+    lrLog="$(cat "$SERVER_DIR/.update-lastlog" 2>/dev/null || true)"
+  fi
+
+  # Export for the JSON engines (avoids all arg-quoting); booleans/numbers converted inside.
+  export U_installed="$installed" U_latest="$latest" U_checkedAt="$checkedAt" \
+         U_checkOk="$checkOkRaw" U_updateAvailable="$updateAvailable" \
+         U_pending="$pending" U_pendingReason="$pendingReason" U_hasLast="$hasLast" \
+         U_lrStarted="$lrStarted" U_lrFinished="$lrFinished" U_lrExit="$lrExit" \
+         U_lrOk="$lrOkRaw" U_lrFrom="$lrFrom" U_lrTo="$lrTo" U_lrReason="$lrReason" U_lrLog="$lrLog"
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -n '
+      def nz: if . == "" then null else . end;
+      def numornull: if test("^[0-9]+$") then tonumber else null end;
+      {
+        installedBuild:  ($ENV.U_installed | nz),
+        latestBuild:     ($ENV.U_latest | nz),
+        updateAvailable: ($ENV.U_updateAvailable == "true"),
+        checkedAt:       ($ENV.U_checkedAt | nz),
+        checkOk:         ($ENV.U_checkOk == "1"),
+        pending:         ($ENV.U_pending == "true"),
+        pendingReason:   ($ENV.U_pendingReason | nz),
+        lastRun: (if $ENV.U_hasLast == "true" then {
+          startedAt:  ($ENV.U_lrStarted | nz),
+          finishedAt: ($ENV.U_lrFinished | nz),
+          exitCode:   ($ENV.U_lrExit | numornull),
+          ok:         ($ENV.U_lrOk == "1"),
+          fromBuild:  ($ENV.U_lrFrom | nz),
+          toBuild:    ($ENV.U_lrTo | nz),
+          reason:     ($ENV.U_lrReason | nz),
+          log:        ($ENV.U_lrLog | nz)
+        } else null end)
+      }'
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import os, json
+def nz(v): return v if v else None
+e = os.environ
+last = None
+if e.get("U_hasLast") == "true":
+    ex = e.get("U_lrExit", "")
+    last = {
+        "startedAt": nz(e.get("U_lrStarted")), "finishedAt": nz(e.get("U_lrFinished")),
+        "exitCode": int(ex) if ex.isdigit() else None, "ok": e.get("U_lrOk") == "1",
+        "fromBuild": nz(e.get("U_lrFrom")), "toBuild": nz(e.get("U_lrTo")),
+        "reason": nz(e.get("U_lrReason")), "log": nz(e.get("U_lrLog")),
+    }
+print(json.dumps({
+    "installedBuild": nz(e.get("U_installed")), "latestBuild": nz(e.get("U_latest")),
+    "updateAvailable": e.get("U_updateAvailable") == "true", "checkedAt": nz(e.get("U_checkedAt")),
+    "checkOk": e.get("U_checkOk") == "1", "pending": e.get("U_pending") == "true",
+    "pendingReason": nz(e.get("U_pendingReason")), "lastRun": last,
+}))'
+  else
+    die "update-status: no JSON tool (jq/python3) on the box"
+  fi
 }
 
 verb="${1:-}"
@@ -337,6 +469,21 @@ case "$verb" in
     { grep -aE 'SPAWN:|KILLED:' "$file" || true; } | tail -n "$n"
     ;;
 
+  bandit-live)
+    # bandit-live — the live bandit snapshot the AIB_Tracker -serverMod writes to
+    # profiles/AI_Bandits/live_positions.json every 20s (even with zero bandits, so the file's
+    # MTIME is a liveness heartbeat). One JSON envelope on stdout:
+    #   {"ageSec": <now - mtime, seconds>, "positions": <file contents: [{"x":..,"z":..}, ...]>}
+    # ageSec lets the API reject a frozen file (server/mod down) instead of plotting ghosts —
+    # the file is never copied (read in-place here), so mtime is trustworthy. A read landing
+    # mid-write may embed partial JSON; the API treats an unparseable envelope as transient.
+    # Exit 2 = file absent (mod not loaded, or server booted <20s ago) — caller treats as "none".
+    f="$SERVER_DIR/profiles/AI_Bandits/live_positions.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no live_positions.json (AIB_Tracker serverMod not loaded yet?)" >&2; exit 2; }
+    age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+    printf '{"ageSec":%d,"positions":%s}\n' "$age" "$(cat "$f")"
+    ;;
+
   config-list)
     # Emit "group<TAB>name<TAB>label<TAB>relpath" for every retrievable config: explicit
     # files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
@@ -373,6 +520,46 @@ case "$verb" in
     rel="$({ emit_allowed; emit_override_targets; } | awk -F'\t' -v n="$arg" '$2==n{print $3; exit}')"
     [ -n "$rel" ] || { echo "dayz-ctl: unknown config target: $arg" >&2; exit 2; }
     print_config_file "$rel"
+    ;;
+
+  doc-list)
+    # Enumerate documentation files across the configured mod-folder roots (DOCS_ROOTS globs),
+    # one "mod<TAB>relpath<TAB>relname" line each. Recursive to DOCS_MAXDEPTH, filtered by is_doc
+    # (extension in DOCS_EXT or name in DOCS_NAMES). Pure enumeration — no caller input. This is
+    # the docs analogue of config-list; docs live under @mod folders, not the config allowlist.
+    [ -n "$DOCS_ROOTS" ] || exit 0
+    _md="${DOCS_MAXDEPTH:-3}"; case "$_md" in ''|*[!0-9]*) _md=3 ;; esac
+    {
+      for _glob in $DOCS_ROOTS; do
+        for _root in $SERVER_DIR/$_glob; do
+          [ -d "$_root" ] || continue
+          find -L "$_root" -maxdepth "$_md" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r _f; do
+            is_doc "$_f" || continue
+            _rel="${_f#"$SERVER_DIR"/}"
+            printf '%s\t%s\t%s\n' "${_rel%%/*}" "$_rel" "${_rel#*/}"
+          done
+        done
+      done
+    } | head -n 5000
+    ;;
+
+  doc-read)
+    # doc-read <relpath> — print ONE documentation file (a relpath from doc-list). Validated: no
+    # '..', must sit under a DOCS_ROOTS dir, must pass is_doc; then print_config_file re-checks
+    # realpath-under-server-dir + size cap + secret mask. Caller can't read a non-doc via this.
+    [ -n "$arg" ] || die "doc-read needs a relpath"
+    case "$arg" in *..*) die "invalid doc path" ;; esac
+    case "$arg" in *[!A-Za-z0-9_@./-]*) die "invalid doc path" ;; esac
+    _under=0
+    for _glob in $DOCS_ROOTS; do
+      for _root in $SERVER_DIR/$_glob; do
+        [ -d "$_root" ] || continue
+        case "$SERVER_DIR/$arg" in "$_root"/*) _under=1; break 2 ;; esac
+      done
+    done
+    [ "$_under" -eq 1 ] || die "doc path is not under a documentation root"
+    is_doc "$arg" || die "not a documentation file"
+    print_config_file "$arg"
     ;;
 
   info)
@@ -486,6 +673,35 @@ case "$verb" in
     echo ok
     ;;
 
+  spawn-write)
+    # spawn-write <json> — replace profiles/AI_Bandits/spawn-points.json with the JSON document
+    # in $2 (the definitive AI-bandit spawn store; the ConfigViewer Map editor computed it).
+    # PRIVILEGED write only. Validates it is JSON (jq or python3), snapshots the current file
+    # (keep 10), writes ATOMICALLY into the AI_Bandits dir, restores the server-dir owner. Target
+    # is fixed — no caller path input. Takes effect at the next restart (prestart Build-AIBandits
+    # recomposes DynamicAIB.json from it).
+    [ -n "$arg" ] || die "spawn-write needs the new document"
+    if command -v jq >/dev/null 2>&1; then
+      printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
+    elif command -v python3 >/dev/null 2>&1; then
+      printf '%s' "$arg" | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
+    else
+      die "spawn-write: no JSON validator (jq/python3) on the box"
+    fi
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 786432 ] || die "spawn-write: too large ($sz bytes)"
+    _dir="$(dirname "$SPAWNS")"
+    [ -d "$_dir" ] || die "spawn-write: AI_Bandits dir not present ($_dir) — deploy the DayZ server first"
+    snapshot_spawns
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    tmp="$(mktemp "$_dir/.spawn-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$SPAWNS"
+    echo ok
+    ;;
+
   override-versions)
     # List snapshots newest-first, one <version> token per line (the service builds the rollback
     # list from this). No input.
@@ -549,7 +765,44 @@ case "$verb" in
     echo ok
     ;;
 
+  update-arm)
+    # update-arm [reason] — ARM a deferred update: write .update-pending so the NEXT server
+    # start (prestart.sh) pulls the latest app + mods. Does NOT download or restart anything.
+    # The reason is a free-text note surfaced in the status; sanitized (printable ASCII, one
+    # line, capped) since it's operator-supplied. Owner restored so a later ubuntu-run deploy
+    # can still manage the file. Idempotent — re-arming just refreshes the note.
+    reason="$(printf '%s' "${arg:-manual: queued via API}" | tr -cd '\11\40-\176' | tr '\t' ' ' | cut -c1-200)"
+    [ -n "$reason" ] || reason="manual: queued via API"
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    tmp="$(mktemp "$SERVER_DIR/.update-arm.XXXXXX")"
+    printf '%s\n' "$reason" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$UPDATE_PENDING"
+    echo ok
+    ;;
+
+  update-disarm)
+    # update-disarm — clear a queued update (remove .update-pending). No-op if not armed.
+    rm -f "$UPDATE_PENDING"
+    echo ok
+    ;;
+
+  update-status)
+    # update-status — one JSON object: installed vs latest build, updateAvailable, whether an
+    # update is armed (+ reason), and the last applied update's outcome (+ log tail). Read-only;
+    # no caller input. See emit_update_status above for the field contract.
+    emit_update_status
+    ;;
+
+  mission-list)
+    # mission-list — installed missions (immediate subdirs of mpmissions/), one name per line,
+    # sorted. No caller input. The map-change picker uses this; set-map re-validates the choice.
+    [ -d "$SERVER_DIR/mpmissions" ] || exit 0
+    find "$SERVER_DIR/mpmissions" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | LC_ALL=C sort || true
+    ;;
+
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read config config-list config-target info override-write override-versions override-rollback file-list file-write)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write update-arm update-disarm update-status mission-list)"
     ;;
 esac

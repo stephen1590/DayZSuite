@@ -67,6 +67,8 @@ export const ROOT_ROUTES: RootRoute[] = [
       diskRootGb: S.obj({ total: S.num, free: S.num, usedPct: S.num }),
       dayz: { nullable: true, ...S.obj({ state: S.str, mainPid: S.intNull, memoryMb: S.num, tasks: S.int, cpuTimeSec: S.int, unitRestarts: S.int, logDirMb: S.num, persistenceMb: S.num }) },
     }) },
+  { method: 'post', path: '/whoami', summary: "The caller's own authenticated identity + capability (scope, namespaces).", auth: true,
+    response: S.obj({ ok: S.bool, action: S.str, identity: S.str, scope: S.str, namespaces: S.arr(S.str) }) },
   { method: 'post', path: '/keys/create', summary: 'Mint a derived API key (wizard only). Secret returned ONCE.', wizardOnly: true,
     body: S.obj({ id: S.str, scope: { type: 'string', enum: ['full', 'observe'] }, namespaces: S.arr(S.str) }, ['id']),
     response: S.obj({ ok: S.bool, id: S.str, scope: S.str, namespaces: S.arr(S.str), secret: S.str, message: S.str }) },

@@ -41,4 +41,22 @@ export function registerHost(app: FastifyInstance, deps: Deps): void {
       return reply.code(502).send({ ok: false, error: 'sysload_failed', message });
     }
   });
+
+  // POST /whoami — the caller's own authenticated identity + capability. An access-aware UI
+  // (the Maintenance page) reads this to show operator vs read-only controls, instead of
+  // probing with a write it may not be allowed to make. A caller only ever learns its OWN
+  // grant; the signature proves who it is. Like /sysload: authenticated, namespace-free.
+  app.post('/whoami', async (req, reply) => {
+    const auth = authenticateRequest(req, keyStore, cfg.secret);
+    const ctx = { ip: req.ip, url: '/whoami', key: auth.identity };
+    if (!auth.authed) {
+      audit('reject:bad_signature', 'whoami', ctx, auth.claimedKey ? { claimed: auth.claimedKey } : {});
+      return reply.code(401).send({ ok: false, error: 'bad_signature' });
+    }
+    // The wizard (no derived key) is the root credential: full scope, every namespace.
+    const scope = auth.key ? auth.key.scope : 'full';
+    const namespaces = auth.key ? auth.key.namespaces : ['*'];
+    audit('ok', 'whoami', ctx);
+    return reply.send({ ok: true, action: 'whoami', identity: auth.identity, scope, namespaces });
+  });
 }

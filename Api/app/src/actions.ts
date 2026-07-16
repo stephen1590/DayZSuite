@@ -61,6 +61,31 @@ export interface Action {
   run(params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
+// Shape of the update system's status (dayz-ctl update-status). Reused by the `update`,
+// `update/status` and `update/cancel` actions. Build ids are strings (Steam's are numeric
+// but we never do math on them); nulls mean "unknown" (no check yet / manifest absent).
+const UPDATE_STATUS_SCHEMA: JSONSchema = {
+  type: 'object',
+  properties: {
+    installedBuild: { type: 'string', nullable: true },
+    latestBuild: { type: 'string', nullable: true },
+    updateAvailable: { type: 'boolean' },
+    checkedAt: { type: 'string', nullable: true },
+    checkOk: { type: 'boolean' },
+    pending: { type: 'boolean' },
+    pendingReason: { type: 'string', nullable: true },
+    lastRun: {
+      type: 'object', nullable: true,
+      properties: {
+        startedAt: { type: 'string', nullable: true }, finishedAt: { type: 'string', nullable: true },
+        exitCode: { type: 'integer', nullable: true }, ok: { type: 'boolean' },
+        fromBuild: { type: 'string', nullable: true }, toBuild: { type: 'string', nullable: true },
+        reason: { type: 'string', nullable: true }, log: { type: 'string', nullable: true },
+      },
+    },
+  },
+};
+
 export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: HeightmapStore): Record<string, Action> {
   // Give connected players a chance to reach safety before an action that's about to
   // disconnect them: broadcast, then wait. Skipped when nobody's on, or the count
@@ -76,6 +101,18 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     const text = sanitizeText(`[SERVER] ${effect} in ${warnSeconds}s - get to safety!`);
     await dayz.ctl('broadcast', text);
     await sleep(warnSeconds * 1000);
+  }
+
+  // Read the update system's status across the sudo bridge (dayz-ctl update-status returns
+  // one JSON object). Shared by the three update actions below.
+  async function readUpdateStatus(): Promise<Record<string, unknown>> {
+    const r = await dayz.ctl('update-status');
+    if (r.code !== 0) throw fail(502, `update-status failed: ${(r.stderr || r.stdout).trim()}`);
+    try {
+      return JSON.parse(r.stdout);
+    } catch {
+      throw fail(502, 'update-status returned unparseable JSON');
+    }
   }
 
   const lifecycle = (verb: 'restart' | 'stop' | 'start', destructive: boolean, ok: string): Action => ({
@@ -183,6 +220,19 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    missions: {
+      destructive: false,
+      readOnly: true,
+      describe: 'installed missions (folder names under mpmissions/) — the candidates a "mapchange" can switch to',
+      schema: { response: { type: 'object', properties: { missions: { type: 'array', items: { type: 'string' } } } } },
+      async run() {
+        const r = await dayz.ctl('mission-list');
+        if (r.code !== 0) throw fail(502, `mission-list failed: ${(r.stderr || r.stdout).trim()}`);
+        const missions = r.stdout.split('\n').map((s) => s.replace(/\r$/, '').trim()).filter(Boolean);
+        return { missions };
+      },
+    },
+
     broadcast: {
       destructive: false,
       readOnly: false,
@@ -197,6 +247,53 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const r = await dayz.ctl('broadcast', text);
         if (r.code !== 0) throw fail(502, `broadcast failed: ${(r.stderr || r.stdout).trim()}`);
         return { message: 'broadcast sent', text };
+      },
+    },
+
+    // Update system — ARM a deferred update; the download + swap happen on the next server
+    // start (prestart.sh), so arming is non-destructive (nobody is kicked). update-check.sh
+    // arms automatically when a newer build appears; this is the manual trigger. `restart`
+    // (or the next scheduled restart) is what actually applies it.
+    update: {
+      destructive: false,
+      readOnly: false,
+      describe: 'queue a server update for the next restart — arms it; the next start (scheduled, manual, or forced) pulls the latest server build + mods. Does NOT restart now. Body: { reason? }',
+      schema: {
+        body: { type: 'object', properties: { reason: { type: 'string', description: 'free-text note surfaced in the update status' } } },
+        response: { type: 'object', properties: { message: { type: 'string' }, status: UPDATE_STATUS_SCHEMA } },
+      },
+      async run(params) {
+        const reason = String(params.reason ?? '').trim();
+        const r = await dayz.ctl('update-arm', reason);
+        if (r.code !== 0) throw fail(502, `update-arm failed: ${(r.stderr || r.stdout).trim()}`);
+        // Best-effort heads-up to anyone online — no wait, since arming disrupts nothing.
+        try {
+          const p = await dayz.players();
+          if (p.count) await dayz.ctl('broadcast', sanitizeText('[SERVER] A game update is queued - it applies at the next restart.'));
+        } catch { /* broadcast is best-effort — never fail the arm on it */ }
+        return { message: 'update queued for next restart', status: await readUpdateStatus() };
+      },
+    },
+
+    'update/status': {
+      destructive: false,
+      readOnly: true,
+      describe: 'update status: installed vs latest build, whether an update is available or already queued, and the last applied update outcome (with its log tail)',
+      schema: { response: UPDATE_STATUS_SCHEMA },
+      async run() {
+        return readUpdateStatus();
+      },
+    },
+
+    'update/cancel': {
+      destructive: false,
+      readOnly: false,
+      describe: 'cancel a queued update (clears the pending flag) — no-op if none is queued',
+      schema: { response: { type: 'object', properties: { message: { type: 'string' }, status: UPDATE_STATUS_SCHEMA } } },
+      async run() {
+        const r = await dayz.ctl('update-disarm');
+        if (r.code !== 0) throw fail(502, `update-disarm failed: ${(r.stderr || r.stdout).trim()}`);
+        return { message: 'update cancelled', status: await readUpdateStatus() };
       },
     },
 
@@ -240,35 +337,32 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     bandits: {
       destructive: false,
       readOnly: true,
-      describe: 'recent AI-bandit activity from the AIB Unleashed log: spawn + kill positions [{x,z}] — APPROXIMATE (spawn coords, not live tracking; the -serverMod route is the precise one)',
+      describe: 'live AI-bandit positions [{x,z}] from the AIB_Tracker serverMod (profiles/AI_Bandits/live_positions.json, rewritten every 20s). ageSec = seconds since the last write; stale = older than the 60s freshness window (3 missed writes = server/mod down). stale and missing both return NO positions, so the map never plots a frozen snapshot.',
       schema: {
         response: { type: 'object', properties: {
-          spawns: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, z: { type: 'number' } } } },
-          kills: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, z: { type: 'number' } } } },
-          at: { type: 'string', nullable: true },   // server-clock HH:MM:SS of the newest event
+          positions: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, z: { type: 'number' } } } },
+          count: { type: 'integer' },
+          ageSec: { type: 'integer', nullable: true },   // seconds since the file was last written; null when missing/unknown
+          stale: { type: 'boolean' },                     // true = file older than the freshness window → positions dropped
+          missing: { type: 'boolean' },                   // true = serverMod hasn't written the file yet (fresh boot / not loaded)
         } },
       },
       async run() {
-        // The newest AIB Unleashed log's SPAWN/KILLED lines (line 1 = path, rest = matches).
-        // AIB_UL logs positions as (X, elevation, Z) — standard vector — so keep the FIRST and
-        // THIRD numbers. (The .ADM player log differs: elevation is LAST there. Same x/z plane.)
-        const r = await dayz.ctl('bandit-log', '400');
-        if (r.code === 2) return { spawns: [], kills: [], at: null };   // no AIB log yet — not an error
-        if (r.code !== 0) throw fail(502, `bandit-log failed: ${(r.stderr || r.stdout).trim()}`);
-        const lines = r.stdout.split('\n').slice(1);
-        // Hour may or may not be zero-padded depending on the mod's formatter — accept 1-2 digits.
-        const RE = /\[(\d{1,2}:\d\d:\d\d)\] \[[A-Z]+\] (SPAWN|KILLED): \S+ at \(([-\d.]+),\s*[-\d.]+,\s*([-\d.]+)\)/;
-        const spawns: Array<{ x: number; z: number }> = [];
-        const kills: Array<{ x: number; z: number }> = [];
-        let at = null;
-        for (const raw of lines) {
-          const m = RE.exec(raw);
-          if (!m) continue;
-          const [, ts, kind, xs, zs] = m;
-          (kind === 'SPAWN' ? spawns : kills).push({ x: Number(xs), z: Number(zs) });
-          at = ts;
-        }
-        return { spawns, kills, at };
+        // Freshness, not liveness: the serverMod rewrites the file every 20s even when empty, so
+        // its mtime is a heartbeat. dayz-ctl returns {ageSec, positions}; once ageSec passes the
+        // window we drop the positions and flag stale rather than plot a snapshot from a dead
+        // server/mod. The coords are already {x,z} (the mod writes p[0]/p[2]) — no transform.
+        const STALE_SEC = 60;   // 3 missed 20s writes
+        const r = await dayz.ctl('bandit-live');
+        if (r.code === 2) return { positions: [], count: 0, ageSec: null, stale: false, missing: true };
+        if (r.code !== 0) throw fail(502, `bandit-live failed: ${(r.stderr || r.stdout).trim()}`);
+        let env: { ageSec?: number; positions?: Array<{ x: number; z: number }> };
+        try { env = JSON.parse(r.stdout); }
+        catch { throw fail(503, 'live_positions.json unreadable (torn mid-write) — retry'); }   // caller keeps last-known
+        const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
+        const stale = ageSec === null || ageSec > STALE_SEC;
+        const positions = (!stale && Array.isArray(env.positions)) ? env.positions : [];
+        return { positions, count: positions.length, ageSec, stale, missing: false };
       },
     },
 
@@ -450,6 +544,57 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    // Mod-docs browser — the read-only analogue of configs/list + configs/get, but the files
+    // live INSIDE the @mod folders (readmes, notices, example configs), discovered by dayz-ctl.
+    'docs/list': {
+      destructive: false,
+      readOnly: true,
+      describe: 'list documentation files bundled in the @mod folders (paths for the "docs/get" action)',
+      schema: {
+        response: { type: 'object', properties: { docs: { type: 'array', items: { type: 'object', properties: {
+          mod: { type: 'string' }, path: { type: 'string' }, name: { type: 'string' },
+        } } } } },
+      },
+      async run() {
+        const r = await dayz.ctl('doc-list');
+        if (r.code !== 0) throw fail(502, `doc-list failed: ${(r.stderr || r.stdout).trim()}`);
+        const safe = /^[A-Za-z0-9_@./-]+$/;
+        // dayz-ctl emits "mod<TAB>relpath<TAB>relname" per file.
+        const docs = r.stdout
+          .split('\n')
+          .map((l) => l.replace(/\r$/, ''))
+          .filter(Boolean)
+          .map((line) => {
+            const p = line.split('\t');
+            return { mod: p[0] ?? '', path: p[1] ?? '', name: p[2] ?? p[1] ?? '' };
+          })
+          .filter((d) => d.path && safe.test(d.path));
+        return { docs };
+      },
+    },
+
+    'docs/get': {
+      destructive: false,
+      readOnly: true,
+      describe: 'retrieve one mod-doc file by relpath (params: { "name": "@aibunleashed/readme.txt" }; see the "docs/list" action)',
+      schema: {
+        query: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: 'a path from the "docs/list" action' } } },
+        response: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' } } },
+      },
+      async run(params) {
+        const name = String(params.name ?? '');
+        if (!/^[A-Za-z0-9_@./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
+        const r = await dayz.ctl('doc-read', name);
+        if (r.code === 2) throw fail(404, `unknown doc '${name}'`);
+        if (r.code === 3) throw fail(413, `doc '${name}' is too large to retrieve`);
+        if (r.code !== 0) throw fail(502, `doc-read failed: ${(r.stderr || r.stdout).trim()}`);
+        const nl = r.stdout.indexOf('\n');
+        const path = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
+        return { name, path, content };
+      },
+    },
+
     'configs/writable': {
       destructive: false,
       readOnly: true,
@@ -505,6 +650,44 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const r = await dayz.ctl('override-write', JSON.stringify(doc, null, 4));
         if (r.code !== 0) throw fail(502, `override-write failed: ${(r.stderr || r.stdout).trim()}`);
         return { message: 'overrides saved; restart the server to apply' };
+      },
+    },
+
+    'configs/set-spawns': {
+      destructive: false,
+      readOnly: false,
+      describe: 'replace spawn-points.json (the definitive AI-bandit spawn store) with a new document (snapshots first; restart to apply)',
+      schema: {
+        body: { type: 'object', required: ['document'], properties: { document: { type: 'object',
+          description: 'the full spawn-points.json document: { version, points: [{ name, map, category?, size?, x, y, z }] }' } } },
+        response: { type: 'object', properties: { message: { type: 'string' }, points: { type: 'integer' } } },
+      },
+      async run(params) {
+        // Validate here so a malformed document never reaches the box. The builder is fail-soft,
+        // but the point of a definitive store is to keep it clean. dayz-ctl re-checks it is JSON.
+        const doc = params.document;
+        if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) throw fail(400, '"document" must be a JSON object');
+        const pts = (doc as { points?: unknown }).points;
+        if (!Array.isArray(pts)) throw fail(400, '"document.points" must be an array');
+        if (pts.length > 5000) throw fail(400, `too many points (${pts.length}; max 5000)`);
+        const names = new Set<string>();
+        pts.forEach((raw, i) => {
+          if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw fail(400, `points[${i}] must be an object`);
+          const p = raw as Record<string, unknown>;
+          if (typeof p.name !== 'string' || !p.name.trim()) throw fail(400, `points[${i}].name must be a non-empty string`);
+          if (typeof p.map !== 'string' || !p.map.trim()) throw fail(400, `points[${i}].map must be a non-empty string`);
+          for (const k of ['x', 'y', 'z'] as const) {
+            if (typeof p[k] !== 'number' || !Number.isFinite(p[k])) throw fail(400, `points[${i}].${k} must be a finite number`);
+          }
+          if (p.category !== undefined && p.category !== null && typeof p.category !== 'string') throw fail(400, `points[${i}].category must be a string`);
+          if (p.size !== undefined && p.size !== null && typeof p.size !== 'string') throw fail(400, `points[${i}].size must be a string`);
+          // The builder upserts by name — a duplicate would silently collapse two points into one.
+          if (names.has(p.name)) throw fail(400, `duplicate point name: ${p.name}`);
+          names.add(p.name);
+        });
+        const r = await dayz.ctl('spawn-write', JSON.stringify(doc, null, 2));
+        if (r.code !== 0) throw fail(502, `spawn-write failed: ${(r.stderr || r.stdout).trim()}`);
+        return { message: 'spawn points saved; restart the server to apply', points: pts.length };
       },
     },
 

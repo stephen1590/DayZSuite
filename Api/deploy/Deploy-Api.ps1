@@ -115,6 +115,27 @@ foreach ($c in @($allConfigs | Where-Object { $_.writable -and -not $_.path })) 
 }
 $writeEntries = @($fileEntries | Where-Object { $_.writable })
 $writeMap = ($writeEntries | ForEach-Object { "$($_.name)`t$($_.path)" }) -join "`n"
+
+# Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
+# Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
+$docs = $cfg.Docs
+$docsRoots = ''; $docsExt = ''; $docsNames = ''; $docsMaxDepth = '3'
+if ($docs) {
+    foreach ($r in @($docs.Roots)) {
+        if ("$r" -match '^\s*/' -or "$r" -match '\.\.') { throw "Api Docs.Roots: root must be a ServerDir-relative glob with no '..': '$r'." }
+        if ("$r" -match "[\s`t`n]") { throw "Api Docs.Roots: root glob must not contain whitespace: '$r'." }
+    }
+    foreach ($x in @($docs.Extensions)) {
+        if ("$x" -and "$x" -notmatch '^[.A-Za-z0-9]+$') { throw "Api Docs.Extensions: '$x' is not a plain extension." }
+    }
+    foreach ($n in @($docs.Names)) {
+        if ("$n" -and "$n" -notmatch '^[A-Za-z0-9_-]+$') { throw "Api Docs.Names: '$n' is not a plain name prefix." }
+    }
+    $docsRoots = (@($docs.Roots    | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) -join ' ')
+    $docsExt   = (@($docs.Extensions | ForEach-Object { "$_".Trim().TrimStart('.').ToLower() } | Where-Object { $_ }) -join ',')
+    $docsNames = (@($docs.Names     | ForEach-Object { "$_".Trim().ToLower() } | Where-Object { $_ }) -join ' ')
+    if ($null -ne $docs.MaxDepth) { $docsMaxDepth = "$([int]$docs.MaxDepth)" }
+}
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
@@ -181,6 +202,10 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__IGNORE_EXT__'  = $ignoreExt
         '__WRITE_MAP__'   = $writeMap
         '__LOG_NOISE__'   = $logNoiseSq
+        '__DOCS_ROOTS__'    = $docsRoots
+        '__DOCS_EXT__'      = $docsExt
+        '__DOCS_NAMES__'    = $docsNames
+        '__DOCS_MAXDEPTH__' = $docsMaxDepth
     })
 
 Set-Content -NoNewline -Path (Join-Path $stageDir 'api.sudoers') -Value (
