@@ -76,20 +76,29 @@ The builder auto-detects which format a `maps/<mission>/DynamicAIB.json` is:
    templates/kits. Merged with `common/` into the flat file. **Chernarus uses this** — its
    coordinates come from scalespeeder (see its `SOURCE.md`) but its bandits are the shared
    `common` templates. Chernarus is currently **parked**: kept in-repo but **not deployed**
-   (see its `PARKED.md`). (Sakhal has no per-map file — its spawns come from VPP; see below.)
+   (see its `PARKED.md`). (Sakhal has no per-map file — its spawns come from `spawn-points.json`;
+   see below.)
 2. **Native passthrough** — a complete mod-format file (top-level `GroupLocations` /
    `SniperLocations` / `PredefinedWeapons`, no `groups`). Copied **verbatim**, `common/` ignored.
    Kept as an escape hatch to drop in a community config unchanged without converting it.
 
-## Sakhal spawns come from VPP (no per-map DynamicAIB)
+## Sakhal spawns come from spawn-points.json (no per-map DynamicAIB)
 
-Sakhal dynamic bandits are sourced **entirely from VPP TeleportManager bookmarks** — there is no
-`maps/dayzOffline.sakhal/DynamicAIB.json`. `Sync-VPPCoordinates.ps1` pulls the bookmarks,
-`common/classification.json` maps their name tokens to templates/sizes, and the builder's VPP
-mirror composes the groups (create / update / remove) at prestart. To add or move a Sakhal spawn,
-capture or rename the VPP bookmark and re-run `Sync-VPPCoordinates.ps1` — don't hand-author
-placements. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays
-per-map.
+Sakhal dynamic bandits are sourced **entirely from `spawn-points.json`** — the definitive,
+repo/web-edited spawn store — so there is no `maps/dayzOffline.sakhal/DynamicAIB.json`. Each point
+carries `name`, `map`, optional `category`/`size`, and `x`/`y`/`z`; `common/classification.json`
+maps the `category` token to a template and the `size` letter to a member count, and the builder
+composes a group per point at prestart (a point with no `category` becomes a base holdout).
+
+**Editing:** open the ConfigViewer **Map** tab, turn on **Edit**, then drag a marker to move it,
+click empty map to add one, edit fields in the panel, and **Save**. Save writes the box copy live
+(via the API's `configs/set-spawns` -> `dayz-ctl spawn-write`, snapshotted, keep 10) and applies at
+the next restart. The deploy pulls the box copy back into the repo (`Sync-SpawnPoints.ps1`) so git
+stays the durable record. You can also hand-edit `spawn-points.json` directly.
+
+`spawn-points.json` was seeded from the last VPP snapshot by `Migrate-SpawnPoints.ps1`. VPP is no
+longer the source — `Sync-VPPCoordinates.ps1` is a deprecated one-shot importer, not part of the
+deploy. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays per-map.
 
 Schema note: on a mod update that changes the flat-file schema, adjust the builder's output shape
 and/or `common` — the source tree stays; only the composition changes.

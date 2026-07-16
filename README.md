@@ -61,8 +61,10 @@ needs a one-time interactive login first.
 | `host.env` / `host.env.example` | Secrets and settings for the server this file lives on (passwords, Steam account). `host.env` is gitignored — copy the example and fill it in. |
 | `deployer.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`). Gitignored, never rsynced to the server. |
 | `Pull-DayZServer.ps1` | Pulls server saves/config down to a local machine over rsync/ssh — an off-box backup, or to work against real data locally. |
-| `Sync-VPPCoordinates.ps1` | Pulls admin-captured spawn-point bookmarks off the live server and normalizes them for the AI bandit generator. |
-| `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + per-map placements. Runs automatically on every server boot. |
+| `Sync-SpawnPoints.ps1` | Pulls the live `spawn-points.json` (the definitive AI-bandit spawn store, edited in the ConfigViewer Map tab) off the box into the repo — the deploy's pull-before-push step. |
+| `Migrate-SpawnPoints.ps1` | One-shot seeder that built `spawn-points.json` from the last VPP snapshot. Re-run to re-seed from a fresh VPP import. |
+| `Sync-VPPCoordinates.ps1` | **Deprecated** one-shot VPP importer (no longer part of the deploy). Pulls admin-captured bookmarks into `vpp-coordinates.json`; feed that to `Migrate-SpawnPoints.ps1`. |
+| `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + `spawn-points.json` (or per-map placements). Runs automatically on every server boot. |
 | `Apply-ConfigOverrides.ps1` | Applies `config-overrides.json`'s field-level patches to live config files. Runs automatically on every server boot. |
 | `_DZSync.ps1` | Shared rsync/host-resolution helpers for the Pull/Sync scripts. |
 

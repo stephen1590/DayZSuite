@@ -1,12 +1,12 @@
 {
-  "_readme": "VPP spawn-name classification, maintained BY HAND. A VPP TeleportManager bookmark named <Map>_<Category>_<ArbitraryName> (e.g. S_Mil_IslandBlockade) is parsed by Sync-VPPCoordinates.ps1 and mirrored into DynamicAIB groups by Build-AIBandits.ps1 (match->update, new->create, extra->remove). A known CATEGORY in field 2 makes it a spawn; SIZE is OPTIONAL - normally OMITTED so each spawn uses its template's default member count and you add DENSITY by adding more bookmarks. Insert _<Size>_ as field 3 only to override (e.g. S_Mil_L_IslandBlockade). categories: Category token -> a template name that MUST exist in common/DynamicAIB.common.json groupTemplates. sizes: OPTIONAL Size letter -> member-count override. maps: Map letter -> mission folder. A name whose field 2 is NOT a known category is a BASE bookmark (<Map>_<Name>, e.g. S_Vostok): Build-AIBandits.ps1 makes these 'holdout' groups unconditionally - VPP alone is the source, no hand-authored per-map entry required. Give a bookmark a real category token (e.g. rename S_Vostok to S_Scav_Vostok) to make it something other than a base holdout. Snipers use the per-map snipers[] spec, NOT this file. Edit freely and re-run Sync-VPPCoordinates.ps1 -Execute.",
+  "_readme": "Spawn classification, maintained BY HAND. Maps the tokens on each spawn-points.json point to real values; Build-AIBandits.ps1 composes a group per point at prestart. categories: a point's 'category' -> a template name that MUST exist in common/DynamicAIB.common.json groupTemplates. sizes: a point's OPTIONAL 'size' letter -> member-count override (omit to use the template's default count; add DENSITY by adding more points). maps: the point's 'map' letter -> mission folder. A point with NO category becomes a base 'holdout' group. Snipers use the per-map snipers[] spec, NOT this file. Edit spawn-points.json itself in the ConfigViewer Map tab (Edit mode) or by hand; this file only defines the token vocabulary. (VPP is deprecated: Sync-VPPCoordinates.ps1 is a one-shot importer, not part of the deploy.)",
   "sizes": {
     "XS": 1,
     "S": 2,
-    "M": 4,
-    "L": 4,
-    "XL": 4,
-    "XXL": 5
+    "M": 2,
+    "L": 3,
+    "XL": 3,
+    "XXL": 3
   },
   "categories": {
     "Mil": "raider_heavy",

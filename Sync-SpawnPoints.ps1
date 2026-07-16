@@ -1,0 +1,114 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Pull the LIVE spawn-points.json off the box into the repo — the deploy's pull-before-push
+    step so admin/web edits made at runtime (ConfigViewer Map editor -> configs/set-spawns)
+    are never clobbered by a dev deploy.
+.DESCRIPTION
+    Roles are INVERTED from most of the deploy: the LIVE box is authoritative for spawn-points.json
+    (it is the definitive AI-bandit spawn store, written whole via the API's spawn-write verb and
+    snapshotted there). This pulls that copy DOWN so the repo mirrors it before the deploy re-ships
+    it. Same box-authoritative shape as Sync-ConfigOverrides.ps1.
+
+    Read-only by default (shows what pulling WOULD change). -Execute writes:
+      deploy/profiles/AI_Bandits/spawn-points.json   the working copy the deploy ships (= the box's)
+      backups/spawn-points/*.json                     timestamped snapshot of the PREVIOUS repo copy
+
+    VALIDATOR: a pulled file that is not valid JSON, or that lacks a `points` array, is REJECTED —
+    a corrupt/foreign file never enters the repo or the ship.
+
+    NO usable box copy (fresh box, empty, or invalid): the repo working copy is LEFT UNTOUCHED and
+    ships as-is. There is no separate fallback seed because the repo copy already IS the seed — it
+    was migrated from the last VPP snapshot by Migrate-SpawnPoints.ps1 and is authoritative until
+    the box has real edits to mirror back. Every overwrite is snapshotted to backups/, so nothing
+    is ever lost.
+
+    TRANSITION NOTE: until an admin edits spawns on the box (via the web editor), the box copy is
+    just the last-deployed one, so a pull is a no-op. Deprecates the old VPP pull path
+    (Sync-VPPCoordinates.ps1, now a one-shot importer, not part of the deploy).
+.EXAMPLE
+    ./Sync-SpawnPoints.ps1                     # dry-run: what pulling the box would change
+.EXAMPLE
+    ./Sync-SpawnPoints.ps1 -Execute            # pull the box's live spawn-points.json into the repo
+#>
+[CmdletBinding()]
+param(
+    [string]$RemoteHost,
+    [string]$RemoteUser = "ubuntu",
+    [string]$RemotePath = "/home/ubuntu/servers/dayz-server",
+    [string]$SpawnRel   = "profiles/AI_Bandits/spawn-points.json",             # under the server root
+    [string]$LocalPath  = (Join-Path $PSScriptRoot "deploy/profiles/AI_Bandits/spawn-points.json"),
+    [string]$BackupDir  = (Join-Path $PSScriptRoot "backups/spawn-points"),
+    [int]$KeepVersions  = 10,
+    [switch]$Execute,
+    [switch]$NoLog
+)
+
+. (Join-Path $PSScriptRoot "_DZSync.ps1")
+. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+
+Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
+Assert-DZHost @{ RemoteHost = $RemoteHost; RemoteUser = $RemoteUser; RemotePath = $RemotePath }
+
+$target = "${RemoteUser}@${RemoteHost}"
+
+# The validator: valid JSON AND shaped like a spawn document (has a points array).
+function Test-SpawnText([string]$text) {
+    if (-not $text -or -not $text.Trim()) { return $false }
+    try { $doc = $text | ConvertFrom-Json } catch { return $false }
+    return ($null -ne $doc) -and ($null -ne $doc.PSObject.Properties['points'])
+}
+
+# Snapshot the current LocalPath into BackupDir and prune to KeepVersions (the rollback source).
+function Backup-Local {
+    if (-not (Test-Path $LocalPath)) { return }
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    Copy-Item -LiteralPath $LocalPath -Destination (Join-Path $BackupDir "spawn-points.$stamp.json") -Force
+    Get-ChildItem $BackupDir -Filter "spawn-points.*.json" | Sort-Object Name -Descending |
+        Select-Object -Skip $KeepVersions | Remove-Item -Force -ErrorAction SilentlyContinue
+    Write-Host "  snapshot -> $BackupDir/spawn-points.$stamp.json (keep $KeepVersions)"
+}
+
+# --- Fetch the box's live spawn-points.json (read-only) -----------------------------------
+$remoteFile = "$RemotePath/$SpawnRel"
+Write-Host "Fetching spawn-points from ${target}:$remoteFile"
+$raw = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$remoteFile'" } | Out-String
+
+$pullOk = $true
+if ($LASTEXITCODE -ne 0 -or -not $raw.Trim()) {
+    Write-Warning "Could not read $remoteFile on $target (ssh exit $LASTEXITCODE) — no live spawns this run; keeping the repo copy."
+    $pullOk = $false
+} elseif (-not (Test-SpawnText $raw)) {
+    Write-Warning "Box spawn-points.json is not valid JSON with a 'points' array — REJECTED; keeping the repo copy."
+    $pullOk = $false
+}
+
+$curTrim = if (Test-Path $LocalPath) { (Get-Content -Raw -LiteralPath $LocalPath).TrimEnd() } else { $null }
+
+if ($pullOk) {
+    $boxTrim = $raw.TrimEnd()
+    if ($boxTrim -eq $curTrim) {
+        Write-Host "Box spawn-points identical to the repo copy — nothing to pull."
+    } elseif ($Execute) {
+        Backup-Local
+        $boxTrim | Set-Content -LiteralPath $LocalPath -Encoding utf8
+        Write-Host "Pulled the box's live spawn-points.json into the repo (admin/web edits preserved)."
+    } else {
+        Write-Host "Dry-run — the box's spawn-points DIFFER from the repo copy; -Execute would pull them in (snapshotting the current one first)."
+    }
+} else {
+    # No usable box copy — the repo working copy IS the seed; leave it as-is and let the deploy ship it.
+    Write-Host "No usable box spawn-points — leaving the repo copy as the authoritative seed."
+}
+
+if (-not $NoLog) {
+    $logDir = Join-Path $PSScriptRoot "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    Write-CsvLog -Path (Join-Path $logDir "spawnpoints.csv") -Row ([PSCustomObject]@{
+        Timestamp = Get-Date -Format "s"
+        Source    = "${target}:$remoteFile"
+        DryRun    = (-not $Execute)
+        PullOk    = $pullOk
+    })
+}

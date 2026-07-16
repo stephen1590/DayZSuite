@@ -111,23 +111,27 @@ See [`deploy/profiles/AI_Bandits/README.md`](../deploy/profiles/AI_Bandits/READM
 the full schema, including the native-passthrough escape hatch for dropping in an
 unmodified community config.
 
-### Spawn points sourced from admin bookmarks (VPP)
+### Spawn points sourced from spawn-points.json (repo/web-edited)
 
-Some maps source their dynamic spawns entirely from VPPAdminTools bookmarks instead of a
-hand-authored per-map file: an admin captures a position in-game, and
-`Sync-VPPCoordinates.ps1` pulls the bookmark list down and classifies each entry by a
-naming convention (`<map>_<category>_<size>_<name>` → a fully-classified spawn group;
-`<map>_<name>` → coordinates only; no map prefix → an ordinary bookmark, ignored). The
-mapping from letter/category/size tokens to real templates lives in
-`deploy/profiles/AI_Bandits/common/classification.json`.
+Some maps source their dynamic spawns entirely from `spawn-points.json` — the definitive
+AI-bandit spawn store — instead of a hand-authored per-map file. Each point has `name`,
+`map` (the S/C/E letter), optional `category`/`size`, and `x`/`y`/`z`. `classification.json`
+maps the `category` token to a template and the `size` letter to a member count
+(`deploy/profiles/AI_Bandits/common/classification.json`); a point with no `category` becomes
+a base holdout.
+
+Edit it in the **ConfigViewer Map tab** (turn on Edit: drag to move, click to add, edit fields,
+Save). Save writes the box copy live and applies at the next restart; the deploy pulls it back
+into the repo (`Sync-SpawnPoints.ps1`, box-authoritative). You can also hand-edit the file.
 
 ```bash
-pwsh ./Sync-VPPCoordinates.ps1                  # dry-run: show what was found
-pwsh ./Sync-VPPCoordinates.ps1 -Execute          # write the coordinate files
-pwsh ./Sync-VPPCoordinates.ps1 -Execute -Build   # also preview the composed output locally
+pwsh ./Sync-SpawnPoints.ps1            # dry-run: what pulling the box's spawn-points would change
+pwsh ./Sync-SpawnPoints.ps1 -Execute   # pull the box's live spawn-points.json into the repo
 ```
 
-The live TeleportLocation store is read-only from this tooling's side — it also holds
+VPP is no longer the source: `Sync-VPPCoordinates.ps1` is a deprecated one-shot importer (feed
+its `vpp-coordinates.json` to `Migrate-SpawnPoints.ps1` to re-seed). The live TeleportLocation
+store is read-only from this tooling's side — it also holds
 admins' personal teleport bookmarks, so it's never written back to.
 
 ## Admin permissions (VPPAdminTools)
@@ -143,7 +147,7 @@ admins' personal teleport bookmarks, so it's never written back to.
 
 ## Log archiving
 
-`deploy/Archive-Logs.ps1` is a generic log archiver (reusable for any service via
+`common/Archive-Logs.ps1` (shipped into the server dir by the deploy) is a generic log archiver (reusable for any service via
 `-SourceDir`/`-Name`), deployed as a systemd timer (`dayz-logarchive.timer`) that runs
 daily. It zips yesterday-and-older `*.log`/`*.RPT`/`*.ADM`/`*.mdmp` files per day into
 `profiles/archive/`, skips files still open, and prunes zips past a retention window —

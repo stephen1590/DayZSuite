@@ -1,8 +1,13 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Pulls VPP TeleportManager locations off the live server and saves them as the
-    coordinate source-of-truth for AI Bandit spawn generation.
+    DEPRECATED (2026-07-15). Pulls VPP TeleportManager locations off the live server into
+    vpp-coordinates.json. VPP is NO LONGER the source of truth for AI-bandit spawns — the
+    repo/web is (spawn-points.json, edited in the ConfigViewer Map tab, box-authoritative).
+    This is now a ONE-SHOT IMPORTER, not part of the deploy: run it only to seed the repo from
+    a fresh batch of VPP captures, then convert with Migrate-SpawnPoints.ps1. The deploy uses
+    Sync-SpawnPoints.ps1 (box->repo) instead. Kept for that occasional import; safe to delete
+    once no more coordinates are captured in-game.
 .DESCRIPTION
     Roles are INVERTED from the rest of the deploy: for spawn coordinates the LIVE box
     is authoritative, because admins capture positions in-game with VPPAdminTools (real,

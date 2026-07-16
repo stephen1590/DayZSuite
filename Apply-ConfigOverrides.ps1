@@ -1,13 +1,21 @@
 #requires -version 7
 <#
 .SYNOPSIS
-    Patch field-level overrides from config-overrides.json into the LIVE server config
-    files. We never store whole vanilla/mod files - each override targets ONE field BY
-    NAME, so a game/mod update that rewrites the baseline is inherited and our deltas
-    re-apply on top.
+    Rebuild the LIVE server config files as "frozen default + your field patches" from
+    config-overrides.json, every prestart. A REVERSIBLE overlay: remove a patch and the
+    field returns to its default; accidental drift in the live file is wiped and reapplied.
 
 .DESCRIPTION
     Report-only by default (shows what WOULD change); pass -Fix to write.
+
+    REVERSIBLE DEFAULTS: the first time we patch a file (no <name>.defaults<ext> beside it),
+    its CURRENT contents are captured as the frozen default. Thereafter each run rebuilds the
+    live file = that default + the current patches, so a removed override reverts to default
+    and manual edits don't linger. Per-selector reports name the KEY/PROPERTY only, never the
+    value - so the deploy output never echoes config contents. Freezing means a mod update is NOT auto-
+    inherited for that file: delete its .defaults to fall back to inherit/forward-only, or
+    re-capture (delete + re-run) to refresh the baseline. The .defaults files are HIDDEN
+    reference baselines - not browsable or editable configs.
 
     FAIL-SOFT BY DESIGN: every patch is independent. A missing file, an unmatched
     selector, or a bad value is logged (MISS/WARN) and the run continues to the next
@@ -17,8 +25,11 @@
 
     Manifest shape (see config-overrides.json _readme):
       files.<relpath>              : { selector -> value }   (one file under ServerDir)
-      mpmissions.common            : { <mission-rel-file> -> { selector -> value } }  (all missions)
+      mpmissions.common            : { <mission-rel-file> -> { selector -> value } }  (all DECLARED missions)
       mpmissions.<mission>         : same, applied AFTER common, wins on conflict
+    The mpmissions.<mission> KEYS declare which missions are MANAGED (an empty {} declares one
+    with no specific patches). common applies only to declared missions on disk - a foreign dir
+    under mpmissions/ (a side project, an admin copy) is never patched or captured.
     XML selector = XPath (attribute //var[@name='X']/@value or element //type[@name='Y']/nominal).
     JSON selector = dotted key path (chanceToSpawn or a.b.c). Keys starting with _ are ignored.
 #>
@@ -33,10 +44,11 @@ $ErrorActionPreference = 'Stop'
 $mode = if ($Fix) { 'APPLY' } else { 'REPORT' }
 
 # --- counters -------------------------------------------------------------------
-$stats = [ordered]@{ Changed = 0; Same = 0; Warn = 0 }
-function Show-Change { $script:stats.Changed++; Write-Host ("  [OK]   {0}" -f $args[0]) -ForegroundColor Green }
-function Show-Same   { $script:stats.Same++;    Write-Host ("  [SAME] {0}" -f $args[0]) -ForegroundColor DarkGray }
-function Show-Warn   { $script:stats.Warn++;    Write-Host ("  [WARN] {0}" -f $args[0]) -ForegroundColor Yellow }
+$stats = [ordered]@{ Changed = 0; Same = 0; Warn = 0; Captured = 0 }
+function Show-Change  { $script:stats.Changed++;  Write-Host ("  [OK]   {0}" -f $args[0]) -ForegroundColor Green }
+function Show-Same    { $script:stats.Same++;     Write-Host ("  [SAME] {0}" -f $args[0]) -ForegroundColor DarkGray }
+function Show-Warn    { $script:stats.Warn++;     Write-Host ("  [WARN] {0}" -f $args[0]) -ForegroundColor Yellow }
+function Show-Capture { $script:stats.Captured++; Write-Host ("  [DEF]  {0}" -f $args[0]) -ForegroundColor Cyan }
 
 # --- helpers --------------------------------------------------------------------
 
@@ -82,11 +94,15 @@ function Get-Jobs($manifest, [string]$serverDir) {
         }
     }
 
-    # mpmissions: common applied to EVERY present mission dir, then mission-specific.
+    # mpmissions: the manifest's mission KEYS are the declaration of MANAGED missions —
+    # common applies only to declared missions present on disk (an empty {} slot declares
+    # one with no specific patches yet). A foreign dir under mpmissions/ (a side project,
+    # an admin copy) is NEVER touched.
     if ($manifest.PSObject.Properties.Name -contains 'mpmissions') {
         $mpRoot = Join-Path $serverDir 'mpmissions'
         $present = if (Test-Path $mpRoot) { Get-ChildItem $mpRoot -Directory | Select-Object -Expand Name } else { @() }
         $mp = $manifest.mpmissions
+        $declared = @($mp.PSObject.Properties.Name | Where-Object { $_ -ne 'common' -and -not $_.StartsWith('_') })
 
         $emit = {
             param($layerObj, $missionName, $srcTag)
@@ -103,9 +119,13 @@ function Get-Jobs($manifest, [string]$serverDir) {
             }
         }
 
-        # common first (into each present mission) ...
+        # common first (into each DECLARED mission that exists on disk) ...
         if ($mp.PSObject.Properties.Name -contains 'common') {
-            foreach ($mission in $present) { & $emit $mp.common $mission 'common' }
+            $commonInto = @($declared | Where-Object { $present -contains $_ })
+            if (-not $commonInto.Count) {
+                Show-Warn "mpmissions.common has patches but no declared mission is on disk - declare missions as mpmissions.<name> keys (an empty {} is enough)"
+            }
+            foreach ($mission in $commonInto) { & $emit $mp.common $mission 'common' }
         }
         # ... then any mission-specific layer, but only for missions that exist on disk.
         foreach ($layer in $mp.PSObject.Properties) {
@@ -131,11 +151,11 @@ function Set-XmlNode($doc, [string]$selector, $value, [string]$label) {
     $want = ConvertTo-InvariantString $value
     # XmlAttribute exposes .Value; an element node we treat by its text content.
     if ($node -is [System.Xml.XmlAttribute]) {
-        if ($node.Value -eq $want) { Show-Same "$label : $selector already '$want'"; return $false }
-        Show-Change "$label : $selector  '$($node.Value)' -> '$want'"; $node.Value = $want; return $true
+        if ($node.Value -eq $want) { Show-Same "$label : $selector (unchanged)"; return $false }
+        Show-Change "$label : $selector"; $node.Value = $want; return $true
     } else {
-        if ($node.InnerText -eq $want) { Show-Same "$label : $selector already '$want'"; return $false }
-        Show-Change "$label : $selector  '$($node.InnerText)' -> '$want'"; $node.InnerText = $want; return $true
+        if ($node.InnerText -eq $want) { Show-Same "$label : $selector (unchanged)"; return $false }
+        Show-Change "$label : $selector"; $node.InnerText = $want; return $true
     }
 }
 
@@ -151,8 +171,8 @@ function Set-JsonKey($root, [string]$dotted, $value, [string]$label) {
     if ($null -eq $cur.PSObject.Properties[$leaf]) { Show-Warn "$label : key '$dotted' not found"; return $false }
     $want = ConvertTo-CompareKey $value
     $have = ConvertTo-CompareKey $cur.$leaf
-    if ($have -eq $want) { Show-Same "$label : $dotted already '$want'"; return $false }
-    Show-Change "$label : $dotted  '$have' -> '$want'"; $cur.$leaf = $value; return $true
+    if ($have -eq $want) { Show-Same "$label : $dotted (unchanged)"; return $false }
+    Show-Change "$label : $dotted"; $cur.$leaf = $value; return $true
 }
 
 # --- main -----------------------------------------------------------------------
@@ -175,33 +195,57 @@ $seen = [ordered]@{}
 foreach ($j in $jobs) { $seen["$($j.File)`n$($j.Selector)"] = $j }
 $jobs = @($seen.Values)
 
-# Group by target file so each file is parsed once and saved once (whitespace-preserving).
+# Group by target file so each is captured / rebuilt / saved once (whitespace-preserving).
 foreach ($grp in ($jobs | Group-Object File)) {
     $file = $grp.Name
-    if (-not (Test-Path $file)) {
+    if (-not (Test-Path -LiteralPath $file)) {
         foreach ($j in $grp.Group) { Show-Warn "$($j.Label) : file not found ($file)" }
         continue
     }
     $ext = [IO.Path]::GetExtension($file).ToLowerInvariant()
+
+    # Reversible defaults: <name>.defaults<ext> beside the file is the FROZEN baseline.
+    # Born at first patch (a raw copy of the live file); thereafter we rebuild the live file
+    # = default + patches every run, so a removed override reverts and manual drift is wiped.
+    # It's a hidden reference, never itself a patch target. .defaults present => reversible
+    # (rebuild from it); absent => legacy in-place patching (also the pre-capture REPORT state).
+    $defaultPath = Join-Path (Split-Path -Parent $file) `
+        ('{0}.defaults{1}' -f [IO.Path]::GetFileNameWithoutExtension($file), [IO.Path]::GetExtension($file))
+    $haveDefault = Test-Path -LiteralPath $defaultPath
+    if (-not $haveDefault) {
+        if ($Fix) {
+            Copy-Item -LiteralPath $file -Destination $defaultPath -Force
+            $haveDefault = $true
+            Show-Capture "$($grp.Group[0].Label) : captured $([IO.Path]::GetFileName($defaultPath)) (frozen default = current file)"
+        } else {
+            Show-Warn "$($grp.Group[0].Label) : no default yet - would capture $([IO.Path]::GetFileName($defaultPath)) under -Fix"
+        }
+    }
+
+    # Patch SOURCE is the frozen default when we have one (reversible rebuild); otherwise the
+    # live file itself (legacy / pre-capture report). Reported changes read 'default -> override'.
+    $srcFile = if ($haveDefault) { $defaultPath } else { $file }
+    # Reversible mode rewrites unconditionally (reset-from-default wipes any drift, even when
+    # every override already equals the default); legacy mode writes only when a value changed.
     $dirty = $false
 
     try {
         if ($ext -eq '.xml') {
             $doc = [System.Xml.XmlDocument]::new(); $doc.PreserveWhitespace = $true
-            $doc.Load($file)
+            $doc.Load($srcFile)
             foreach ($j in $grp.Group) {
                 try { if (Set-XmlNode $doc $j.Selector $j.Value $j.Label) { $dirty = $true } }
                 catch { Show-Warn "$($j.Label) : $($_.Exception.Message)" }
             }
-            if ($dirty -and $Fix) { $doc.Save($file) }
+            if ($Fix -and ($haveDefault -or $dirty)) { $doc.Save($file) }
         }
         elseif ($ext -eq '.json') {
-            $root = Get-Content -Raw -LiteralPath $file | ConvertFrom-Json
+            $root = Get-Content -Raw -LiteralPath $srcFile | ConvertFrom-Json
             foreach ($j in $grp.Group) {
                 try { if (Set-JsonKey $root $j.Selector $j.Value $j.Label) { $dirty = $true } }
                 catch { Show-Warn "$($j.Label) : $($_.Exception.Message)" }
             }
-            if ($dirty -and $Fix) {
+            if ($Fix -and ($haveDefault -or $dirty)) {
                 ($root | ConvertTo-Json -Depth 100) | Set-Content -LiteralPath $file -Encoding utf8
             }
         }
@@ -217,7 +261,7 @@ foreach ($grp in ($jobs | Group-Object File)) {
 
 # --- summary (loud on any warning) ----------------------------------------------
 $tag = if ($Fix) { 'applied' } else { 'REPORT ONLY - re-run under -Fix to write' }
-$line = "Config overrides: {0} changed, {1} already-set, {2} warning(s)  [{3}]" -f $stats.Changed, $stats.Same, $stats.Warn, $tag
+$line = "Config overrides: {0} changed, {1} same-as-default, {2} default(s) captured, {3} warning(s)  [{4}]" -f $stats.Changed, $stats.Same, $stats.Captured, $stats.Warn, $tag
 if ($stats.Warn -gt 0) { Write-Host $line -ForegroundColor Yellow } else { Write-Host $line -ForegroundColor Green }
 
 return [pscustomobject]$stats

@@ -1,5 +1,5 @@
 [Unit]
-Description=Archive DayZ server logs (zip per day, month retention)
+Description=Archive DayZ server logs (zip per day, 7-day retention)
 
 [Service]
 # TEMPLATE: DEPLOY_* placeholders rendered per-host by Deploy-DayZServer.ps1 (host.env).

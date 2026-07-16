@@ -1,6 +1,8 @@
 {
     "_readme": "COMMON layer for DynamicAIB - map-agnostic scaffolding merged into EVERY map's flat DynamicAIB.json by Build-AIBandits.ps1. NEVER put coordinates here (those are per-map, under ../maps/<mission>/). THE MODEL: bandits are defined GLOBALLY here and only PLACED per-map. Three global tiers, each referenced by name from a per-map file: (1) 'loadouts' = clothing+loot kits; (2) 'groupTemplates' = fully-defined reusable squads (which loadout, weapon, size, accuracy, grenadechance, dog, faction) - a per-map group can just say {\"template\":\"roadblock\",\"waypoints\":[...]} and inherit everything, overriding any field inline; (3) 'sniperTemplates' = reusable SVD nests a per-map file places with {\"template\":\"svd_nest\",\"positions\":[...],\"triggerpos\":\"...\"}. Edit a kit/template ONCE here and every map inherits it. 'loadouts.<name>.classes' is the NPC-class pool a group draws from (cycled to reach 'size'). 'npcproperties' is the clothing/loot kit; every clothing slot is a POOL the mod picks ONE entry from per NPC, so multi-entry slots = visual variety across a group. LOOT DROPS PER-NPC AND IS MULTIPLIED BY GROUP SIZE. Despite the wiki calling it 'randomized' with 'repeat to raise the chance', in-game observation is that the WHOLE array drops on each NPC and repeated entries pile into STACKS - so a 14-item array on a size-8 squad = ~112 items on the ground (stacks of morphine, rags, etc). Therefore KEEP LOOT ARRAYS TINY (2-4 low-value, thematic items) and NEVER repeat a valuable. Variety comes from the CLOTHING pools (one per slot per NPC), NOT from padding loot. Also: the NPC's whole WORN kit (clothes, vest, backpack, gun + its attachments/mag) always drops on death - that is the bulk of a corpse's value and is governed by the loadout/weapon, not the loot array. NOTE: the loot array takes classnames only - there is NO condition/health field, so 'sometimes ruined/damaged' drops cannot be scripted here. Loadout kits (consolidated): military (rich, all-purpose AKM bandit - absorbs the old biker-gang 'raider' look), military_heavy (rich, top tier), town (rich civ) - these three carry the full clothing/loot variety; pistol + melee stay deliberately MINIMAL (scavenger/desperate); raider_m4 (M4 airfield specialist) + sniper (SVD). Clothing/weapon/loot classnames are vanilla DayZ and can drift between game versions - an invalid classname just means that item is absent on the NPC (not a crash), but worth a sanity pass.",
     "flags": {
+        "_readme_useSpawnLocations": "Master AI-bandit spawn switch, read by Build-AIBandits.ps1 (NOT the mod - stripped from the composed flat file). 1 (default, also assumed if absent) = compose spawn placements normally. 0 = emit EMPTY Dynamic + Static files (no bandits, effectively no mod) while leaving every authored placement intact - fully reversible. Editable in the Server Files UI as the 'Aib-common' item; the mod stays loaded (unload it via deploy/mods.conf).",
+        "useSpawnLocations": 1,
         "version": 2,
         "showtriggers": 0,
         "cleanzerovector": 0,
@@ -73,7 +75,19 @@
                 "Mag_STANAGCoupled_30Rnd",
                 "M4_MPHndgrd",
                 "M4_CQBBttstck",
-                "ACOGOptic"
+                "M68Optic",
+                "Battery9V"
+            ]
+        },
+        {
+            "name": "Predefined_MP5K",
+            "weapon": "MP5K",
+            "attachments": [
+                "Mag_MP5_15Rnd",
+                "MP5k_StockBttstck",
+                "MP5_PlasticHndgrd",
+                "ReflexOptic",
+                "Battery9V"
             ]
         },
         {
@@ -82,7 +96,79 @@
             "attachments": [
                 "Mag_SVD_10Rnd",
                 "GhillieAtt_Winter",
-                "PSO11Optic"
+                "PSO11Optic",
+                "Battery9V"
+            ]
+        },
+        {
+            "name": "Predefined_AK74",
+            "weapon": "AK74",
+            "attachments": [
+                "Mag_AK74_30Rnd",
+                "AK_74_WoodHndgrd",
+                "AK_74_WoodBttstck",
+                "KobraOptic",
+                "Battery9V"
+            ]
+        },
+        {
+            "name": "Predefined_Crossbow",
+            "weapon": "Crossbow_Black",
+            "attachments": [
+                "HuntingOptic"
+            ]
+        },
+        {
+            "name": "Predefined_Vikhr",
+            "weapon": "Vikhr",
+            "attachments": [
+                "Mag_Vikhr_30Rnd",
+                "KobraOptic",
+                "Battery9V"
+            ]
+        },
+        {
+            "name": "Predefined_Saiga",
+            "weapon": "Saiga",
+            "attachments": [
+                "Mag_Saiga_5Rnd",
+                "Saiga_Bttstck",
+                "KobraOptic",
+                "Battery9V"
+            ]
+        },
+        {
+            "name": "Predefined_Mp133Shotgun",
+            "weapon": "Mp133Shotgun",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_SSG82",
+            "weapon": "SSG82",
+            "attachments": [
+                "Mag_SSG82_5rnd"
+            ]
+        },
+        {
+            "name": "Predefined_AKS74U",
+            "weapon": "AKS74U",
+            "attachments": [
+                "Mag_AK74_30Rnd",
+                "AKS74U_Bttstck"
+            ]
+        },
+        {
+            "name": "Predefined_FAMAS",
+            "weapon": "FAMAS",
+            "attachments": [
+                "Mag_FAMAS_25Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_M16A2",
+            "weapon": "M16A2",
+            "attachments": [
+                "Mag_STANAG_30Rnd"
             ]
         }
     ],
@@ -447,7 +533,11 @@
         "_readme": "Reusable, fully-defined bandit SQUADS placed per-map by name. A per-map group referencing one need only supply a location (pos or waypoints) + a name; any field below can be overridden inline per placement (e.g. bump 'accuracy' or swap 'weapon' at one site). Fields: loadout (kit from loadouts above), weapon (Predefined name OR array/pool; [] = unarmed/fists), size, accuracy 0-100, grenadechance 0-100, dog (0=none,1..=type), faction (Bandits/Guards). PROGRESSION TIERS (most->least dangerous, matching the player doc): raider_heavy > patrol > holdout > scavenger > desperate. Only raider_heavy throws grenades + runs a dog. NOTE: 'desperate' uses weapon [] (fists) - if the mod won't spawn truly unarmed NPCs, give it a crude melee weapon instead; verify in-game.",
         "raider_heavy": {
             "loadout": "military_heavy",
-            "weapon": "Predefined_AKM",
+            "weapon": [
+                "Predefined_AK74",
+                "Predefined_AKM",
+                "Predefined_AKS74U"
+            ],
             "size": 5,
             "accuracy": 80,
             "grenadechance": 0,
@@ -456,9 +546,12 @@
         },
         "patrol": {
             "loadout": "military",
-            "weapon": "Predefined_AKM",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
             "size": 5,
-            "accuracy": 72,
+            "accuracy": 80,
             "grenadechance": 0,
             "dog": 0,
             "faction": "Bandits"
@@ -466,9 +559,10 @@
         "holdout": {
             "loadout": "town",
             "weapon": [
-                "Predefined_AKM",
-                "Predefined_Makarov",
-                "Predefined_CZ75"
+                "Predefined_Vikhr",
+                "Predefined_Saiga",
+                "Predefined_MP5K",
+                "Predefined_Mp133Shotgun"
             ],
             "size": 2,
             "accuracy": 70,
@@ -482,7 +576,7 @@
                 "Predefined_CZ75",
                 "Predefined_Colt1911",
                 "Predefined_CZ61",
-                "Predefined_HuntingKnife"
+                "Predefined_Mp133Shotgun"
             ],
             "size": 2,
             "accuracy": 70,
@@ -505,7 +599,10 @@
         },
         "roadblock": {
             "loadout": "military",
-            "weapon": "Predefined_AKM",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
             "size": 5,
             "accuracy": 75,
             "grenadechance": 0,
@@ -523,7 +620,11 @@
         },
         "airfield_m4": {
             "loadout": "raider_m4",
-            "weapon": "Predefined_M4A1",
+            "weapon": [
+                "Predefined_M4A1",
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
             "size": 4,
             "accuracy": 80,
             "grenadechance": 0,
@@ -532,7 +633,10 @@
         },
         "guard_patrol": {
             "loadout": "military",
-            "weapon": "Predefined_AKM",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
             "size": 4,
             "accuracy": 80,
             "grenadechance": 0,
@@ -541,18 +645,21 @@
         },
         "hermit": {
             "loadout": "melee",
-            "weapon": [],
+            "weapon": "Predefined_SSG82",
             "size": 1,
-            "accuracy": 100,
+            "accuracy": 85,
             "grenadechance": 0,
             "dog": 1,
             "faction": "Bandits"
         },
         "sniper": {
             "loadout": "sniper",
-            "weapon": "Predefined_SVD",
+            "weapon": [
+                "Predefined_SVD",
+                "Predefined_SSG82"
+            ],
             "size": 1,
-            "accuracy": 70,
+            "accuracy": 80,
             "grenadechance": 0,
             "dog": 0,
             "faction": "Bandits"

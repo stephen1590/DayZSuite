@@ -1,0 +1,672 @@
+{
+    "_readme": "COMMON layer for DynamicAIB - map-agnostic scaffolding merged into EVERY map's flat DynamicAIB.json by Build-AIBandits.ps1. NEVER put coordinates here (those are per-map, under ../maps/<mission>/). THE MODEL: bandits are defined GLOBALLY here and only PLACED per-map. Three global tiers, each referenced by name from a per-map file: (1) 'loadouts' = clothing+loot kits; (2) 'groupTemplates' = fully-defined reusable squads (which loadout, weapon, size, accuracy, grenadechance, dog, faction) - a per-map group can just say {\"template\":\"roadblock\",\"waypoints\":[...]} and inherit everything, overriding any field inline; (3) 'sniperTemplates' = reusable SVD nests a per-map file places with {\"template\":\"svd_nest\",\"positions\":[...],\"triggerpos\":\"...\"}. Edit a kit/template ONCE here and every map inherits it. 'loadouts.<name>.classes' is the NPC-class pool a group draws from (cycled to reach 'size'). 'npcproperties' is the clothing/loot kit; every clothing slot is a POOL the mod picks ONE entry from per NPC, so multi-entry slots = visual variety across a group. LOOT DROPS PER-NPC AND IS MULTIPLIED BY GROUP SIZE. Despite the wiki calling it 'randomized' with 'repeat to raise the chance', in-game observation is that the WHOLE array drops on each NPC and repeated entries pile into STACKS - so a 14-item array on a size-8 squad = ~112 items on the ground (stacks of morphine, rags, etc). Therefore KEEP LOOT ARRAYS TINY (2-4 low-value, thematic items) and NEVER repeat a valuable. Variety comes from the CLOTHING pools (one per slot per NPC), NOT from padding loot. Also: the NPC's whole WORN kit (clothes, vest, backpack, gun + its attachments/mag) always drops on death - that is the bulk of a corpse's value and is governed by the loadout/weapon, not the loot array. NOTE: the loot array takes classnames only - there is NO condition/health field, so 'sometimes ruined/damaged' drops cannot be scripted here. Loadout kits (consolidated): military (rich, all-purpose AKM bandit - absorbs the old biker-gang 'raider' look), military_heavy (rich, top tier), town (rich civ) - these three carry the full clothing/loot variety; pistol + melee stay deliberately MINIMAL (scavenger/desperate); raider_m4 (M4 airfield specialist) + sniper (SVD). Clothing/weapon/loot classnames are vanilla DayZ and can drift between game versions - an invalid classname just means that item is absent on the NPC (not a crash), but worth a sanity pass.",
+    "flags": {
+        "_readme_useSpawnLocations": "Master AI-bandit spawn switch, read by Build-AIBandits.ps1 (NOT the mod - stripped from the composed flat file). 1 (default, also assumed if absent) = compose spawn placements normally. 0 = emit EMPTY Dynamic + Static files (no bandits, effectively no mod) while leaving every authored placement intact - fully reversible. Editable in the Server Files UI as the 'Aib-common' item; the mod stays loaded (unload it via deploy/mods.conf).",
+        "useSpawnLocations": 1,
+        "version": 2,
+        "showtriggers": 0,
+        "cleanzerovector": 0,
+        "crashsitegroup": "Random",
+        "cardamage": 1
+    },
+    "weapons": [
+        {
+            "name": "Predefined_AKM",
+            "weapon": "AKM",
+            "attachments": [
+                "Mag_AKM_30Rnd",
+                "AK_WoodHndgrd",
+                "PSO1Optic",
+                "AK_WoodBttstck"
+            ]
+        },
+        {
+            "name": "Predefined_Makarov",
+            "weapon": "MakarovIJ70",
+            "attachments": [
+                "Mag_IJ70_8Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_CZ75",
+            "weapon": "CZ75",
+            "attachments": [
+                "Mag_CZ75_15Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_Colt1911",
+            "weapon": "Colt1911",
+            "attachments": [
+                "Mag_1911_7Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_CZ61",
+            "weapon": "CZ61",
+            "attachments": [
+                "Mag_CZ61_20Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_CombatKnife",
+            "weapon": "CombatKnife",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_HuntingKnife",
+            "weapon": "HuntingKnife",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_Machete",
+            "weapon": "Machete",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_BaseballBat",
+            "weapon": "BaseballBat",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_M4A1",
+            "weapon": "M4A1",
+            "attachments": [
+                "Mag_STANAGCoupled_30Rnd",
+                "M4_MPHndgrd",
+                "M4_CQBBttstck",
+                "M68Optic"
+            ]
+        },
+        {
+            "name": "Predefined_MP5K",
+            "weapon": "MP5K",
+            "attachments": [
+                "Mag_MP5_15Rnd",
+                "MP5k_StockBttstck",
+                "MP5_PlasticHndgrd",
+                "ReflexOptic"
+            ]
+        },
+        {
+            "name": "Predefined_SVD",
+            "weapon": "SVD",
+            "attachments": [
+                "Mag_SVD_10Rnd",
+                "GhillieAtt_Winter",
+                "PSO11Optic"
+            ]
+        },
+        {
+            "name": "Predefined_AK74",
+            "weapon": "AK74",
+            "attachments": [
+                "Mag_AK74_30Rnd",
+                "AK_74_WoodHndgrd",
+                "AK_74_WoodBttstck",
+                "KobraOptic"
+            ]
+        },
+        {
+            "name": "Predefined_Crossbow",
+            "weapon": "Crossbow_Black",
+            "attachments": [
+                "HuntingOptic"
+            ]
+        },
+        {
+            "name": "Predefined_Vikhr",
+            "weapon": "Vikhr",
+            "attachments": [
+                "Mag_Vikhr_30Rnd",
+                "KobraOptic"
+            ]
+        },
+        {
+            "name": "Predefined_Saiga",
+            "weapon": "Saiga",
+            "attachments": [
+                "Mag_Saiga_5Rnd",
+                "Saiga_Bttstck",
+                "KobraOptic"
+            ]
+        },
+        {
+            "name": "Predefined_Mp133Shotgun",
+            "weapon": "Mp133Shotgun",
+            "attachments": []
+        },
+        {
+            "name": "Predefined_SSG82",
+            "weapon": "SSG82",
+            "attachments": [
+                "Mag_SSG82_5rnd"
+            ]
+        },
+        {
+            "name": "Predefined_AKS74U",
+            "weapon": "AKS74U",
+            "attachments": [
+                "Mag_AK74_30Rnd",
+                "AKS74U_Bttstck"
+            ]
+        },
+        {
+            "name": "Predefined_FAMAS",
+            "weapon": "FAMAS",
+            "attachments": [
+                "Mag_FAMAS_25Rnd"
+            ]
+        },
+        {
+            "name": "Predefined_M16A2",
+            "weapon": "M16A2",
+            "attachments": [
+                "Mag_STANAG_30Rnd"
+            ]
+        }
+    ],
+    "loadouts": {
+        "military": {
+            "classes": [
+                "BanditAI_Adam",
+                "BanditAI_Guo",
+                "BanditAI_Rolf",
+                "BanditAI_Denis",
+                "BanditAI_Maria",
+                "BanditAI_Baty"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "BallisticHelmet_Winter",
+                    "MilitaryBeret_Red"
+                ],
+                "masks": [
+                    "BalaclavaMask_Black",
+                    "BalaclavaMask_BDU",
+                    "BalaclavaMask_White"
+                ],
+                "vests": [
+                    "UKAssVest_Winter",
+                    "UKAssVest_Camo",
+                    "PoliceVest"
+                ],
+                "backpacks": [
+                    "TortillaBag_Winter",
+                    "AssaultBag_Winter",
+                    "TortillaBag"
+                ],
+                "bodywear": [
+                    "GorkaEJacket_Winter",
+                    "HuntingJacket_Brown",
+                    "OMKJacket_Navy"
+                ],
+                "belts": [
+                    "MilitaryBelt"
+                ],
+                "pants": [
+                    "GorkaPants_Winter",
+                    "OMKPants_Navy",
+                    "HunterPants_Winter"
+                ],
+                "shoes": [
+                    "MilitaryBoots_Black",
+                    "CombatBoots_Black",
+                    "CombatBoots_Beige"
+                ],
+                "gloves": [
+                    "TacticalGloves_Black"
+                ],
+                "armband": [
+                    "Armband_Zagorky"
+                ],
+                "loot": []
+            }
+        },
+        "military_heavy": {
+            "classes": [
+                "BanditAI_Kaito",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "GorkaHelmet_Black"
+                ],
+                "masks": [
+                    "AirborneMask",
+                    "BalaclavaMask_Black"
+                ],
+                "vests": [
+                    "PlateCarrierVest_Winter"
+                ],
+                "backpacks": [
+                    "AssaultBag_Black",
+                    "AssaultBag_Winter",
+                    "CoyoteBag_Winter"
+                ],
+                "bodywear": [
+                    "OMKJacket_Navy"
+                ],
+                "belts": [
+                    "MilitaryBelt"
+                ],
+                "pants": [
+                    "OMKPants_Navy"
+                ],
+                "shoes": [
+                    "MilitaryBoots_Black"
+                ],
+                "gloves": [
+                    "TacticalGloves_Black"
+                ],
+                "armband": [],
+                "loot": [
+                    "CombatKnife",
+                    "Rag"
+                ]
+            }
+        },
+        "town": {
+            "classes": [
+                "BanditAI_Keiko",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "Ushanka_Black",
+                    "BeanieHat_Beige",
+                    "BeanieHat_Brown",
+                    "PetushokHat_Green",
+                    "SherpaHat_Black",
+                    "RadarCap_Brown",
+                    "RadarCap_Green",
+                    "RadarCap_Red",
+                    "SnowstormUshanka_Navy",
+                    "SnowstormUshanka_White"
+                ],
+                "masks": [
+                    "Shemag_Green",
+                    "Shemag_Red",
+                    "Balaclava3Holes_Black",
+                    "Balaclava3Holes_Green",
+                    "Balaclava3Holes_White",
+                    "NioshFaceMask"
+                ],
+                "vests": [
+                    "PoliceVest",
+                    "PoliceVest",
+                    "HuntingVest_Winter",
+                    "HuntingVest",
+                    "PressVest_Blue",
+                    "HighCapacityVest_Black"
+                ],
+                "backpacks": [
+                    "TaloonBag_Blue",
+                    "TaloonBag_Green",
+                    "TaloonBag_Orange",
+                    "CanvasBag_Olive",
+                    "CanvasBag_Medical",
+                    "ChildBag_Red",
+                    "ChildBag_Green",
+                    "SlingBag_Black",
+                    "SlingBag_Grey",
+                    "SlingBag_Brown",
+                    "CourierBag"
+                ],
+                "bodywear": [
+                    "HuntingJacket_Brown",
+                    "BomberJacket_Brown",
+                    "LeatherJacket_Brown",
+                    "QuiltedJacket_Green",
+                    "QuiltedJacket_Red",
+                    "TrackSuitJacket_Blue",
+                    "TrackSuitJacket_Red",
+                    "Sweater_Green"
+                ],
+                "belts": [],
+                "pants": [
+                    "HunterPants_Brown",
+                    "Jeans_Blue",
+                    "Jeans_Black",
+                    "Jeans_BlueDark",
+                    "CanvasPants_Beige",
+                    "TrackSuitPants_Black",
+                    "CargoPants_Green"
+                ],
+                "shoes": [
+                    "AthleticShoes_Grey",
+                    "AthleticShoes_Black",
+                    "HikingBoots_Brown",
+                    "JoggingShoes_White"
+                ],
+                "gloves": [
+                    "WoolGloves_Tan",
+                    "WoolGloves_Black",
+                    "WoolGloves_Green",
+                    "WoolGloves_White",
+                    "WoolGlovesFingerless_Tan",
+                    "WoolGlovesFingerless_Black",
+                    "WoolGlovesFingerless_Green",
+                    "WoolGlovesFingerless_White",
+                    "WorkingGloves_Beige",
+                    "WorkingGloves_Brown",
+                    "WorkingGloves_Yellow",
+                    "WorkingGloves_Black"
+                ],
+                "armband": [],
+                "loot": []
+            }
+        },
+        "pistol": {
+            "classes": [
+                "BanditAI_Keiko",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "BeanieHat_Black",
+                    "BaseballCap_Blue",
+                    "DarkMotoHelmet_Black"
+                ],
+                "masks": [],
+                "vests": [
+                    "HighCapacityVest_Black"
+                ],
+                "backpacks": [
+                    "CoyoteBag_Brown",
+                    "TaloonBag_Violet",
+                    "ChildBag_Blue"
+                ],
+                "bodywear": [
+                    "QuiltedJacket_Blue",
+                    "BomberJacket_Blue",
+                    "TrackSuitJacket_Red",
+                    "LeatherJacket_Black"
+                ],
+                "belts": [],
+                "pants": [
+                    "Jeans_Blue",
+                    "Jeans_Black",
+                    "TrackSuitPants_Black"
+                ],
+                "shoes": [
+                    "JoggingShoes_White",
+                    "AthleticShoes_Black",
+                    "SneakersLow_Grey"
+                ],
+                "gloves": [],
+                "armband": [],
+                "loot": [
+                    "Rag"
+                ]
+            }
+        },
+        "melee": {
+            "classes": [
+                "BanditAI_Keiko",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "BeanieHat_Brown",
+                    "BeanieHat_Blue",
+                    "Ushanka_Blue"
+                ],
+                "masks": [],
+                "vests": [],
+                "backpacks": [],
+                "bodywear": [
+                    "Sweater_Blue",
+                    "TrackSuitJacket_Red",
+                    "QuiltedJacket_Red"
+                ],
+                "belts": [],
+                "pants": [
+                    "CanvasPants_Blue",
+                    "Jeans_Blue",
+                    "TrackSuitPants_Red"
+                ],
+                "shoes": [
+                    "AthleticShoes_Blue",
+                    "SneakersLow_Black",
+                    "Wellies_Grey"
+                ],
+                "gloves": [],
+                "armband": [],
+                "loot": [
+                    "Rag",
+                    "SmallStone"
+                ]
+            }
+        },
+        "raider_m4": {
+            "classes": [
+                "BanditAI_Keiko",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [],
+                "masks": [
+                    "BalaclavaMask_BDU"
+                ],
+                "vests": [],
+                "backpacks": [
+                    "HuntingBag"
+                ],
+                "bodywear": [
+                    "HuntingJacket_Brown",
+                    "HuntingJacket_Winter",
+                    "HuntingJacket_Summer",
+                    "HuntingJacket_Spring"
+                ],
+                "belts": [],
+                "pants": [
+                    "HunterPants_Brown"
+                ],
+                "shoes": [
+                    "CombatBoots_Black"
+                ],
+                "gloves": [],
+                "armband": [],
+                "loot": [
+                    "Rag",
+                    "SmallStone"
+                ]
+            }
+        },
+        "sniper": {
+            "classes": [
+                "BanditAI_Keiko",
+                "BanditAI_Linda",
+                "BanditAI_Rolf",
+                "BanditAI_Denis"
+            ],
+            "npcproperties": {
+                "headgear": [
+                    "GhillieHood_Winter"
+                ],
+                "masks": [],
+                "vests": [],
+                "backpacks": [
+                    "HuntingBag",
+                    "GhillieSuit_Winter"
+                ],
+                "bodywear": [
+                    "HuntingJacket_Winter"
+                ],
+                "belts": [],
+                "pants": [
+                    "HunterPants_Brown",
+                    "HunterPants_Winter"
+                ],
+                "shoes": [
+                    "CombatBoots_Black",
+                    "ColdOperationBoots_Camo"
+                ],
+                "gloves": [
+                    "TacticalGloves_Black"
+                ],
+                "armband": [],
+                "loot": [
+                    "Rag"
+                ]
+            }
+        }
+    },
+    "groupTemplates": {
+        "_readme": "Reusable, fully-defined bandit SQUADS placed per-map by name. A per-map group referencing one need only supply a location (pos or waypoints) + a name; any field below can be overridden inline per placement (e.g. bump 'accuracy' or swap 'weapon' at one site). Fields: loadout (kit from loadouts above), weapon (Predefined name OR array/pool; [] = unarmed/fists), size, accuracy 0-100, grenadechance 0-100, dog (0=none,1..=type), faction (Bandits/Guards). PROGRESSION TIERS (most->least dangerous, matching the player doc): raider_heavy > patrol > holdout > scavenger > desperate. Only raider_heavy throws grenades + runs a dog. NOTE: 'desperate' uses weapon [] (fists) - if the mod won't spawn truly unarmed NPCs, give it a crude melee weapon instead; verify in-game.",
+        "raider_heavy": {
+            "loadout": "military_heavy",
+            "weapon": [
+                "Predefined_AK74",
+                "Predefined_AKM",
+                "Predefined_AKS74U"
+            ],
+            "size": 5,
+            "accuracy": 80,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "patrol": {
+            "loadout": "military",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
+            "size": 5,
+            "accuracy": 80,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "holdout": {
+            "loadout": "town",
+            "weapon": [
+                "Predefined_Vikhr",
+                "Predefined_Saiga",
+                "Predefined_MP5K",
+                "Predefined_Mp133Shotgun"
+            ],
+            "size": 2,
+            "accuracy": 70,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "scavenger": {
+            "loadout": "town",
+            "weapon": [
+                "Predefined_CZ75",
+                "Predefined_Colt1911",
+                "Predefined_CZ61",
+                "Predefined_Mp133Shotgun"
+            ],
+            "size": 2,
+            "accuracy": 70,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "desperate": {
+            "loadout": "melee",
+            "weapon": [
+                "Predefined_HuntingKnife",
+                "Predefined_Machete",
+                "Predefined_BaseballBat"
+            ],
+            "size": 1,
+            "accuracy": 100,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "roadblock": {
+            "loadout": "military",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
+            "size": 5,
+            "accuracy": 75,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "patrol_akm": {
+            "loadout": "military",
+            "weapon": "Predefined_AKM",
+            "size": 5,
+            "accuracy": 75,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "airfield_m4": {
+            "loadout": "raider_m4",
+            "weapon": [
+                "Predefined_M4A1",
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
+            "size": 4,
+            "accuracy": 80,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        },
+        "guard_patrol": {
+            "loadout": "military",
+            "weapon": [
+                "Predefined_FAMAS",
+                "Predefined_M16A2"
+            ],
+            "size": 4,
+            "accuracy": 80,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Guards"
+        },
+        "hermit": {
+            "loadout": "melee",
+            "weapon": "Predefined_SSG82",
+            "size": 1,
+            "accuracy": 85,
+            "grenadechance": 0,
+            "dog": 1,
+            "faction": "Bandits"
+        },
+        "sniper": {
+            "loadout": "sniper",
+            "weapon": [
+                "Predefined_SVD",
+                "Predefined_SSG82"
+            ],
+            "size": 1,
+            "accuracy": 80,
+            "grenadechance": 0,
+            "dog": 0,
+            "faction": "Bandits"
+        }
+    },
+    "sniperTemplates": {
+        "_readme": "Reusable SVD sniper nests placed per-map by name. A per-map sniper referencing one supplies 'positions' (array of firing spots), 'triggerpos', and a 'name'; may override 'fixedpos' (0=roam the positions, 1=hold triggerpos) or any field. Fields: loadout, weapon, npcclass (single class), accuracy 0-100, fixedpos.",
+        "svd_nest": {
+            "loadout": "sniper",
+            "weapon": "Predefined_SVD",
+            "npcclass": "BanditAI_Keiko",
+            "accuracy": 75,
+            "fixedpos": 1
+        }
+    }
+}

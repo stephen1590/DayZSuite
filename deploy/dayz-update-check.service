@@ -1,0 +1,17 @@
+[Unit]
+Description=DayZ update check (arm a deferred update when a newer server build exists)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# TEMPLATE: DEPLOY_* placeholders rendered per-host by Deploy-DayZServer.ps1 (host.env).
+# Runs as the game user so update-check.sh reads the same steamcmd cached login + manifest
+# update.sh uses. It only compares build ids and (if behind) writes .update-pending — it
+# never downloads or restarts. The actual update rides the next server start (prestart.sh).
+Type=oneshot
+User={{DEPLOY_USER}}
+Group={{DEPLOY_GROUP}}
+WorkingDirectory={{DEPLOY_HOME}}/servers/dayz-server/
+ExecStart={{DEPLOY_HOME}}/servers/dayz-server/update-check.sh
+# The steamcmd app_info call is quick, but give it room on a slow link.
+TimeoutStartSec=600

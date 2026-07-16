@@ -1,0 +1,14 @@
+# HEMTT build config for TransferSpawn — the server-only map-switch safe-spawn relocator.
+# Libre packer; `hemtt build` -> a flat-prefix PBO at .hemttout/build/addons/TransferSpawn_main.pbo.
+# No signing: serverMods aren't sent to clients, so they need no key. The INVALID-PBOPREFIX
+# warning HEMTT prints is cosmetic — DayZ wants the flat `TransferSpawn` prefix in
+# addons/main/$PBOPREFIX$, which HEMTT honors and bakes into the PBO correctly.
+name = "Transfer Spawn"
+prefix = "TransferSpawn"
+mainprefix = ""
+
+[version]
+major = 0
+minor = 1
+patch = 0
+git_hash = 0

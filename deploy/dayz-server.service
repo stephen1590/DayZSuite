@@ -18,7 +18,14 @@ ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
 # The -mod chain is RENDERED from deploy/mods.conf ({{DEPLOY_MODLINE}}) — enable/disable/
 # reorder mods THERE (line order = load order), then ./Deploy-DayZServer.ps1 -Fix.
 # Never hand-edit a mod list here: it would drift from the registry on the next deploy.
-ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
+#
+# -serverMod loads OUR server-only mods (semicolon-separated), SERVER-ONLY — never advertised
+# to or downloaded by clients — OUR artifacts (built by HEMTT, shipped by Deploy-DayZServer.ps1),
+# NOT workshop items. So they live OUTSIDE mods.conf and the -mod chain, as fixed names here:
+#   @aib_tracker   - writes profiles/AI_Bandits/live_positions.json for the map overlay
+#   @transfer_spawn - relocates migrated characters to the new map's own spawn points on a
+#                     map switch (reads profiles/transfer_spawn.json; see serverMods/TransferSpawn)
+ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -serverMod=@aib_tracker -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s INT $MAINPID
 # DayZ-Expansion's AI (eAIGroup::Save) LEAKS file descriptors — the process climbs
@@ -30,7 +37,12 @@ ExecStop=/bin/kill -s INT $MAINPID
 # and the scheduled restart resets the count. Mitigation, not a leak fix — if the
 # leak rate climbs, shorten the restart cadence or cut the eAI load.
 LimitNOFILE=1048576
-TimeoutStartSec=900
+# 45m, not the usual couple: when an update is armed, prestart.sh runs steamcmd
+# (game app + mods) INSIDE start, before the engine boots. That download must fit inside
+# this window or systemd kills the start mid-update. prestart caps its own update at
+# UPDATE_TIMEOUT=2400s (40m), so this stays safely above it. A normal (unarmed) boot
+# returns in seconds and never approaches this.
+TimeoutStartSec=2700
 # always, not on-failure: messages.xml <shutdown> and VPP's restart both exit CLEANLY
 # (0) — on-failure would leave the server down after every scheduled/admin restart.
 Restart=always

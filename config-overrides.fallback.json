@@ -1,0 +1,111 @@
+{
+    "_readme": "Field-level overrides PATCHED into the LIVE server config files (we never store the whole vanilla/mod file - a game/mod update rewrites the baseline and these re-apply on top BY NAME, so updates are inherited, not fought). Keys starting with _ are ignored. Each patch is a target-file -> {selector -> value} map. XML selectors are XPath: an attribute node (//var[@name='X']/@value) or an element's text (//type[@name='AKM']/nominal). JSON selectors are a dotted key path (chanceToSpawn, or a.b.c). files.<relpath> targets one file under the server dir. mpmissions.common is applied to EVERY mission's files first; mpmissions.<mission> is applied AFTER common and WINS on conflict; its file keys are relative to that mission dir (e.g. db/globals.xml). Applied by Apply-ConfigOverrides.ps1 during a deploy: report-only by default, patches under -Fix. Each patch is independent and FAIL-SOFT - a missing file or unmatched selector is logged as a WARN and skipped, never aborting the rest. NOT managed here (FULL-FILE OWNED, authored wholesale in deploy/): profiles/AI_Bandits/DynamicAIB.json and StaticAIB.json - see deploy/profiles/AI_Bandits/README.md.",
+    "_dzExpansionDocs": "https://dayzexpansion.com/",
+    "files": {
+        "profiles/KnockKnockAIBandits/KnockKnockAIBandits_Settings.json": {
+            "chanceToSpawn": 5,
+            "Enabled": 0
+        },
+        "profiles/AIB_Unleashed/AIB_UL_Config.json": {
+            "playerVisionAngle": 110,
+            "noiseGenericRange": 50,
+            "flashlightDetectionRangeMeters": 100,
+            "lootMinCount": 0,
+            "lootMaxCount": 2,
+            "lootAllowDuplicates": 0,
+            "nightLightsEnabled": 0,
+            "nightStartHour": 19,
+            "nightEndHour": 5,
+            "nightAccuracyPercent": 0.3,
+            "stanceAccuracyStanding": 0.8,
+            "weatherSnowAccuracyMin": 0.7,
+            "woundedAccuracyMultiplier": 0.5,
+            "combatPursuitSpeed": 4,
+            "engageRangeMeters": 350,
+            "playerDisengageRange": 350,
+            "shootingRangeMinMeters": 1.5,
+            "infectedBodyDamage": 5,
+            "noiseFootstepWalkRange": 5,
+            "noiseFootstepJogRange": 20,
+            "noiseVehicleEngineRange": 150
+        },
+        "profiles/ExpansionMod/Settings/SocialMediaSettings.json": {
+            "NewsFeedTexts": [
+                {
+                    "m_Title": "Welcome to Commie Lobby",
+                    "m_Text": "Play nice. Have fun."
+                }
+            ],
+            "NewsFeedLinks": [
+                {
+                    "m_Label": "Server Info",
+                    "m_Icon": "set:expansion_iconset image:icon_steam",
+                    "m_URL": "https://cytonicmushroom.ddns.net/docs/game-servers/dayz/"
+                }
+            ]
+        }
+    },
+    "mpmissions": {
+        "common": {
+            "db/globals.xml": {
+                "//var[@name='TimeHopping']/@value": 5,
+                "//var[@name='TimeLogin']/@value": 10,
+                "//var[@name='TimeLogout']/@value": 10,
+                "//var[@name='TimePenalty']/@value": 5
+            },
+            "expansion/settings/MapSettings.json": {
+                "NeedMapItemForKeyBinding": 1
+            },
+            "expansion/settings/AIPatrolSettings.json": {
+                "Enabled": 0
+            }
+        },
+        "dayzOffline.chernarusplus": {},
+        "dayzOffline.enoch": {},
+        "dayzOffline.sakhal": {
+            "_readme": "Fresh-spawn loadout (Expansion SpawnSettings.json). PATCH only these fields so the rest of the file (SpawnLocations, cooldowns, clothing pools) stays whatever the box + map/inventory sync manages, and an Expansion update that rewrites the baseline is inherited. UpperGear = knife + heatpack only (no rags/apple); Backpacks emptied so fresh spawns carry no bag. Re-applied by prestart every start. Sakhal-scoped (only live map; heatpack is for its cold) - promote the knife/backpack bits to mpmissions.common if more maps go live. Spawn stats are PINNED here (health 100 = full; energy/water 2500 each) because an Expansion baseline reset (m_Version bump) reverted SpawnEnergyValue/SpawnWaterValue to a low 500 default, making fresh spawns immediately hungry AND thirsty - pinning them means a future reset can't reintroduce that. 2500 buffers Sakhal's cold drain; lower toward ~1100/900 for a harder start.",
+            "expansion/settings/SpawnSettings.json": {
+                "SpawnHealthValue": 100,
+                "SpawnEnergyValue": 2500,
+                "SpawnWaterValue": 2500,
+                "StartingGear.UpperGear": [
+                    {
+                        "ClassName": "SteakKnife",
+                        "Quantity": -1,
+                        "Attachments": []
+                    },
+                    {
+                        "ClassName": "BandageDressing",
+                        "Quantity": -1,
+                        "Attachments": []
+                    },
+                    {
+                        "ClassName": "Heatpack",
+                        "Quantity": -1,
+                        "Attachments": []
+                    },
+                    {
+                        "ClassName": "Heatpack",
+                        "Quantity": -1,
+                        "Attachments": []
+                    }
+                ],
+                "StartingGear.PantsGear": [
+                    {
+                        "ClassName": "CZ75",
+                        "Quantity": 1,
+                        "Attachments": [
+                            "Mag_CZ75_15Rnd"
+                        ]
+                    },
+                    {
+                        "ClassName": "AmmoBox_9x19_25rnd",
+                        "Quantity": 1,
+                        "Attachments": []
+                    }
+                ],
+                "StartingClothing.Backpacks": []
+            }
+        }
+    }
+}

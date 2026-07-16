@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic DayZ update check
+
+[Timer]
+# TEMPLATE: {{DEPLOY_UPDATE_CHECK_INTERVAL}} rendered from host.env (DEPLOY_UPDATE_CHECK_INTERVAL,
+# default 4h). Each run opens a Steam session for the app_info lookup, so keep it modest.
+# OnBootSec gives a first check shortly after boot; Persistent replays a missed run.
+OnBootSec=15min
+OnUnitActiveSec={{DEPLOY_UPDATE_CHECK_INTERVAL}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

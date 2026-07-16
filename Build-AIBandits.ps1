@@ -25,6 +25,14 @@
   so it can NEVER block server boot. A map with no per-map file gets an EMPTY file (no bandits),
   never another map's coordinates.
 
+  MASTER OFF SWITCH: common/DynamicAIB.common.json -> flags.useSpawnLocations. Default ENABLED
+  (also the default when the key is absent). Set it to 0 to emit EMPTY Dynamic + Static files —
+  no bandits anywhere, "effectively no mod" — WITHOUT deleting any authored placement, so it is
+  fully reversible (flip back to 1). The common file is already the "Aib-common" item in the
+  Server Files UI (an existing config-overrides target), so this flag is editable there with no
+  new files or allowlist changes. The mod stays loaded; to unload it entirely, comment its lines
+  in deploy/mods.conf instead.
+
   For a LOCAL look at what would be built (e.g. -ServerDir './deploy' to preview against this
   repo), don't use -Fix — that writes inside deploy/profiles/AI_Bandits/, which looks like a
   shipped source but isn't (confusing). Use -PreviewOut <path> instead: writes the composed
@@ -57,8 +65,15 @@ function Show-Warn($m) { $script:stats.Warn++; Write-Host "[WARN] $m" -Foregroun
 function Show-Info($m) { Write-Host $m }
 function Read-Json($path) { Get-Content -Raw -LiteralPath $path | ConvertFrom-Json }
 
+# Compose a mod-format "X Y Z" waypoint string from numeric coords, invariant culture so a
+# non-US locale can't emit comma decimals the engine would misread.
+function Format-Pos($x, $y, $z) {
+    $ci = [System.Globalization.CultureInfo]::InvariantCulture
+    '{0} {1} {2}' -f ([double]$x).ToString($ci), ([double]$y).ToString($ci), ([double]$z).ToString($ci)
+}
+
 # Set a property on a PSCustomObject whether or not it already exists (ConvertFrom-Json
-# objects have no property we didn't parse). Used by the VPP overlay to add/replace pos etc.
+# objects have no property we didn't parse). Used by the spawn-points overlay to add/replace pos etc.
 function Set-Prop($obj, [string]$name, $value) {
     if ($obj.PSObject.Properties[$name]) { $obj.$name = $value }
     else { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value }
@@ -75,6 +90,12 @@ function Merge-Template($placement, $template) {
     [pscustomobject]$eff
 }
 
+# MASTER on/off for AI spawns (default ENABLED = "use spawn locations"). Set from the common
+# file's flags.useSpawnLocations, read below. Initialised here so the StaticAIB pass - which runs
+# outside the common block - still honours it, and so a MISSING common defaults to ENABLED
+# (unchanged behaviour), never a silent force-empty.
+$spawnsEnabled = $true
+
 # --- DynamicAIB: merge common + per-map placements ----------------------------------------
 $commonPath = Join-Path $aiRoot 'common/DynamicAIB.common.json'
 $mapPath    = Join-Path $aiRoot "maps/$Mission/DynamicAIB.json"
@@ -84,9 +105,17 @@ if (-not (Test-Path $commonPath)) {
     Show-Warn "no common/DynamicAIB.common.json under $aiRoot - cannot build DynamicAIB; leaving any existing flat file untouched."
 } else {
     $common = Read-Json $commonPath
+    # flags.useSpawnLocations = 0 -> emit EMPTY Dynamic + Static (no bandits, reversible); absent
+    # or non-zero -> compose placements as normal. Authored placements are never deleted.
+    if ($common.flags -and $null -ne $common.flags.useSpawnLocations) { $spawnsEnabled = ([int]$common.flags.useSpawnLocations -ne 0) }
     $groupsSpec = @()
     $native = $false
-    if (Test-Path $mapPath) {
+    if (-not $spawnsEnabled) {
+        # DISABLED: leave $mapDoc unread ($null) and $groupsSpec empty. The overlay is also
+        # gated below, so spawn-points can't re-create groups. The normal composition path then
+        # writes a valid file with empty GroupLocations/SniperLocations - no bandits.
+        Show-Info "DynamicAIB[$Mission]: AI spawns DISABLED (flags.useSpawnLocations = 0) - emitting EMPTY file; authored placements untouched$(if (-not $Fix) { ' (report-only)' })."
+    } elseif (Test-Path $mapPath) {
         $mapDoc = Read-Json $mapPath
         $hasOurs   = ($mapDoc.PSObject.Properties.Name -contains 'groups') -and $mapDoc.groups
         $hasNative = $mapDoc.PSObject.Properties.Name -contains 'GroupLocations'
@@ -109,86 +138,56 @@ if (-not (Test-Path $commonPath)) {
         Show-Info "no per-map DynamicAIB for '$Mission' - building an EMPTY groups file (no bandits; safe fallback)."
     }
 
-    # --- VPP coordinate OVERLAY (non-destructive) -----------------------------------------
-    # Update matching placements IN MEMORY from the VPP teleport captures pulled by
-    # Sync-VPPCoordinates.ps1. The authored maps/*.json on disk is NEVER rewritten - we only
-    # mutate the parsed $groupsSpec before composing. Match is by the FULL VPP name (RawName
-    # == group .name) - placements are named for their VPP bookmark. CoordinateOnly updates
-    # ONLY the coords; Classified also overrides template + size. VPP is the sole source of
-    # truth: every bookmark for this map ends up as a group, no hand-authored entry required.
-    # The composed set MIRRORS the VPP bookmarks for this map (a 3-way sync), so a deleted
-    # bookmark can't leave a stale group with lingering waypoints:
-    #   * VPP entry, no group   -> CREATE  (Classified: category gives it a real template+size.
-    #                              CoordinateOnly/bare <Map>_<Name>: created as a base 'holdout'.)
-    #   * VPP entry + group     -> UPDATE  (coords always; Classified also overrides template+size)
-    #   * group, no VPP entry   -> REMOVE  (dropped from this build's output)
-    # IN MEMORY only - the authored maps/*.json on disk is never written, so REMOVE just excludes
-    # the group from the generated flat file; the source group is preserved for reference.
-    # GUARDRAIL: the mirror (incl. removal) runs ONLY when VPP has >=1 spawn entry for this map,
-    # so an empty/stale vpp-coordinates.json can never silently wipe every spawn.
-    # FAIL-SOFT: missing classification.json or vpp-coordinates.json => no overlay at all.
-    $clsPath = Join-Path $aiRoot 'common/classification.json'
-    $vppPath = Join-Path $ServerDir 'profiles/VPPAdminTools/VPPCoordinates/vpp-coordinates.json'
-    if (-not $native -and (Test-Path $clsPath) -and (Test-Path $vppPath)) {
+    # --- spawn-points OVERLAY (non-destructive) -------------------------------------------
+    # spawn-points.json is the DEFINITIVE spawn store: repo/web-edited (see Migrate-SpawnPoints.ps1
+    # for the seed and the ConfigViewer Map tab for the editor). Update/create placements IN
+    # MEMORY from it; the authored maps/*.json on disk is NEVER rewritten - we only mutate the
+    # parsed $groupsSpec before composing. Match is by name (point .name == group .name, the
+    # stable unique key). A point with a 'category' sets template (+ 'size' when given); a point
+    # with none becomes a base 'holdout':
+    #   * point, no group   -> CREATE  (category -> real template+size; else a base 'holdout')
+    #   * point + group     -> UPDATE  (coords always; category also overrides template+size)
+    # Unlike the retired VPP mirror this is a UNION/UPSERT - it NEVER removes authored groups,
+    # because the file is now hand-edited, not a live 1:1 pull that could legitimately delete.
+    # FAIL-SOFT: missing classification.json or spawn-points.json => no overlay at all.
+    $clsPath   = Join-Path $aiRoot 'common/classification.json'
+    $spawnPath = Join-Path $aiRoot 'spawn-points.json'
+    if ($spawnsEnabled -and -not $native -and (Test-Path $clsPath) -and (Test-Path $spawnPath)) {
         $cls     = Read-Json $clsPath
         # Map letter(s) for this mission = classification.maps keys whose value == $Mission.
         $letters = @($cls.maps.PSObject.Properties | Where-Object { $_.Value -eq $Mission } | ForEach-Object { $_.Name })
-        $mapVpp  = @(Read-Json $vppPath | Where-Object { $_.Kind -ne 'NonSpawn' -and ($letters -contains $_.Map) })
-        if ($letters.Count -and $mapVpp.Count) {
+        $spawnDoc = Read-Json $spawnPath
+        $mapPts   = @($spawnDoc.points | Where-Object { $letters -contains $_.map })
+        if ($letters.Count -and $mapPts.Count) {
             $byName = @{}
             foreach ($g in $groupsSpec) { if ($g.name) { $byName[[string]$g.name] = $g } }
-            $keep = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-            foreach ($r in $mapVpp) {
-                $g = $byName[[string]$r.RawName]
+            foreach ($p in $mapPts) {
+                $pos = Format-Pos $p.x $p.y $p.z
+                $g   = $byName[[string]$p.name]
                 if ($g) {
-                    Set-Prop $g 'pos' $r.Pos
+                    Set-Prop $g 'pos' $pos
                     if ($g.PSObject.Properties['waypoints']) { $g.PSObject.Properties.Remove('waypoints') }
-                    if ($r.Kind -eq 'Classified') {
-                        Set-Prop $g 'template' ([string]$cls.categories.$($r.Category))
-                        # Size is OPTIONAL on the bookmark; only override when one was given, else the
-                        # template's default size (via Merge-Template) stands.
-                        if ($r.Size) { Set-Prop $g 'size' ([int]$cls.sizes.$($r.Size)) }
+                    if ($p.category) {
+                        Set-Prop $g 'template' ([string]$cls.categories.$($p.category))
+                        # Size is OPTIONAL; only override when one was given, else the template's
+                        # default size (via Merge-Template) stands.
+                        if ($p.size) { Set-Prop $g 'size' ([int]$cls.sizes.$($p.size)) }
                     }
-                    [void]$keep.Add([string]$r.RawName)
                     $script:stats.Overlaid++
                 }
-                elseif ($r.Kind -eq 'Classified') {
-                    # Build a placement from the bookmark; omit 'size' when none was given so the
-                    # template default applies (a 'size' of 0 would be skipped by the compose loop).
-                    $new = [pscustomobject]@{
-                        name     = $r.RawName
-                        template = [string]$cls.categories.$($r.Category)
-                        pos      = $r.Pos
-                    }
-                    if ($r.Size) { Set-Prop $new 'size' ([int]$cls.sizes.$($r.Size)) }
-                    $groupsSpec += $new
-                    $byName[$r.RawName] = $new              # so a duplicate bookmark updates, not re-adds
-                    [void]$keep.Add([string]$r.RawName)
-                    $script:stats.Created++
-                }
                 else {
-                    # CoordinateOnly (bare <Map>_<Name>) with no authored group: VPP is the sole
-                    # source, so this becomes a base 'holdout' group unconditionally - not a
-                    # configurable/guessed fallback. Give the bookmark a category token (e.g.
-                    # rename S_Vostok to S_Scav_Vostok) to make it something other than a holdout.
-                    $new = [pscustomobject]@{
-                        name     = $r.RawName
-                        template = 'holdout'
-                        pos      = $r.Pos
-                    }
+                    # No authored group of this name: create one. A category token gives it a real
+                    # template (+ size); without one it becomes a base 'holdout' - give the point a
+                    # category (e.g. Scav) in the editor to make it something other than a holdout.
+                    $tmpl = if ($p.category) { [string]$cls.categories.$($p.category) } else { 'holdout' }
+                    $new  = [pscustomobject]@{ name = [string]$p.name; template = $tmpl; pos = $pos }
+                    if ($p.category -and $p.size) { Set-Prop $new 'size' ([int]$cls.sizes.$($p.size)) }
                     $groupsSpec += $new
-                    $byName[$r.RawName] = $new
-                    [void]$keep.Add([string]$r.RawName)
-                    $script:stats.CreatedBase++
+                    $byName[[string]$p.name] = $new          # a duplicate-named point updates, not re-adds
+                    if ($p.category) { $script:stats.Created++ } else { $script:stats.CreatedBase++ }
                 }
             }
-            # REMOVE extras: any authored group not backed by a VPP bookmark this build.
-            foreach ($x in @($groupsSpec | Where-Object { -not ($_.name -and $keep.Contains([string]$_.name)) })) {
-                Show-Info "  removed (no VPP bookmark): $($x.name)"
-                $script:stats.Removed++
-            }
-            $groupsSpec = @($groupsSpec | Where-Object { $_.name -and $keep.Contains([string]$_.name) })
-            Show-Info "DynamicAIB[$Mission]: VPP mirror -> $($stats.Overlaid) updated, $($stats.Created) created, $($stats.CreatedBase) created as base holdouts, $($stats.Removed) removed."
+            Show-Info "DynamicAIB[$Mission]: spawn-points -> $($stats.Overlaid) updated, $($stats.Created) created, $($stats.CreatedBase) created as base holdouts."
         }
     }
 
@@ -302,7 +301,7 @@ if (-not (Test-Path $commonPath)) {
 # --- StaticAIB: straight per-map copy; empty-but-valid fallback ----------------------------
 $staticMap = Join-Path $aiRoot "maps/$Mission/StaticAIB.json"
 $staticOut = Join-Path $aiRoot 'StaticAIB.json'
-if (Test-Path $staticMap) {
+if ($spawnsEnabled -and (Test-Path $staticMap)) {
     if ($Fix) { Copy-Item $staticMap $staticOut -Force }
     Show-Info "StaticAIB[$Mission]: from maps/$Mission/StaticAIB.json$(if (-not $Fix) { ' (report-only)' })."
 } else {
@@ -310,7 +309,8 @@ if (Test-Path $staticMap) {
         ([ordered]@{ NPCDebug = 0; version = 1; NPCLocations = @(); PredefinedWeapons = @() } |
             ConvertTo-Json -Depth 100) | Set-Content -LiteralPath $staticOut -Encoding utf8
     }
-    Show-Info "StaticAIB[$Mission]: none for this map - empty file$(if (-not $Fix) { ' (report-only)' })."
+    $why = if (-not $spawnsEnabled) { 'AI spawns DISABLED (flags.useSpawnLocations = 0)' } else { 'none for this map' }
+    Show-Info "StaticAIB[$Mission]: $why - empty file$(if (-not $Fix) { ' (report-only)' })."
 }
 
 [pscustomobject]$stats

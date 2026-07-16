@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+    COMMON custom Central Economy types - map-agnostic. Applied to whatever mission is
+    active at prestart by Apply-CustomCE.ps1: this file is copied into
+    mpmissions/<mission>/custom/custom_types.xml and registered via a <ce folder="custom">
+    block in that mission's cfgeconomycore.xml. The vanilla db/types.xml is NEVER touched,
+    so a game/mod update that rewrites it can't drop these.
+
+    Add modded-item CE types here (one <type> per item); they spawn on every live map.
+    A <type name="X"> here also overrides a vanilla type of the same name (later file wins).
+-->
+<types>
+    <type name="CodeLock">
+        <nominal>80</nominal>
+        <lifetime>7200</lifetime>
+        <restock>0</restock>
+        <min>50</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+        <category name="tools"/>
+        <usage name="Industrial"/>
+        <usage name="Farm"/>
+    </type>
+</types>

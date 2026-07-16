@@ -1,0 +1,4 @@
+{
+    "_readme": "Runtime toggles for AI_Bandits, read by Build-AIBandits.ps1 at prestart. Kept as its own small file (NOT inside the big authored DynamicAIB.common.json) so it can be a config-overrides target - field-editable in the Server Files UI - without the reversible-defaults model ever clobbering the actively-authored loadouts/templates. useSpawnLocations: 1 (default, also assumed if this file/key is missing) = compose spawn placements normally; 0 = emit EMPTY Dynamic + Static files (no bandits, effectively no mod) while leaving every authored placement intact - fully reversible. The mod stays loaded either way; to unload it entirely, comment its lines in deploy/mods.conf.",
+    "useSpawnLocations": 1
+}

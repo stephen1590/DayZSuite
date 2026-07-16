@@ -14,6 +14,57 @@ MISSIONS=$SERVER/mpmissions
 STATE=$SERVER/.last-map
 KEEP=10        # storage backups per mission
 KEEP_LOGS=40   # raw RPT/ADM safety net only — dayz-logarchive.timer zips dead logs daily; this must stay well above one day's boot count so pruning never beats the archiver
+UPDATE_TIMEOUT=2400   # hard ceiling (40m) for an armed update; MUST stay below the unit's TimeoutStartSec so systemd never kills us mid-download
+
+# Installed game-server APP build id, straight from the Steam manifest on disk. Shared by
+# the deferred-update block below and mirrored by update-check.sh / dayz-ctl update-status.
+installed_build() {
+    local m="$SERVER/steamapps/appmanifest_223350.acf"
+    [ -f "$m" ] || return 0
+    # `|| true`: prestart runs under set -e — a missing buildid / SIGPIPE from head must not abort the boot.
+    grep -oE '"buildid"[[:space:]]*"[0-9]+"' "$m" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true
+}
+
+# --- Deferred game/mod update -------------------------------------------------------
+# If armed (.update-pending present — set by the API's `update` action or update-check.sh),
+# pull the latest server app + mods NOW. The engine isn't up yet, so swapping the binary is
+# safe, and the server was going down for this restart anyway — the update rides the reboot
+# instead of being its own disruptive event. `timeout` caps the worst case so a slow/hung
+# steamcmd can never brick the boot (a blocking ExecStartPre took the server down 2026-07-07);
+# the outcome is recorded for the status surface and the flag is cleared either way. On
+# failure we boot with whatever's on disk — update-check.sh re-arms next cycle if still
+# behind, so failures retry on the check cadence, not on every single boot. Never exits.
+if [ -f "$SERVER/.update-pending" ] && [ -x "$SERVER/update.sh" ]; then
+    _ureason="$(head -1 "$SERVER/.update-pending" 2>/dev/null || true)"
+    _ufrom="$(installed_build)"
+    _ustarted="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _ulog="$SERVER/profiles/update-last.log"
+    mkdir -p "$SERVER/profiles"
+    echo "prestart: applying armed update ($_ureason)"
+    set +e
+    timeout "$UPDATE_TIMEOUT" bash "$SERVER/update.sh" > "$_ulog" 2>&1
+    _urc=$?
+    set -e
+    _uto="$(installed_build)"
+    _uok=0; [ "$_urc" -eq 0 ] && _uok=1
+    {
+        echo "startedAt=$_ustarted"
+        echo "finishedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "exitCode=$_urc"
+        echo "ok=$_uok"
+        echo "fromBuild=${_ufrom:-}"
+        echo "toBuild=${_uto:-}"
+        echo "reason=$_ureason"
+    } > "$SERVER/.update-lastrun"
+    tail -n 80 "$_ulog" 2>/dev/null > "$SERVER/.update-lastlog" || true
+    rm -f "$SERVER/.update-pending"
+    if [ "$_uok" = 1 ]; then
+        echo "prestart: update ok (build ${_ufrom:-?} -> ${_uto:-?})"
+    else
+        echo "prestart: update FAILED (exit $_urc, 124=timeout) — booting with existing files; see $_ulog" >&2
+    fi
+fi
+# ------------------------------------------------------------------------------------
 
 [ -f "$SERVER/map.env" ] || echo "DAYZ_MISSION=dayzOffline.chernarusplus" > "$SERVER/map.env"
 source "$SERVER/map.env"
@@ -54,6 +105,14 @@ if [ -f "$SERVER/Build-AIBandits.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AIBandits.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
+# Common custom CE types (modded items, e.g. CodeLock): copy the map-agnostic custom_types.xml
+# into the active mission's custom/ folder and register <ce folder="custom"> in its
+# cfgeconomycore.xml, idempotently - the vanilla db/types.xml is never touched, so a game update
+# can't drop the types. Fail-soft + `|| true`: can never block boot.
+if [ -f "$SERVER/Apply-CustomCE.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Apply-CustomCE.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+fi
+
 # Server-log retention: each boot writes fresh RPT/ADM/mdmp into profiles/; with 4h
 # scheduled restarts that's ~6/day forever. Keep the newest KEEP_LOGS of each.
 for pat in '*.RPT' '*.ADM' '*.mdmp'; do
@@ -72,4 +131,20 @@ if [ "$TARGET" != "$LAST" ]; then
         echo "Map switch $LAST -> $TARGET: no players.db to migrate"
     fi
 fi
+
+# Map-transfer safe spawn (server-only TransferSpawn mod). A "transfer generation" bumps on
+# every mission switch; the mod relocates each existing character ONCE per generation to one
+# of the new map's own spawn points, so a migrated character never keeps a stale old-map
+# position. The counter persists in .transfer-gen; the active map's points + current gen are
+# handed to the mod as profiles/transfer_spawn.json (rewritten every boot so a map switch
+# always ships the new map's points). Fail-soft + `|| true`: never blocks server start.
+GENFILE="$SERVER/.transfer-gen"
+TGEN=$(cat "$GENFILE" 2>/dev/null || echo 0)
+case "$TGEN" in ''|*[!0-9]*) TGEN=0 ;; esac
+[ "$TARGET" != "$LAST" ] && TGEN=$((TGEN + 1))
+echo "$TGEN" > "$GENFILE"
+if [ -f "$SERVER/Build-TransferSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-TransferSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Gen "$TGEN" -Fix || true
+fi
+
 echo "$TARGET" > "$STATE"
