@@ -115,9 +115,27 @@ make it refuse to run — and abort the deploy — instead of silently pulling o
 `-AcceptLocalLoss` discards them (a snapshot lands in `backups/` first).
 
 Backups: run `./Pull-Configs.ps1 -Execute` after a web-editing session worth keeping and
-commit the mirrors — git history is the long-term config backup. Validation: run
-`./Test-LiveConfigs.ps1` after a deploy or restart — it asserts every live override will
-apply (zero-MISS), the mirrors parse, and the box-side builders produced valid artifacts.
+commit the mirrors — git history is the long-term config backup.
+
+### Test → deploy → validate
+
+Config changes go through a repeatable, gated pipeline so a broken config can't reach prod:
+
+1. **Test (before deploy)** — `./Test-Configs.ps1` builds the real artifacts *offline* from
+   the repo mirrors, running the same engines the box runs (`Apply-ConfigOverrides` force-create
+   and `Build-AIBandits`) against a throwaway server dir. It fails on a dead override, a malformed
+   composed artifact, or a missing force-created key. Because the inputs and engines are identical
+   to the box's, a green result means the live build is already known-good. It runs **automatically
+   inside `Deploy-DayZServer.ps1 -Fix`** (after the pulls, before the ship) and **aborts the deploy**
+   on failure — `-SkipConfigTest` bypasses in an emergency. A "file not found" for a common override
+   into a mission that lacks that file (e.g. parked Chernarus) is reported as a benign note, not a
+   failure.
+2. **Deploy** — `./Deploy-DayZServer.ps1 -Fix` pulls the box's live config into the mirrors, runs
+   the gate, ships code, restarts.
+3. **Validate (after deploy)** — `./Confirm-LiveConfigs.ps1` confirms the *running* server matches:
+   every override applied (zero-MISS), composed artifacts valid, unit active. This is the only part
+   that needs the box — you can't confirm a restart's result before the restart.
+
 Recovery: see [RECOVERY.md](RECOVERY.md).
 
 ### The config registry — one list
@@ -131,7 +149,7 @@ that one file. Add or change a config there and nothing else needs editing:
   read/write allowlist baked into `dayz-ctl`.
 - **the deploy seed** — rows with a `seed` are copied to a fresh box if missing.
 - **the pulls** — the `mirror` tag says which pull backs each file up.
-- **the validator** — rows with a `check` are parse-asserted by `Test-LiveConfigs.ps1`.
+- **the validator** — rows with a `check` are parse-asserted by `Confirm-LiveConfigs.ps1`.
 
 Each row carries a `scope`: **`shared`** (one file applied to every map — edit once) or
 **`map:<mission>`** (belongs to that mission only). The AI-bandit shared templates

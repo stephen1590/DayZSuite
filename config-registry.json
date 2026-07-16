@@ -5,7 +5,7 @@
     "  - NginxService/Api Deploy-Api.ps1  -> the web read/write allowlist (rows with web != 'none')",
     "  - Deploy-DayZServer.ps1            -> seed-if-missing on a fresh box (rows with a 'seed')",
     "  - Sync-*/Pull-Configs.ps1          -> which box files are mirrored back (the 'mirror' tag)",
-    "  - Test-LiveConfigs.ps1             -> which files to parse-check (the 'check' tag)",
+    "  - Confirm-LiveConfigs.ps1             -> which files to parse-check (the 'check' tag)",
     "Add a config = add one row here. STRICT JSON (no comments/trailing commas) so every",
     "consumer's plain JSON parser reads it.",
     "",
@@ -24,7 +24,7 @@
     "web      - how the UI exposes it: patch (override editor) | file (whole-file) | store (Map",
     "           editor) | view (read-only) | browse (folder) | none (not shown; e.g. seed-only).",
     "writable - whole-file write verb (box-owned operational lists only: bans/whitelist).",
-    "check    - Test-LiveConfigs parse assertion: json | xml | none."
+    "check    - Confirm-LiveConfigs parse assertion: json | xml | none."
   ],
   "surfaces": [
     { "name": "overrides", "box": "config-overrides.json", "scope": "shared", "seed": "config-overrides.json", "mirror": "overrides", "web": "patch", "check": "json" },

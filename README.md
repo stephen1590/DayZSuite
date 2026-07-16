@@ -62,12 +62,13 @@ needs a one-time interactive login first.
 | --- | --- |
 | `deploy/` | The deployable payload — source of truth for the live server (unit templates, `serverDZ.cfg`, mod registry, admin permissions, AI bandit configs). |
 | `config-registry.json` | The single registry of config surfaces (one row per file/folder, `scope` = shared or per-map). Read by the deploy seed step, the pulls, the validator, and the API's web allowlist — add a config in one place. |
+| `Test-Configs.ps1` | Pre-deploy GATE. Builds the real config artifacts offline from the repo mirrors (same engines the box runs) and validates them — dead overrides, malformed artifacts, missing force-created keys all fail it. Runs automatically inside `Deploy-DayZServer.ps1 -Fix`; a failure aborts the deploy. |
+| `Confirm-LiveConfigs.ps1` | Post-deploy check. Confirms the running server matches — every override applied (zero-MISS), composed artifacts valid, unit active. |
 | `Deploy-DayZServer.ps1` | Read-only by default; reports drift. `-Fix` renders per-host templates from `host.env` and installs everything, with a player-online guard before any restart. |
 | `host.env` / `host.env.example` | Secrets and settings for the server this file lives on (passwords, Steam account). `host.env` is gitignored — copy the example and fill it in. |
 | `deployer.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`). Gitignored, never rsynced to the server. |
 | `Pull-DayZServer.ps1` | Pulls server saves/config down to a local machine over rsync/ssh — an off-box backup, or to work against real data locally. |
 | `Pull-Configs.ps1` | One command to pull the box's entire config state into the repo mirrors (overrides, spawn points, frozen defaults). Run after web-editing sessions, then commit — git history is the config backup. |
-| `Test-LiveConfigs.ps1` | Read-only validation of the live box: every override applies (zero-MISS), mirrors and seeds parse, composed artifacts are valid, unit active. Run after a deploy or restart. |
 | `Sync-SpawnPoints.ps1` | Pulls the live `spawn-points.json` (the definitive AI-bandit spawn store, edited in the ConfigViewer Map tab) off the box into the repo mirror. |
 | `deprecated/` | Retired tooling, kept for history. Never shipped (excluded from the rsync). Holds the old VPP-coordinate spawn source (`Sync-VPPCoordinates.ps1`, `Migrate-SpawnPoints.ps1`, `VPPCoordinates/`), superseded by `spawn-points.json` on 2026-07-15. See `deprecated/README.md`. |
 | `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + `spawn-points.json` (or per-map placements). Runs automatically on every server boot. |

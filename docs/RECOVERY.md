@@ -13,7 +13,7 @@ $EDITOR deployer.env                                     # point at the new host
 
 ./Deploy-DayZServer.ps1          # report first - expect Missing everywhere
 ./Deploy-DayZServer.ps1 -Fix     # ships code, seeds all config mirrors, downloads mods, starts
-./Test-LiveConfigs.ps1           # prove it: zero-MISS, valid artifacts, unit active
+./Confirm-LiveConfigs.ps1           # prove it: zero-MISS, valid artifacts, unit active
 ```
 
 That is the whole config restore. The seeded `config-overrides.json` mirror carries every

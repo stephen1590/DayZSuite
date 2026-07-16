@@ -39,6 +39,7 @@ param(
     [switch]$NoRestart,
     [switch]$NoLog,
     [switch]$Force,                                         # deploy even with players online / unverifiable count
+    [switch]$SkipConfigTest,                                # bypass the offline pre-deploy config gate (emergency only)
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
     [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
     [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
@@ -115,6 +116,24 @@ if (-not $Local) {
         if ($Fix) { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
         Write-Host ""
+    }
+
+    # Pre-deploy config GATE: build the real artifacts OFFLINE from the just-pulled mirrors and
+    # refuse to ship if an override is dead or a composed artifact is malformed. This is what
+    # makes the process repeatable/reliable — the identical engines run on the identical inputs
+    # here first, so a green gate means the box build is already known-good. Runs dev-side before
+    # anything ships. Under -Fix a failure ABORTS (never ship un-buildable config); a bare dry-run
+    # just reports it. -SkipConfigTest bypasses (emergencies only). See Test-Configs.ps1.
+    if (-not $SkipConfigTest) {
+        $preflight = Join-Path $PSScriptRoot "Test-Configs.ps1"
+        if (Test-Path $preflight) {
+            Write-Host "--- pre-deploy config gate (Test-Configs.ps1: offline build + validate) ---"
+            & $preflight -NoLog:$NoLog
+            $gate = $LASTEXITCODE
+            if ($gate -and $Fix) { Write-Error "pre-deploy config gate FAILED (exit $gate) — NOT shipping. Fix the config, or pass -SkipConfigTest to override."; exit $gate }
+            elseif ($gate)       { Write-Warning "pre-deploy config gate failed (exit $gate) — a -Fix would be blocked here. Dry-run continues." }
+            Write-Host ""
+        }
     }
 
     # PULL-ONLY CONFIG MODEL (2026-07-16): the dev box does not push config content, full
@@ -379,7 +398,7 @@ foreach ($i in $items) {
 # surface with a 'seed' is copied to the box ONLY when missing there (fresh box / disaster
 # recovery); an existing box copy is authoritative and reported BoxOwned (never overwritten -
 # the web editor owns config changes). This is the ONE list of config files: the API allowlist,
-# the pulls, and Test-LiveConfigs all read the same config-registry.json. Add a config = one row.
+# the pulls, and Confirm-LiveConfigs all read the same config-registry.json. Add a config = one row.
 $registryPath = Join-Path $PSScriptRoot "config-registry.json"
 if (Test-Path $registryPath) {
     Write-Host "`n--- Config content (config-registry.json -> seed-if-missing) ---"

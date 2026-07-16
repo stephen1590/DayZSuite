@@ -24,9 +24,9 @@
     Run it after a deploy, after a restart that applied web edits, or ad-hoc. Exits 0 when
     every check passes, 1 otherwise (CI-friendly). CSV log in logs/ unless -NoLog.
 .EXAMPLE
-    ./Test-LiveConfigs.ps1             # full local + live validation
+    ./Confirm-LiveConfigs.ps1             # full local + live validation
 .EXAMPLE
-    ./Test-LiveConfigs.ps1 -LocalOnly  # just the repo mirrors/seeds (no ssh)
+    ./Confirm-LiveConfigs.ps1 -LocalOnly  # just the repo mirrors/seeds (no ssh)
 #>
 [CmdletBinding()]
 param(
