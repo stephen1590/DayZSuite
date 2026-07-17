@@ -1,18 +1,17 @@
-# API service — nginx reverse proxy. Rendered by ../../Provision-Tls.ps1 -Service
-# Api. Do NOT hand-edit the deployed copy — change this template and re-run
-# provisioning. The Node app listens on 127.0.0.1 only (__UPSTREAM__); this vhost is
-# the ONLY way in, so TLS, the body cap, and access logs all apply on the way through.
+# Grafana — nginx reverse proxy. Rendered by ../../Provision-Tls.ps1 -Service
+# Monitoring. Do NOT hand-edit the deployed copy — change this template and
+# re-run provisioning. Grafana listens on loopback only (__GRAFANA_UPSTREAM__);
+# this vhost is the ONLY way in. Grafana's own login guards the app — the proxy
+# adds TLS, not auth.
 #
-# This block is NOT default_server — it answers only its exact name (__SERVER_NAMES__),
-# so every other subdomain still falls through to the static site's 404 catch-all.
+# NOT default_server — it answers only its exact name (__SERVER_NAMES__), so
+# every other subdomain still falls through to the static site's 404 catch-all.
 
 # Port 80: ACME challenge + redirect to HTTPS.
 server {
     listen 80;
     listen [::]:80;
     server_name __SERVER_NAMES__;
-    
-    client_max_body_size 20M;
 
     location ^~ /.well-known/acme-challenge/ {
         root __ACME_WEBROOT__;
@@ -22,7 +21,7 @@ server {
     location / { return 301 https://$host$request_uri; }
 }
 
-# Port 443: the webhook API.
+# Port 443: Grafana.
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -42,20 +41,24 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000" always;
 
-    # Webhook payloads are tiny; a hard cap blunts abuse. The app also sets bodyLimit.
-    client_max_body_size 20M;
+    client_max_body_size 5M;
 
-    # /metrics is the on-box Prometheus scrape surface (Monitoring service) —
-    # local-only by contract; the app also refuses proxied requests. Never expose it.
-    location = /metrics { return 404; }
+    # Grafana Live (dashboard streaming) rides a WebSocket.
+    location /api/live/ {
+        proxy_pass http://__GRAFANA_UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
 
     location / {
-        proxy_pass http://__UPSTREAM__;
+        proxy_pass http://__GRAFANA_UPSTREAM__;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 30s;
+        proxy_read_timeout 60s;
     }
 }

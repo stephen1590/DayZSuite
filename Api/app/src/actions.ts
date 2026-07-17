@@ -11,6 +11,9 @@
 import type { DayzBridge } from './dayz.js';
 import type { HeightmapStore } from './heightmap.js';
 import { sanitizeText } from './dayz.js';
+import { bigStringify } from './lossless-json.js';
+import { deriveJsonOverride } from './override-diff.js';
+import { deriveXmlOverride } from './override-diff-xml.js';
 
 export interface ActionError extends Error {
   statusCode: number;
@@ -31,6 +34,16 @@ function humanDuration(sec: number): string {
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+// The frozen-default companion path for a config-overrides target — MUST match dayz-ctl's
+// _defaults_path exactly (that shell helper is what names the file on the box): insert
+// `.defaults` before the final extension, or append it when there's no dot.
+//   profiles/AI_Bandits/common/DynamicAIB.common.json -> ...DynamicAIB.common.defaults.json
+//   mpmissions/dayzOffline.sakhal/db/globals.xml       -> .../globals.defaults.xml
+function defaultsPath(rel: string): string {
+  const dot = rel.lastIndexOf('.');
+  return dot >= 0 ? `${rel.slice(0, dot)}.defaults${rel.slice(dot)}` : `${rel}.defaults`;
 }
 
 /** OpenAPI fragment for an action. The spec is GENERATED from these and the dev-mode
@@ -337,10 +350,14 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     bandits: {
       destructive: false,
       readOnly: true,
-      describe: 'live AI-bandit positions [{x,z}] from the AIB_Tracker serverMod (profiles/AI_Bandits/live_positions.json, rewritten every 20s). ageSec = seconds since the last write; stale = older than the 60s freshness window (3 missed writes = server/mod down). stale and missing both return NO positions, so the map never plots a frozen snapshot.',
+      describe: 'live AI positions [{x,z,type,age}] from the AIB_Tracker serverMod (profiles/AI_Bandits/live_positions.json, rewritten every 20s). type = "bandit" (AI Bandits) | "eai" (ExpansionAI); age = seconds that NPC has been alive this session (game clock, resets on restart). ageSec = seconds since the last FILE write; stale = older than the 60s freshness window (3 missed writes = server/mod down). stale and missing both return NO positions, so the map never plots a frozen snapshot.',
       schema: {
         response: { type: 'object', properties: {
-          positions: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, z: { type: 'number' } } } },
+          positions: { type: 'array', items: { type: 'object', properties: {
+            x: { type: 'number' }, z: { type: 'number' },
+            type: { type: 'string' },    // 'bandit' (AI Bandits, InfectedBanditBase) | 'eai' (ExpansionAI, eAIBase)
+            age: { type: 'integer' },     // seconds this NPC has been alive at snapshot (session clock; resets on restart)
+          } } },
           count: { type: 'integer' },
           ageSec: { type: 'integer', nullable: true },   // seconds since the file was last written; null when missing/unknown
           stale: { type: 'boolean' },                     // true = file older than the freshness window → positions dropped
@@ -356,7 +373,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const r = await dayz.ctl('bandit-live');
         if (r.code === 2) return { positions: [], count: 0, ageSec: null, stale: false, missing: true };
         if (r.code !== 0) throw fail(502, `bandit-live failed: ${(r.stderr || r.stdout).trim()}`);
-        let env: { ageSec?: number; positions?: Array<{ x: number; z: number }> };
+        let env: { ageSec?: number; positions?: Array<{ x: number; z: number; type?: string; age?: number }> };
         try { env = JSON.parse(r.stdout); }
         catch { throw fail(503, 'live_positions.json unreadable (torn mid-write) — retry'); }   // caller keeps last-known
         const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
@@ -577,6 +594,76 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    'configs/default': {
+      destructive: false,
+      readOnly: true,
+      describe: 'retrieve the FROZEN DEFAULT (baseline) of one config-overrides target — the file the whole-file editor shows and diffs against to derive a delta. hasDefault=false means no default is captured yet, so that target edits in whole-file mode. Secrets are masked, same as any config read.',
+      schema: {
+        query: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: 'server-dir-relative path of a config-overrides target (the same name configs/target takes)' } } },
+        response: { type: 'object', properties: {
+          name: { type: 'string' }, hasDefault: { type: 'boolean' },
+          path: { type: 'string', nullable: true }, content: { type: 'string', nullable: true },
+        } },
+      },
+      async run(params) {
+        const name = String(params.name ?? '');
+        if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
+        // The default is read by its own relpath via config-target (_emit_target exposes the
+        // ".defaults" companion). code 2 = no default captured yet -> whole-file mode, not an error.
+        const r = await dayz.ctl('config-target', defaultsPath(name));
+        if (r.code === 2) return { name, hasDefault: false, path: null, content: null };
+        if (r.code === 3) throw fail(413, `default for '${name}' is too large to retrieve`);
+        if (r.code !== 0) throw fail(502, `config-target failed: ${(r.stderr || r.stdout).trim()}`);
+        const nl = r.stdout.indexOf('\n');
+        const path = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
+        return { name, hasDefault: true, path, content };
+      },
+    },
+
+    'configs/preview-override': {
+      destructive: false,
+      readOnly: true, // derives only — the COMMIT is the existing configs/set-overrides write
+      describe: 'Preview what a WHOLE-FILE edit of a config-overrides target becomes: diff the edited content against the frozen default and return either a minimal delta (selector→value patches that PROVABLY round-trip through the same apply engine) or a whole-file verdict with a plain reason. Read-only; the UI commits a delta via configs/set-overrides. JSON and XML by extension; no default, a deleted baseline key, or a reshaped structure all yield mode=wholefile.',
+      schema: {
+        body: { type: 'object', required: ['name', 'content'], properties: {
+          name: { type: 'string', description: 'config-overrides target relpath (same name configs/target takes)' },
+          content: { type: 'string', description: 'the full edited file content' },
+        } },
+        response: { type: 'object', properties: {
+          name: { type: 'string' }, kind: { type: 'string', enum: ['json', 'xml', 'other'] },
+          hasDefault: { type: 'boolean' }, mode: { type: 'string', enum: ['delta', 'wholefile'] },
+          changed: { type: 'integer', nullable: true },
+          delta: { type: 'object', nullable: true, additionalProperties: true },
+          reason: { type: 'string', nullable: true },
+        } },
+      },
+      async run(params) {
+        const name = String(params.name ?? '');
+        if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
+        if (params.content === undefined) throw fail(400, 'missing "content"');
+        const content = String(params.content);
+        const ext = (name.split('.').pop() ?? '').toLowerCase();
+        const kind: 'json' | 'xml' | 'other' = ext === 'json' ? 'json' : ext === 'xml' ? 'xml' : 'other';
+
+        // Frozen default is the diff base. code 2 = none captured yet → null → whole-file mode.
+        const r = await dayz.ctl('config-target', defaultsPath(name));
+        let defaultText: string | null = null;
+        let hasDefault = false;
+        if (r.code === 0) { const nl = r.stdout.indexOf('\n'); defaultText = nl >= 0 ? r.stdout.slice(nl + 1) : ''; hasDefault = true; }
+        else if (r.code === 3) throw fail(413, `default for '${name}' is too large to diff`);
+        else if (r.code !== 2) throw fail(502, `config-target failed: ${(r.stderr || r.stdout).trim()}`);
+
+        const result = kind === 'json' ? deriveJsonOverride(defaultText, content)
+          : kind === 'xml' ? deriveXmlOverride(defaultText, content)
+          : { mode: 'wholefile' as const, reason: `unsupported file type '.${ext}' — only JSON and XML derive deltas` };
+
+        return result.mode === 'delta'
+          ? { name, kind, hasDefault, mode: 'delta', changed: result.changed, delta: result.delta, reason: null }
+          : { name, kind, hasDefault, mode: 'wholefile', changed: null, delta: null, reason: result.reason };
+      },
+    },
+
     // Mod-docs browser — the read-only analogue of configs/list + configs/get, but the files
     // live INSIDE the @mod folders (readmes, notices, example configs), discovered by dayz-ctl.
     'docs/list': {
@@ -669,20 +756,55 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    'configs/overrides': {
+      destructive: false,
+      readOnly: true,
+      describe: 'the live config-overrides.json plus its version hash. Load overrides through this and pass the version back to configs/set-overrides as baseVersion — the box then rejects a save (409) when another admin changed the file since, instead of silently overwriting their edit.',
+      schema: { response: { type: 'object', properties: { version: { type: 'string' }, content: { type: 'string' } } } },
+      async run() {
+        const r = await dayz.ctl('override-read');
+        if (r.code !== 0) throw fail(502, `override-read failed: ${(r.stderr || r.stdout).trim()}`);
+        // dayz-ctl's contract: line 1 = sha256 (empty if absent), rest = the document.
+        const nl = r.stdout.indexOf('\n');
+        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
+        return { version, content };
+      },
+    },
+
     'configs/set-overrides': {
       destructive: false,
       readOnly: false,
-      describe: 'replace config-overrides.json with a new document (snapshots first; restart to apply)',
+      describe: 'replace config-overrides.json with a new document (snapshots first; restart to apply). Pass baseVersion (from configs/overrides) for optimistic concurrency.',
       schema: {
-        body: { type: 'object', required: ['document'], properties: { document: { type: 'object', description: 'the full config-overrides.json document' } } },
-        response: { type: 'object', properties: { message: { type: 'string' } } },
+        body: { type: 'object', required: ['document'], properties: {
+          document: { type: 'object', description: 'the full config-overrides.json document' },
+          baseVersion: { type: 'string', description: 'the version hash from configs/overrides this edit was based on — the box rejects the write with 409 if config-overrides.json changed since, so a concurrent admin edit is not silently overwritten. Omit to skip the check (last-write-wins).' },
+          confirmShrink: { type: 'boolean', description: 'set true to confirm a document that drops more than half the current override values — without it the box refuses the replace (shrink guard)' },
+        } },
+        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
       },
       async run(params) {
         const doc = params.document;
         if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) throw fail(400, '"document" must be a JSON object');
-        const r = await dayz.ctl('override-write', JSON.stringify(doc, null, 4));
-        if (r.code !== 0) throw fail(502, `override-write failed: ${(r.stderr || r.stdout).trim()}`);
-        return { message: 'overrides saved; restart the server to apply' };
+        // Flags to dayz-ctl (order-independent): 'force' clears the shrink guard (a partial save
+        // wiped 1361 overrides down to 85 on 2026-07-16); base=<hash> is the optimistic-concurrency
+        // check so a second admin's stale save is refused (exit 5) rather than clobbering the first.
+        const extra: string[] = [];
+        if (params.confirmShrink === true) extra.push('force');
+        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
+        // bigStringify: sentinel-preserved integers (Steam64 IDs etc.) land on disk as the
+        // exact bare literals the admin typed — never a rounded double.
+        const r = await dayz.ctlStdin('override-write', bigStringify(doc, 4), ...extra);
+        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
+        if (r.code !== 0) {
+          const msg = (r.stderr || r.stdout).trim();
+          if (msg.includes('shrink-guard:')) throw fail(409, msg.replace(/^dayz-ctl:\s*/, ''));
+          throw fail(502, `override-write failed: ${msg}`);
+        }
+        // stdout = "ok\n<newVersion>" — hand the new version back so the caller can rebase.
+        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+        return { message: 'overrides saved; restart the server to apply', version: lines.length > 1 ? lines[1] : '' };
       },
     },
 
@@ -718,7 +840,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           if (names.has(p.name)) throw fail(400, `duplicate point name: ${p.name}`);
           names.add(p.name);
         });
-        const r = await dayz.ctl('spawn-write', JSON.stringify(doc, null, 2));
+        const r = await dayz.ctlStdin('spawn-write', bigStringify(doc, 2));
         if (r.code !== 0) throw fail(502, `spawn-write failed: ${(r.stderr || r.stdout).trim()}`);
         return { message: 'spawn points saved; restart the server to apply', points: pts.length };
       },

@@ -220,7 +220,7 @@ function renderMapLayerSeg() {
   el.mapLayerSeg.classList.toggle('hidden', layers.length < 2);
   el.mapLayerSeg.innerHTML = layers.map((l) =>
     '<button type="button" data-layer="' + attr(l.name) + '"' + (mapTiles.layer.name === l.name ? ' class="active"' : '') + '>' +
-    escapeHtml(l.name.charAt(0).toUpperCase() + l.name.slice(1)) + '</button>').join('');
+    escapeHtml(l.label || (l.name.charAt(0).toUpperCase() + l.name.slice(1))) + '</button>').join('');
 }
 async function loadMapAssets(short) {
   const seq = ++mapAssetSeq;
@@ -330,6 +330,7 @@ function renderMap() {
   renderSpawnFilter();
   renderBuildingsFilter();
   renderMarkersFilter();
+  renderLiveFilter();
   renderMapList();
   renderMapSummary();
   renderMapDetail();
@@ -652,6 +653,12 @@ const mapBuildingsSel = readSet('cfgview-mapbuildings');   // single 'Structures
 const mapMarkersSel = readSet('cfgview-mapmarkers');       // iZurvive POI sublayers by name
 const saveSet = (key, set) => { try { localStorage.setItem(key, JSON.stringify([...set])); } catch { /* private mode */ } };
 
+// Live overlays (player dots, NPC diamonds) default ON — readSet's empty-set default is
+// right for the datascraped bars but would blank live positions on everyone's first visit.
+const readSetOr = (key, dflt) => { try { return localStorage.getItem(key) === null ? new Set(dflt) : readSet(key); } catch { return new Set(dflt); } };
+const LIVE_KINDS = ['Players', 'NPCs'];
+const mapLiveSel = readSetOr('cfgview-maplive', LIVE_KINDS);
+
 // "All" is a three-state toggle: off/partial -> enable every present category;
 // fully on -> disable every one. That's "check All twice = disable all".
 function toggleOverlay(sel, key, cat, present) {
@@ -705,6 +712,15 @@ function renderMarkersFilter() {
   chipBar(el.mapMarkersFilter, 'Markers', present, mapMarkersSel, 'data-markers',
     (n) => { const l = markerLayer(n); return l ? l.color : LOOT_FALLBACK; },
     (n) => { const l = markerLayer(n); return l ? l.pts.length : 0; });
+}
+// Live positions: one grouped bar, a chip each for Players (blue circles) and NPCs (red
+// diamonds). Always present — 0-count chips stay clickable so the preference can be set
+// before anyone is online. The NPC count reads 0 off the live map (the draw gate hides them).
+function renderLiveFilter() {
+  const css = (v, fb) => (getComputedStyle(document.documentElement).getPropertyValue(v) || fb).trim();
+  chipBar(el.mapLiveFilter, 'Live', LIVE_KINDS, mapLiveSel, 'data-live',
+    (n) => (n === 'Players' ? css('--info', '#2f6fd0') : css('--map-bad', '#c33327')),
+    (n) => (n === 'Players' ? mapPlayers.length : (mapMission === getActiveMission() ? mapBandits.positions.length : 0)));
 }
 
 // Building footprints: small dark squares, culled to the viewport. 5-12k points,
@@ -914,6 +930,7 @@ function drawMapCrosshair(ctx, w, h) {
 
 // ---------- live player overlay (anonymized {x,z}, polled on the Map tab) ----------
 function drawMapPlayers(ctx) {
+  if (!mapLiveSel.has('Players')) return;
   if (!mapPlayers.length || !mapView) return;
   const fill = (getComputedStyle(document.documentElement).getPropertyValue('--info') || '#2f6fd0').trim();
   for (const p of mapPlayers) {
@@ -937,6 +954,7 @@ async function loadPlayers() {
     mapPlayersAt = r.at || null;
     requestMapDraw();
     updateMapBar();
+    renderLiveFilter();   // keep the chip count current
   } catch (err) {
     if (handle(err)) return;   // 401 -> signed out (stops the poll via showLogin)
     /* transient error: keep the last-known dots rather than blanking the map */
@@ -947,7 +965,12 @@ async function loadPlayers() {
 // not live tracking. Spawns = red diamonds, kills = faded rings. The -serverMod route is the
 // precise-live upgrade; this is the no-mod activity view.
 function drawMapBandits(ctx) {
-  if (!mapView) return;
+  if (!mapView || !mapLiveSel.has('NPCs')) return;
+  // Live NPC coordinates only mean anything on the mission the server is actually running —
+  // on any other selected map they'd plot at arbitrary spots, so they're hidden entirely
+  // (unknown live mission counts as no match). Polling continues; switching back to the
+  // live map shows current positions immediately.
+  if (mapMission !== getActiveMission()) return;
   // The API already dropped positions when the file was stale/missing, so whatever is here is
   // fresh (<=60s) — plot every live bandit as a diamond, distinct from the player circles.
   const spawn = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
@@ -977,6 +1000,7 @@ async function loadBandits() {
     };
     requestMapDraw();
     updateMapBar();
+    renderLiveFilter();   // keep the chip count current
   } catch (err) {
     if (handle(err)) return;
     /* transient (torn read / pre-deploy 404): keep last-known, don't blank */
@@ -989,16 +1013,20 @@ export function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersT
 function updateMapBar() {
   const scale = mapView ? (1 / mapView.ppm) : 0;
   const scaleTxt = scale >= 1 ? scale.toFixed(1) + ' m/px' : (1 / scale).toFixed(1) + ' px/m';
-  const players = mapPlayers.length
+  const players = !mapLiveSel.has('Players') ? '' : mapPlayers.length
     ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
       + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
     : '';
-  const bandits = mapBandits.positions.length
-    ? '<span class="mp-bandit" title="Live AI-bandit positions from the AIB_Tracker serverMod (updated every 20s)">'
-      + '<span class="mb-dot"></span>' + mapBandits.positions.length + ' bandit' + (mapBandits.positions.length === 1 ? '' : 's') + '</span>'
-    : mapBandits.stale
-      ? '<span class="mp-stale" title="AIB tracker has not updated in over a minute — the server or the AIB_Tracker serverMod may be down">bandit tracker stale</span>'
-      : '';
+  // Bandit badge only when toggled on AND on the live mission's map — matches
+  // drawMapBandits, so the bar never claims "N bandits" while the canvas shows none.
+  const bandits = mapMission !== getActiveMission() || !mapLiveSel.has('NPCs')
+    ? ''
+    : mapBandits.positions.length
+      ? '<span class="mp-bandit" title="Live AI-bandit positions from the AIB_Tracker serverMod (updated every 20s)">'
+        + '<span class="mb-dot"></span>' + mapBandits.positions.length + ' bandit' + (mapBandits.positions.length === 1 ? '' : 's') + '</span>'
+      : mapBandits.stale
+        ? '<span class="mp-stale" title="AIB tracker has not updated in over a minute — the server or the AIB_Tracker serverMod may be down">bandit tracker stale</span>'
+        : '';
   if (!mapCursor) {
     el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
       (mapTiles ? '' : '<span style="color:var(--danger)">no map tiles delivered for this map — run Build-MapTiles.ps1 -Execute -Deliver + redeploy</span>');
@@ -1375,6 +1403,11 @@ export function initMap() {
     const b = e.target.closest('.mf-chip'); if (!b) return;
     toggleOverlay(mapMarkersSel, 'cfgview-mapmarkers', b.dataset.markers, mapMarkers ? mapMarkers.layers.map((l) => l.name) : []);
     renderMarkersFilter(); requestMapDraw();
+  });
+  el.mapLiveFilter.addEventListener('click', (e) => {
+    const b = e.target.closest('.mf-chip'); if (!b) return;
+    toggleOverlay(mapLiveSel, 'cfgview-maplive', b.dataset.live, LIVE_KINDS);
+    renderLiveFilter(); requestMapDraw(); updateMapBar();
   });
   el.mapEditSeg.addEventListener('click', () => toggleMapEdit());
   el.mapSaveBtn.addEventListener('click', () => saveSpawns());

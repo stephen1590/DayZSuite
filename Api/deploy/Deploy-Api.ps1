@@ -76,19 +76,19 @@ $logNoiseSq = $logNoise.Replace("'", "'\''")
 #                      box at read time)       -> CONFIG_DIRS "group<TAB>reldir"
 # Validate here; dayz-ctl re-checks every read. Absent = feature off.
 #
-# SOURCE = the SINGLE config registry in the DayZ Server repo (config is a DayZ-Server
+# SOURCE = the SINGLE config registry in the DayZ-Server repo (config is a DayZ-Server
 # dependency; the API references it by SIBLING PATH at deploy time — read here on the dev
 # machine, rendered into the box's dayz-ctl; nothing extra lands on the box). Default path
-# assumes the standard checkout (DayZ Server beside NginxService under UbuntuHost); override
+# assumes the standard checkout (DayZ-Server beside NginxService under UbuntuHost); override
 # with "ConfigRegistry" in deploy.config.json. Rows map to the two shapes above:
 #   box (single file), web != 'none'  -> { name, path=box, writable }
 #   dir (folder)                       -> { group, dir, subfolders }
 # web:'none' rows are deploy-seeded-but-not-web-exposed (e.g. per-map StaticAIB) — skipped.
 $registryPath = if ($cfg.ConfigRegistry) {
     if ([IO.Path]::IsPathRooted($cfg.ConfigRegistry)) { $cfg.ConfigRegistry } else { Join-Path $PSScriptRoot $cfg.ConfigRegistry }
-} else { Join-Path $PSScriptRoot '../../../DayZ Server/config-registry.json' }
+} else { Join-Path $PSScriptRoot '../../../DayZ-Server/config-registry.json' }
 if (-not (Test-Path $registryPath)) {
-    throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in the DayZ Server repo (config-registry.json). Check that repo out beside NginxService, or set 'ConfigRegistry' in deploy.config.json."
+    throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in the DayZ-Server repo (config-registry.json). Check that repo out beside NginxService, or set 'ConfigRegistry' in deploy.config.json."
 }
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {

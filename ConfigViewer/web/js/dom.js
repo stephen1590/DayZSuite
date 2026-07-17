@@ -28,6 +28,6 @@ export const el = {
   maptab: $('maptab'), mapSel: $('mapSel'), mapRefresh: $('mapRefresh'), mapSum: $('mapSum'),
   mapStage: $('mapStage'), mapCanvas: $('mapCanvas'), mapEmpty: $('mapEmpty'), mapBar: $('mapBar'),
   mapLayerSeg: $('mapLayerSeg'), mapGridSeg: $('mapGridSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'), mapFilter: $('mapFilter'),
-  mapLootFilter: $('mapLootFilter'), mapSpawnFilter: $('mapSpawnFilter'), mapBuildingsFilter: $('mapBuildingsFilter'), mapMarkersFilter: $('mapMarkersFilter'),
+  mapLootFilter: $('mapLootFilter'), mapSpawnFilter: $('mapSpawnFilter'), mapBuildingsFilter: $('mapBuildingsFilter'), mapMarkersFilter: $('mapMarkersFilter'), mapLiveFilter: $('mapLiveFilter'),
   mapEditSeg: $('mapEditSeg'), mapSaveWrap: $('mapSaveWrap'), mapSaveBtn: $('mapSaveBtn'), mapDiscardBtn: $('mapDiscardBtn'),
 };

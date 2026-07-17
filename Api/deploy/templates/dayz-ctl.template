@@ -10,7 +10,7 @@ set -euo pipefail
 UNIT='__UNIT__'
 SERVER_DIR='__SERVER_DIR__'
 RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
-CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (config-registry.json, DayZ Server repo)
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (config-registry.json, DayZ-Server repo)
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
@@ -97,12 +97,16 @@ log_source_lookup() {
 # project, an admin copy) never enters the read allowlist. No empty fields (read treats TAB
 # as whitespace). _-prefixed keys are skipped. jq preferred, python3 fallback; no tool = none.
 _extract_targets() {
+  # Emit tokens from BOTH the selector-patch layers (root .files/.mpmissions) and the whole-file
+  # layers (.wholeFiles.files/.mpmissions) so a file owned wholesale stays readable/editable.
   if command -v jq >/dev/null 2>&1; then
     jq -r '
-      (.files // {} | keys[] | select(startswith("_")|not) | "F\t" + .),
-      (.mpmissions // {} | keys[] | select(. != "common") | select(startswith("_")|not) | "D\t" + .),
-      (.mpmissions // {} | to_entries[] | .key as $m
-         | (.value // {} | keys[] | select(startswith("_")|not) | "M\t" + $m + "\t" + .))
+      def emit($o):
+        ($o.files // {} | keys[] | select(startswith("_")|not) | "F\t" + .),
+        ($o.mpmissions // {} | keys[] | select(. != "common") | select(startswith("_")|not) | "D\t" + .),
+        ($o.mpmissions // {} | to_entries[] | .key as $m
+           | (.value // {} | keys[] | select(startswith("_")|not) | "M\t" + $m + "\t" + .));
+      emit(.), emit(.wholeFiles // {})
     ' 2>/dev/null || true
   elif command -v python3 >/dev/null 2>&1; then
     python3 -c '
@@ -110,14 +114,17 @@ import sys, json
 try: d = json.load(sys.stdin)
 except Exception: sys.exit(0)
 def ks(o): return [k for k in o.keys() if not k.startswith("_")] if isinstance(o, dict) else []
-for k in ks(d.get("files") or {}): print("F\t" + k)
-mp = d.get("mpmissions") or {}
-if isinstance(mp, dict):
-    for m in mp.keys():
-        if m != "common" and not m.startswith("_"): print("D\t" + m)
-    for m, v in mp.items():
-        if m.startswith("_"): continue
-        for k in ks(v or {}): print("M\t" + m + "\t" + k)
+def emit(o):
+    if not isinstance(o, dict): return
+    for k in ks(o.get("files") or {}): print("F\t" + k)
+    mp = o.get("mpmissions") or {}
+    if isinstance(mp, dict):
+        for m in mp.keys():
+            if m != "common" and not m.startswith("_"): print("D\t" + m)
+        for m, v in mp.items():
+            if m.startswith("_"): continue
+            for k in ks(v or {}): print("M\t" + m + "\t" + k)
+emit(d); emit(d.get("wholeFiles") or {})
 ' 2>/dev/null || true
   fi
 }
@@ -679,11 +686,27 @@ case "$verb" in
     fi
     ;;
 
+  override-read)
+    # override-read — the live config-overrides.json with its content HASH on line 1, so a writer
+    # can prove it edited the version it loaded (override-write base=<hash> rejects a stale write —
+    # the two-admin lost-update guard). Line 1 = sha256 (empty when the file is absent), rest = doc.
+    if [ -f "$OVERRIDES" ]; then
+      sha256sum "$OVERRIDES" | awk '{print $1}'
+      cat "$OVERRIDES"
+    else
+      echo ''
+    fi
+    ;;
+
   override-write)
     # override-write <json> — replace config-overrides.json with the JSON document in $2 (the
     # service computed it: current file + one node change). PRIVILEGED write only. Validates it
     # is JSON (jq or python3), snapshots the current file (keep 10), writes ATOMICALLY, restores
     # the server-dir owner. Target is fixed — no caller path input.
+    # A literal '-' document means "read it from stdin" — Linux caps one argv string at
+    # ~128KB (MAX_ARG_STRLEN), which a real override doc can exceed. head caps the read one
+    # byte over the size limit so an oversize doc still fails the explicit check below.
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
     [ -n "$arg" ] || die "override-write needs the new document"
     if command -v jq >/dev/null 2>&1; then
       printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "override-write: input is not valid JSON"
@@ -693,7 +716,45 @@ case "$verb" in
       die "override-write: no JSON validator (jq/python3) on the box"
     fi
     sz="$(printf '%s' "$arg" | wc -c)"
-    [ "$sz" -le 786432 ] || die "override-write: too large ($sz bytes)"
+    [ "$sz" -le 2097152 ] || die "override-write: too large ($sz bytes)"
+    # Optimistic concurrency + flag parse (order-independent). The caller may pass base=<sha256>
+    # (the version it loaded via override-read); if the file changed since, another admin wrote
+    # first — refuse with a DISTINCT exit so the editor says "reload" instead of silently
+    # clobbering. 'force' is the shrink-override flag. No base= given = no check (back-compat).
+    _force=0; _base='__none__'
+    for _f in "${@:3}"; do case "$_f" in force) _force=1 ;; base=*) _base="${_f#base=}" ;; esac; done
+    if [ "$_base" != '__none__' ] && [ -f "$OVERRIDES" ]; then
+      _cur="$(sha256sum "$OVERRIDES" | awk '{print $1}')"
+      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: config-overrides.json changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    # Shrink circuit-breaker (2026-07-16: a partial save gutted 1361 overrides to 85 and the
+    # next boot reverted everything to defaults). Whole-file replace stays the model, but a
+    # document that DROPS more than half the current override values is refused unless the
+    # caller passes a literal 3rd arg "force" — a deliberate mass-delete is one explicit flag
+    # away, an accidental one is impossible. Counts scalar leaves (each concrete override
+    # value); guard only arms at >=20 so small/young manifests never trip it. Server-side on
+    # purpose: protects against every writer, not just the web editor.
+    _count_leaves() {
+      if command -v jq >/dev/null 2>&1; then
+        jq '[paths(scalars)] | length' 2>/dev/null || echo 0
+      else
+        python3 -c '
+import sys,json
+def n(v):
+    if isinstance(v,dict): return sum(n(x) for x in v.values())
+    if isinstance(v,list): return sum(n(x) for x in v)
+    return 1
+print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
+      fi
+    }
+    if [ -f "$OVERRIDES" ] && [ "$_force" != 1 ]; then
+      _oldn="$(_count_leaves < "$OVERRIDES")"
+      _newn="$(printf '%s' "$arg" | _count_leaves)"
+      case "$_oldn$_newn" in *[!0-9]*) _oldn=0; _newn=0 ;; esac
+      if [ "$_oldn" -ge 20 ] && [ "$_newn" -lt $((_oldn / 2)) ]; then
+        die "shrink-guard: new document carries $_newn override values, current file has $_oldn — refusing the replace (re-send with force to confirm a deliberate mass-delete)"
+      fi
+    fi
     snapshot_overrides
     _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
     tmp="$(mktemp "$SERVER_DIR/.override-write.XXXXXX")"
@@ -701,7 +762,7 @@ case "$verb" in
     [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
     chmod 644 "$tmp"
     mv -f "$tmp" "$OVERRIDES"
-    echo ok
+    printf 'ok\n%s\n' "$(sha256sum "$OVERRIDES" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
     ;;
 
   spawn-write)
@@ -711,6 +772,9 @@ case "$verb" in
     # (keep 10), writes ATOMICALLY into the AI_Bandits dir, restores the server-dir owner. Target
     # is fixed — no caller path input. Takes effect at the next restart (prestart Build-AIBandits
     # recomposes DynamicAIB.json from it).
+    # '-' = read the document from stdin (argv is capped at ~128KB per string; 5000 spawn
+    # points clear that easily). Same pattern as override-write.
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
     [ -n "$arg" ] || die "spawn-write needs the new document"
     if command -v jq >/dev/null 2>&1; then
       printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
@@ -720,7 +784,7 @@ case "$verb" in
       die "spawn-write: no JSON validator (jq/python3) on the box"
     fi
     sz="$(printf '%s' "$arg" | wc -c)"
-    [ "$sz" -le 786432 ] || die "spawn-write: too large ($sz bytes)"
+    [ "$sz" -le 2097152 ] || die "spawn-write: too large ($sz bytes)"
     _dir="$(dirname "$SPAWNS")"
     [ -d "$_dir" ] || die "spawn-write: AI_Bandits dir not present ($_dir) — deploy the DayZ server first"
     snapshot_spawns

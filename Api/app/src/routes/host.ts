@@ -12,6 +12,7 @@ import type { DayzBridge } from '../dayz.js';
 import type { Audit } from '../audit.js';
 import type { KeyStore } from '../keys.js';
 import { collectSystemLoad } from '../sysload.js';
+import { makeMetrics } from '../metrics.js';
 import { authenticateRequest } from '../auth-request.js';
 
 interface Deps {
@@ -23,6 +24,21 @@ interface Deps {
 
 export function registerHost(app: FastifyInstance, deps: Deps): void {
   const { cfg, dayz, audit, keyStore } = deps;
+  const metrics = makeMetrics(dayz);
+
+  // GET /metrics — Prometheus exposition of the DayZ series (see metrics.ts). LOCAL-ONLY
+  // by contract: the on-box Prometheus scrapes 127.0.0.1:<port>/metrics directly. Both
+  // nginx vhosts refuse the path outright (api.conf + config-viewer.conf templates), and
+  // this guard backstops them: every proxied request carries X-Forwarded-For, a direct
+  // loopback scrape does not. Unsigned — the loopback interface is the trust boundary —
+  // and unaudited: a 30s scrape cadence would bury the audit log in noise.
+  app.get('/metrics', async (req, reply) => {
+    if (req.headers['x-forwarded-for']) {
+      return reply.code(404).send({ ok: false, error: 'not_found' });
+    }
+    const body = await metrics();
+    return reply.header('content-type', 'text/plain; version=0.0.4; charset=utf-8').send(body);
+  });
 
   app.post('/sysload', async (req, reply) => {
     const auth = authenticateRequest(req, keyStore, cfg.secret);

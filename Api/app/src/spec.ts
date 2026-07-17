@@ -46,7 +46,8 @@ export interface RootRoute {
   tokenInPath?: string; // a secret carried in the URL path (documents the {param})
   body?: JSONSchema;
   noContent?: boolean;  // 204 (no body) on success
-  response?: JSONSchema; // the 200 body (omit when noContent)
+  textPlain?: boolean;  // 200 body is text/plain, not JSON (Prometheus exposition)
+  response?: JSONSchema; // the 200 body (omit when noContent or textPlain)
 }
 
 const keyShape = S.obj({ id: S.str, scope: S.str, namespaces: S.arr(S.str) });
@@ -56,6 +57,7 @@ export const ROOT_ROUTES: RootRoute[] = [
     response: S.obj({ service: S.str, namespaces: S.arr(S.str), endpoints: S.arr(S.obj({ method: S.str, path: S.str })), actions: S.obj({}) }) },
   { method: 'get', path: '/openapi.json', summary: 'This OpenAPI document (generated from the code).', response: S.obj({}) },
   { method: 'get', path: '/healthz', summary: 'Liveness probe (public).', response: S.obj({ ok: S.bool }) },
+  { method: 'get', path: '/metrics', summary: 'Prometheus exposition of the DayZ series (unit footprint, players). LOCAL-ONLY: nginx never proxies it; scraped by the on-box Prometheus.', textPlain: true },
   { method: 'get', path: '/dayz/actions', summary: 'The dayz action allowlist with destructive/describe flags (public).',
     response: S.obj({ actions: S.obj({}) }) },
   { method: 'post', path: '/sysload', summary: 'Host load overview (cpu/mem/disk/uptime) + the dayz unit footprint.', auth: true,
@@ -140,7 +142,9 @@ export function buildSpec(actions: Record<string, Action>): JSONSchema {
   for (const r of ROOT_ROUTES) {
     const responses: Record<string, JSONSchema> = r.noContent
       ? { '204': { description: 'accepted' }, '404': { description: 'disabled or bad token' } }
-      : { '200': jsonResp('OK', r.response ?? S.obj({})), ...(r.auth || r.wizardOnly ? { '401': ERRORS['401'] } : {}) };
+      : r.textPlain
+        ? { '200': { description: 'OK', content: { 'text/plain': { schema: S.str } } } }
+        : { '200': jsonResp('OK', r.response ?? S.obj({})), ...(r.auth || r.wizardOnly ? { '401': ERRORS['401'] } : {}) };
     const op: JSONSchema = {
       summary: r.summary,
       operationId: (r.method + r.path).replace(/[^a-zA-Z0-9]+/g, '_').replace(/_+$/, ''),

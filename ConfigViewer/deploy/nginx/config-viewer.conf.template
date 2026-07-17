@@ -62,6 +62,10 @@ server {
     gzip_types text/html text/css application/javascript application/json;
     gzip_min_length 1024;
 
+    # The API's /metrics (Prometheus scrape surface, Monitoring service) is local-only.
+    # This proxy strips /api/, so without this block /api/metrics would reach it.
+    location = /api/metrics { return 404; }
+
     # Same-origin proxy to the API. Trailing slash on proxy_pass strips the /api
     # prefix, so /api/dayz/configs -> /dayz/configs upstream.
     location /api/ {
@@ -75,7 +79,9 @@ server {
         # Writes (configs/set-overrides, configs/set-file) carry real bodies — the
         # override doc alone is tens of KB and grows. Match the API app's own limit
         # (bodyLimit in server.ts) so the app is the arbiter, not this proxy.
-        client_max_body_size 256k;
+        # 256k 413'd real override docs (2026-07-16) — full doc is ~80KB and pretty-printing
+        # plus growth needs headroom.
+        client_max_body_size 2m;
     }
 
     location / {

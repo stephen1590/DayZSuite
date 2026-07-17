@@ -7,6 +7,12 @@ import { apiPost, rateLimited } from './api-client.js';
 import { loadCred, handle } from './auth.js';
 import { detectLang, highlight, hlJson } from './highlight.js';
 import { isOperator, getActiveMission, setActiveMission } from './state.js';
+// Lossless big-int JSON: JS doubles corrupt integers >2^53 (a Steam64 ID typed …750 saved
+// as …740, 2026-07-17). Every parse of CONFIG CONTENT goes through bigParse (big literals
+// become sentinel strings, no double ever created); every display/serialize goes through
+// bigStringify/restoreBigInts (exact literals back out). The API server normalizes to bare
+// literals on disk. Plain JSON.parse/stringify remain ONLY for internal snapshots.
+import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 
 let shellHooks = { syncHash: () => {} };
 export function setEditorHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -32,12 +38,25 @@ let ovrCapOpen = false; // Fields-view "show all" toggle, past the render cap
 let ovrLeafMap = new Map();
 let lastFileText = null;  // last fetched whole-file text (for Copy)
 const fileCache = {};
+// Whole-file Edit mode (distinct from the read-only View): edit the entire file, the API diffs
+// it against the frozen default to derive a minimal delta, then Apply merges that delta into
+// overridesDoc so the normal Save path commits it. wfShowDefault drives the View Live/Default toggle.
+let wfDraft = null, wfPreview = null, wfBusy = false, wfShowDefault = false;
+function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfShowDefault = false; }
 
 // Dirty tracking: overridesDoc vs its last loaded/saved state. Drives the unsaved
 // notification — the header pill, and the beforeunload guard so a reload/close can't
 // silently drop edits. (In-memory edits survive a file/tab switch; only a reload or a
 // fresh reload-from-server drops them.)
 let savedSnapshot = '{}';
+// Save gate: true only after config-overrides.json has loaded AND parsed in this session.
+// Saving ships the WHOLE doc, so a save before a successful load would replace the box
+// manifest with the empty {} above — this is the client half of the shrink guard
+// (2026-07-16: a partial save gutted the manifest and a reboot reverted every override).
+let overridesLoaded = false;
+// Optimistic concurrency: the version hash config-overrides.json had when we loaded it. Sent
+// back on Save so the box rejects (409) if another admin wrote in between — no silent clobber.
+let ovrBaseVersion = null;
 export function isDirty() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
 function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
 // Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
@@ -51,9 +70,9 @@ function discardChanges() {
 function updateDirtyUi() { const d = $('ovrDirty'); if (d) d.classList.toggle('on', isDirty()); }
 
 function kindOf(p) { const s = (p || '').toLowerCase(); return s.endsWith('.xml') ? 'xml' : s.endsWith('.json') ? 'json' : 'other'; }
-function jsonEnc(v) { return JSON.stringify(v); }
+function jsonEnc(v) { return restoreBigInts(JSON.stringify(v)); }   // sentinel big-ints display as bare digits
 function valPreview(v) {
-  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (v === null || typeof v !== 'object') return jsonEnc(v);
   const n = Array.isArray(v) ? v.length : Object.keys(v).length;
   return (Array.isArray(v) ? '[ ' : '{ ') + n + (Array.isArray(v) ? ' item' : ' field') + (n === 1 ? '' : 's') + (Array.isArray(v) ? ' ]' : ' }');
 }
@@ -235,6 +254,7 @@ function selectRow(key) {
   selKey = key;
   shellHooks.syncHash();                                     // reflect the open file in the URL (#files/<key>)
   ovrFilter = ''; ovrCapOpen = false;             // fresh file starts unfiltered and capped
+  wfReset();                                       // fresh file: drop any whole-file draft/preview
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
   if (row.access === 'own') { selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
@@ -263,7 +283,7 @@ export async function loadFiles(preserve) {
   try {
     const [cfgR, ovrR, boxR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
-      apiPost('/dayz/configs/get?name=overrides', cred),
+      apiPost('/dayz/configs/overrides', cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
     ]);
     configItems = cfgR.configs || [];
@@ -271,7 +291,7 @@ export async function loadFiles(preserve) {
     // On a plain tab re-entry (preserve) keep unsaved edits — only reload the doc from
     // the server on the initial load, after a save, or after a rollback.
     if (!(preserve && isDirty())) {
-      try { overridesDoc = JSON.parse(stripBom(ovrR.content || '{}')); markClean(); }
+      try { overridesDoc = bigParse(stripBom(ovrR.content || '{}')); ovrBaseVersion = ovrR.version ?? null; overridesLoaded = true; markClean(); }
       catch { el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">config-overrides.json is not valid JSON.</span>'; return; }
     }
   } catch (err) {
@@ -349,7 +369,7 @@ function editorChrome(row) {
     '<div class="ovr-pact">' +
       '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
       layerSel +
-      '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">File</button></div>' +
+      '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button>' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '" title="Edit the whole file — Save derives the minimal override delta">Edit file</button>') + '</div>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
       (locked ? '' : '<button class="btn-sm" id="ovrDiscard" type="button">Discard</button>') +
       (locked ? '' : '<button class="btn-sm primary" id="ovrSave">Save ' + nOver + ' delta' + (nOver === 1 ? '' : 's') + '</button>') +
@@ -386,14 +406,19 @@ async function renderBody(row) {
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
   const eff = effectivePatches(row);
-  if (ovrView === 'file') { body.innerHTML = fileViewHtml(row, file, eff); return; }
+  if (ovrView === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
+  if (ovrView === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
   if (row.access === 'lock') {
     body.innerHTML = '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
     return;
   }
-  body.innerHTML = (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
+  const wfNote = wholeFileOf(row) !== undefined
+    ? '<div class="ovr-note wf-active"><b>Whole-file override active</b> — the box writes this file verbatim and ignores the field patches below. <button type="button" class="btn-sm" id="wfClear">Revert to field patches</button></div>'
+    : '';
+  body.innerHTML = wfNote + (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
     '<div class="fld-filter"><input id="ovrFilter" type="text" placeholder="Filter fields by name…" spellcheck="false" autocomplete="off"><span id="ovrFilterNote" class="meta">no matching fields</span></div>' +
     (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
+  const wfClr = $('wfClear'); if (wfClr) wfClr.onclick = () => wholeFileClear(row);
   wireFields(row);
   applyFieldVisibility();
 }
@@ -441,9 +466,9 @@ function fieldRowOver(row, sel, val, def, layer) {
 }
 function jsonFieldsHtml(row, eff, text, defaultText) {
   let fileObj = null;
-  if (text !== null) { try { fileObj = JSON.parse(text); } catch { fileObj = null; } }
+  if (text !== null) { try { fileObj = bigParse(text); } catch { fileObj = null; } }
   let defObj = null;
-  if (defaultText != null) { try { defObj = JSON.parse(defaultText); } catch { defObj = null; } }
+  if (defaultText != null) { try { defObj = bigParse(defaultText); } catch { defObj = null; } }
   const defMap = (defObj && typeof defObj === 'object' && !Array.isArray(defObj)) ? new Map(flattenJson(defObj, '', []).map((l) => [l.path, l.value])) : new Map();
   const leaves = (fileObj && typeof fileObj === 'object' && !Array.isArray(fileObj)) ? flattenJson(fileObj, '', []) : [];
   ovrLeafMap = new Map(leaves.map((l) => [l.path, l.value]));
@@ -497,10 +522,146 @@ function xmlEvalHtml(text, sels) {
   }
   return '<div class="xeval"><div class="stat" style="color:var(--faint);margin-bottom:2px">XPaths evaluated against this file</div>' + rows2 + '</div>';
 }
-function fileViewHtml(row, file, eff) {
-  if (file.text === null) return '<div class="ovr-note">Whole-file view unavailable — ' + escapeHtml(file.err || 'unknown') + '.</div>';
-  const head = row.kind === 'xml' ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
-  return '<div class="fileview">' + head + '<pre>' + highlight(file.text, detectLang(row.relpath || row.label)) + '</pre></div>';
+function fileViewHtml(row, file, eff, def) {
+  const canDef = !!(def && def.text != null);
+  const showDef = wfShowDefault && canDef;
+  const text = showDef ? def.text : file.text;
+  if (text === null) return '<div class="ovr-note">Whole-file view unavailable — ' + escapeHtml(file.err || 'unknown') + '.</div>';
+  // Live/Default toggle — lets anyone SEE the frozen baseline the Edit mode diffs against.
+  const toggle = canDef ? '<div class="seg wf-vtoggle" id="wfVToggle"><button data-d="live" class="' + (showDef ? '' : 'on') + '">Live file</button><button data-d="def" class="' + (showDef ? 'on' : '') + '">Default</button></div>' : '';
+  const head = (!showDef && row.kind === 'xml') ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
+  return '<div class="fileview">' + toggle + head + '<pre>' + highlight(text, detectLang(row.relpath || row.label)) + '</pre></div>';
+}
+function wireFileView(row) {
+  const tg = $('wfVToggle');
+  if (tg) tg.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wfShowDefault = (b.dataset.d === 'def'); renderBody(row); };
+}
+
+// ===================== whole-file Edit mode =====================
+// Which override layer a whole-file delta writes to, and whether that's safe. A files-scope row
+// is always its single 'files' layer. A mission file already layering BOTH all-missions (common)
+// and this-mission can't be split from a merged whole-file edit — block it, keep Fields for those.
+function wfTarget(row) {
+  if (row.scope === 'files') return { layer: 'files', ok: true };
+  const hasCommon = !!docLayer('common', row.fileKey);
+  const hasMission = !!(row.mission && docLayer('mission', row.fileKey, row.mission));
+  if (hasCommon && hasMission) return { ok: false, why: 'this file overrides in BOTH the all-missions and this-mission layers — a merged whole-file edit can’t tell them apart. Use Fields here.' };
+  if (hasCommon) return { layer: 'common', ok: true };
+  if (hasMission) return { layer: 'mission', ok: true };
+  return { layer: newLayerFor(row), ok: true };   // fresh file: honour the New-overrides selector
+}
+function editFileHtml(row, file) {
+  if (file.text === null) return '<div class="ovr-note">Whole-file editing needs the live file — ' + escapeHtml(file.err || 'unavailable') + '. Use Fields.</div>';
+  const draft = wfDraft != null ? wfDraft : file.text;
+  return '<div class="wfedit">' +
+    '<div class="wf-bar">' +
+      '<span class="wf-hint">Edit the whole file — <b>Preview</b> derives the minimal override delta by diffing the frozen default. Use this only when Fields can’t express the change.</span>' +
+      '<button type="button" class="btn-sm" id="wfViewDefault">View default</button>' +
+      '<button type="button" class="btn-sm primary" id="wfPreviewBtn"><span class="wf-sp hidden" id="wfSpin"></span>Preview changes</button>' +
+    '</div>' +
+    '<textarea class="wf-ta" id="wfTa" spellcheck="false" autocomplete="off" wrap="off">' + escapeHtml(draft) + '</textarea>' +
+    '<div class="wf-preview" id="wfPrev"></div>' +
+  '</div>';
+}
+function renderWfPreview(row) {
+  const box = $('wfPrev'); if (!box) return;
+  if (wfBusy) { box.innerHTML = '<div class="ovr-note"><span class="wf-sp"></span>Deriving the delta…</div>'; return; }
+  const p = wfPreview;
+  if (!p) { box.innerHTML = ''; return; }
+  if (p.mode === 'delta') {
+    const t = wfTarget(row);
+    const keys = Object.keys(p.delta || {});
+    const list = keys.length
+      ? '<ul class="wf-dlist">' + keys.map((k) => '<li><span class="mono">' + escapeHtml(k) + '</span> = <span class="mono">' + escapeHtml(valPreview(p.delta[k])) + '</span></li>').join('') + '</ul>'
+      : '<div class="meta">No changes vs the default — nothing to override.</div>';
+    const layerNote = (row.scope !== 'files' && t.ok) ? '<div class="meta">Writes to the <b>' + (t.layer === 'common' ? 'all-missions' : 'this-mission') + '</b> layer.</div>' : '';
+    box.innerHTML = '<div class="wf-ptitle wf-ok">' + p.changed + ' override' + (p.changed === 1 ? '' : 's') + ' derived' + (p.hasDefault ? '' : ' — no default captured') + '</div>' + list + layerNote +
+      '<div class="wf-pact">' + (t.ok && keys.length ? '<button type="button" class="btn-sm primary" id="wfApplyBtn">Apply to overrides</button>' : '') +
+      (t.ok ? '' : '<span class="meta warn">' + escapeHtml(t.why) + '</span>') + '</div>';
+    const apply = $('wfApplyBtn'); if (apply) apply.onclick = () => wfApply(row);
+  } else {
+    const t = wfTarget(row);
+    box.innerHTML = '<div class="wf-ptitle wf-warn">Whole-file override</div>' +
+      '<div class="ovr-note">' + escapeHtml(p.reason || 'this edit can’t be expressed as a clean delta') + '.<br>Storing it owns this file wholesale — it <b>won’t track baseline / mod updates</b> (the box writes your content verbatim every boot).</div>' +
+      '<div class="wf-pact">' + (t.ok ? '<button type="button" class="btn-sm primary" id="wfApplyBtn">Store as whole-file override</button>' : '<span class="meta warn">' + escapeHtml(t.why) + '</span>') + '</div>';
+    const apply = $('wfApplyBtn'); if (apply) apply.onclick = () => wfApply(row);
+  }
+}
+async function wfDoPreview(row) {
+  const cred = loadCred(); if (!cred) return;
+  const ta = $('wfTa'); if (ta) wfDraft = ta.value;
+  wfBusy = true; wfPreview = null;
+  renderWfPreview(row);
+  try {
+    const r = await apiPost('/dayz/configs/preview-override', cred, { name: row.relpath, content: wfDraft != null ? wfDraft : '' });
+    if (selKey !== row.key) return;                       // selection moved while awaiting
+    wfPreview = r;
+  } catch (err) {
+    if (handle(err)) return;
+    wfPreview = { mode: 'wholefile', reason: 'preview failed: ' + err.message };
+  } finally {
+    if (selKey === row.key) { wfBusy = false; renderWfPreview(row); }
+  }
+}
+// Set / delete a nested path in overridesDoc (object parents created as needed).
+function ovrSetPath(keys, val) {
+  let cur = overridesDoc;
+  for (let i = 0; i < keys.length - 1; i++) { const k = keys[i]; if (!cur[k] || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; }
+  cur[keys[keys.length - 1]] = val;
+}
+function ovrDelPath(keys) {
+  let cur = overridesDoc;
+  for (let i = 0; i < keys.length - 1; i++) { const k = keys[i]; if (!cur[k] || typeof cur[k] !== 'object') return; cur = cur[k]; }
+  delete cur[keys[keys.length - 1]];
+}
+// This row's whole-file override content, if any (files layer, or its mission/common layer).
+function wholeFileOf(row) {
+  const wf = overridesDoc.wholeFiles || {};
+  if (row.scope === 'files') return (wf.files || {})[row.fileKey];
+  const mp = wf.mpmissions || {};
+  if (row.mission && mp[row.mission] && mp[row.mission][row.fileKey] !== undefined) return mp[row.mission][row.fileKey];
+  return (mp.common || {})[row.fileKey];
+}
+function wholeFileClear(row) {
+  const mp = (overridesDoc.wholeFiles || {}).mpmissions || {};
+  if (row.scope === 'files') ovrDelPath(['wholeFiles', 'files', row.fileKey]);
+  else if (row.mission && mp[row.mission] && mp[row.mission][row.fileKey] !== undefined) ovrDelPath(['wholeFiles', 'mpmissions', row.mission, row.fileKey]);
+  else ovrDelPath(['wholeFiles', 'mpmissions', 'common', row.fileKey]);
+  updateDirtyUi(); renderFilesNav(); renderEditor();
+  setGlobalMsg('Whole-file override cleared — this file goes back to field patches / the default. Save to apply.', false);
+}
+function wfApply(row) {
+  const p = wfPreview; if (!p) return;
+  const t = wfTarget(row); if (!t.ok) return;
+  const path = t.layer === 'files' ? ['files', row.fileKey]
+    : t.layer === 'common' ? ['mpmissions', 'common', row.fileKey]
+    : ['mpmissions', row.mission, row.fileKey];
+  let msg;
+  if (p.mode === 'delta') {
+    // The whole-file edit owns this file's override set vs the default → replace the target
+    // layer's patch block with the derived delta; drop any prior whole-file entry for it.
+    ovrSetPath(path, JSON.parse(JSON.stringify(p.delta)));
+    ovrDelPath(['wholeFiles', ...path]);
+    const n = Object.keys(p.delta).length;
+    msg = 'Applied ' + n + ' override' + (n === 1 ? '' : 's') + ' from the whole-file edit — review in Fields, then Save.';
+  } else {
+    // Whole-file fallback: own the file wholesale (stored in wholeFiles; the box writes it verbatim
+    // and skips this file's patches). It won't track baseline/mod updates — that's the trade.
+    ovrSetPath(['wholeFiles', ...path], wfDraft != null ? wfDraft : '');
+    ovrDelPath(path);
+    msg = 'Stored a whole-file override — this file is now owned wholesale (won’t track baseline updates). Review in Fields, then Save.';
+  }
+  wfReset();
+  updateDirtyUi();
+  ovrView = 'fields';
+  renderFilesNav(); renderEditor();
+  setGlobalMsg(msg, false);
+}
+function wireEditFile(row) {
+  const ta = $('wfTa'); if (ta) ta.oninput = () => { wfDraft = ta.value; wfPreview = null; renderWfPreview(row); };
+  const pv = $('wfPreviewBtn'); if (pv) pv.onclick = () => wfDoPreview(row);
+  const vd = $('wfViewDefault'); if (vd) vd.onclick = () => { wfShowDefault = true; ovrView = 'file'; renderEditor(); };
+  renderWfPreview(row);
 }
 
 // ===================== mutations =====================
@@ -538,7 +699,7 @@ function cxCollapse(row, cell, val) {
 function cxCommit(row, cell, ta, msg, mode) {
   let v;
   if (mode === 'text') { v = ta.value; }
-  else { try { v = JSON.parse(ta.value); } catch { ta.classList.add('bad'); msg.textContent = 'Fix JSON before closing'; msg.classList.add('bad'); ta.focus(); return false; } }
+  else { try { v = bigParse(ta.value); } catch { ta.classList.add('bad'); msg.textContent = 'Fix JSON before closing'; msg.classList.add('bad'); ta.focus(); return false; } }
   layerMapRW(row, cell.dataset.layer)[cell.dataset.sel] = v;
   updateDirtyUi(); setGlobalMsg('Unsaved change — press Save.', false);
   if (cxMode(v) === null) renderEditor();   // shrank to a plain scalar — re-render it as an input
@@ -559,7 +720,7 @@ function cxExpand(row, cell) {
   const clearErr = () => { ta.classList.remove('bad'); msg.textContent = ''; msg.classList.remove('bad'); };
   // JSON mode paints the highlight layer behind the transparent textarea; text mode has no layer.
   const paint = () => { if (hl) { hl.innerHTML = hlJson(escapeHtml(ta.value)) + '\n'; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; } };
-  ta.value = mode === 'json' ? JSON.stringify(cur, null, 2) : String(cur);
+  ta.value = mode === 'json' ? bigStringify(cur, 2) : String(cur);
   paint(); cxAutoSize(ta);
   ta.addEventListener('input', () => { clearErr(); paint(); cxAutoSize(ta); });
   if (hl) ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
@@ -567,7 +728,7 @@ function cxExpand(row, cell) {
   // mousedown+preventDefault keeps textarea focus so its blur-commit doesn't race the click.
   if (fmt) fmt.addEventListener('mousedown', (ev) => {
     ev.preventDefault();
-    try { ta.value = JSON.stringify(JSON.parse(ta.value), null, 2); clearErr(); paint(); cxAutoSize(ta); ta.focus(); }
+    try { ta.value = bigStringify(bigParse(ta.value), 2); clearErr(); paint(); cxAutoSize(ta); ta.focus(); }
     catch { ta.classList.add('bad'); msg.textContent = 'Not valid JSON yet'; msg.classList.add('bad'); }
   });
   cell.querySelector('.cx-done').addEventListener('mousedown', (ev) => { ev.preventDefault(); cxCommit(row, cell, ta, msg, mode); });
@@ -586,7 +747,7 @@ function wireFields(row) {
   if (more) more.onclick = () => { ovrCapOpen = true; applyFieldVisibility(); };
   body.querySelectorAll('.ovr-inp').forEach((inp) => inp.addEventListener('change', () => {
     let v;
-    try { v = JSON.parse(inp.value); } catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON (e.g. 110, "text", [1,2]).', true); return; }
+    try { v = bigParse(inp.value); } catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON (e.g. 110, "text", [1,2]).', true); return; }
     inp.style.outline = '';
     layerMapRW(row, inp.dataset.layer)[inp.dataset.sel] = v;
     updateDirtyUi();
@@ -611,13 +772,13 @@ function wireFields(row) {
   body.querySelectorAll('.cxcell.scalar .cx-fmt').forEach((btn) => {
     const cell = btn.closest('.cxcell'); const inp = cell.querySelector('.ovr-inp');
     btn.addEventListener('click', () => {
-      let v; try { v = JSON.parse(inp.value); }
+      let v; try { v = bigParse(inp.value); }
       catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON to format.', true); return; }
       inp.style.outline = '';
       layerMapRW(row, inp.dataset.layer)[inp.dataset.sel] = v;
       updateDirtyUi();
       if (cxMode(v)) { renderEditor(); setGlobalMsg('Expanded into a full editor — edit it, then Save.', false); }
-      else { inp.value = JSON.stringify(v); setGlobalMsg('Formatted — press Save.', false); }
+      else { inp.value = jsonEnc(v); setGlobalMsg('Formatted — press Save.', false); }
     });
   });
   const addSel = $('ovrAddSel');
@@ -655,18 +816,43 @@ function addFileFlow() {
 async function saveOverrides() {
   const cred = loadCred();
   if (!cred) return;
+  // Never ship a doc that was never loaded — that would replace the box manifest with
+  // this session's empty/partial state (the exact accident of 2026-07-16).
+  if (!overridesLoaded) { setGlobalMsg('config-overrides.json never loaded in this session — refusing to save. Reload the tab first.', true); return; }
   const save = $('ovrSave');
-  if (save) save.disabled = true;
+  const saveHtml = save ? save.innerHTML : '';
+  if (save) { save.disabled = true; save.innerHTML = '<span class="wf-sp"></span>Saving…'; }
   setGlobalMsg('Saving…', false);
   try {
-    await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc });
+    try {
+      await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion });
+    } catch (err) {
+      // Concurrent-edit conflict: another admin saved config-overrides.json since we loaded it.
+      // Never clobber — offer to reload theirs (your unsaved edits here can be copied out first).
+      if (err.status === 409 && /conflict|changed since/i.test(err.message || '')) {
+        const ok = window.confirm('Another admin saved config-overrides.json since you opened it — saving now would overwrite their changes.\n\n' +
+          'Reload their version? Your unsaved changes in this tab are discarded, so copy anything you need first (Cancel to do that).');
+        if (ok) { Object.keys(fileCache).forEach((k) => delete fileCache[k]); await loadFiles(); }
+        else setGlobalMsg('Save cancelled — reload before saving so you don’t overwrite the other admin.', true);
+        return;
+      }
+      // Box shrink guard: the doc drops >half the current override values. Put the
+      // decision to the human; only a deliberate confirm re-sends with the force flag.
+      if (err.status === 409 && /shrink-guard/.test(err.message || '')) {
+        const ok = window.confirm('The box refused this save:\n\n' + err.message +
+          '\n\nThat usually means this tab is holding a PARTIAL document (stale session?). ' +
+          'Only continue if you deliberately deleted these overrides.\n\nReplace anyway?');
+        if (!ok) { setGlobalMsg('Save cancelled — the box kept its current config-overrides.json.', false); return; }
+        await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion, confirmShrink: true });
+      } else { throw err; }
+    }
     setGlobalMsg('Saved — restart the server to apply.', false, true);
     Object.keys(fileCache).forEach((k) => delete fileCache[k]);
     await loadFiles();
   } catch (err) {
     if (handle(err)) return;
     setGlobalMsg(err.status === 403 ? 'Your key can’t write — sign in with a full-scope key.' : 'Save failed: ' + err.message, true);
-  } finally { if (save) save.disabled = false; }
+  } finally { if (save) { save.disabled = false; save.innerHTML = saveHtml; } }
 }
 async function loadVersions() {
   const cred = loadCred();

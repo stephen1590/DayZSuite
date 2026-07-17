@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning. Shipped by Deploy-Monitoring.ps1 — do NOT
+# hand-edit the deployed copy (/etc/grafana/provisioning/dashboards/monitoring.yaml).
+# Dashboards are code: they live under deploy/dashboards/ in the repo (plus the
+# vendored Node Exporter Full) and land in /var/lib/grafana/dashboards. UI edits
+# to these are not persisted across deploys — save a copy to change one.
+apiVersion: 1
+
+providers:
+  - name: monitoring
+    folder: ''
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards

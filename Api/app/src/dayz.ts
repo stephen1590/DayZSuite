@@ -63,6 +63,7 @@ export interface DayzInfo {
 
 export interface DayzBridge {
   ctl(verb: string, ...extra: string[]): Promise<CtlResult>;
+  ctlStdin(verb: string, input: string, ...extra: string[]): Promise<CtlResult>;
   players(): Promise<PlayerCount>;
   info(): Promise<DayzInfo>;
 }
@@ -80,6 +81,28 @@ export function makeDayz(cfg: AppConfig): DayzBridge {
         const code = typeof (err as { code?: number })?.code === 'number' ? (err as { code: number }).code : 0;
         resolve({ code, stdout: stdout.toString(), stderr: stderr.toString() });
       });
+    });
+  }
+
+  // Large-payload variant: the document travels over STDIN ('-' placeholder in argv), not as
+  // an argument. Linux caps a single argv string at ~128KB (MAX_ARG_STRLEN) — the full
+  // override doc was 83KB by 2026-07-16 and spawn-points can pass 128KB outright, so argv
+  // would hard-fail saves no matter what the HTTP body limits allow. dayz-ctl treats a
+  // literal '-' document as "read stdin" for the write verbs.
+  function ctlStdin(verb: string, input: string, ...extra: string[]): Promise<CtlResult> {
+    const args = ['-n', cfg.dayzCtl, verb, '-', ...extra];
+    return new Promise((resolve, reject) => {
+      const child = execFile('sudo', args, { timeout: 20_000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+        if (err && typeof (err as NodeJS.ErrnoException).code !== 'number') {
+          reject(err);
+          return;
+        }
+        const code = typeof (err as { code?: number })?.code === 'number' ? (err as { code: number }).code : 0;
+        resolve({ code, stdout: stdout.toString(), stderr: stderr.toString() });
+      });
+      // EPIPE if the script dies before draining stdin — the exit code carries the story.
+      child.stdin?.on('error', () => {});
+      child.stdin?.end(input);
     });
   }
 
@@ -130,7 +153,7 @@ export function makeDayz(cfg: AppConfig): DayzBridge {
     };
   }
 
-  return { ctl, players, info };
+  return { ctl, ctlStdin, players, info };
 }
 
 /**

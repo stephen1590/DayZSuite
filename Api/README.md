@@ -131,7 +131,7 @@ This service can reboot a game server from the public internet, so it is layered
    ```
    api ALL=(root) NOPASSWD: /usr/local/bin/dayz-ctl
    ```
-   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log-sources|log-list|log-read|bandit-log|bandit-live|config|config-list|config-target|file-list|file-write|override-write|override-versions|override-rollback|info`)
+   `dayz-ctl` has a closed verb set (`restart|start|stop|status|players|broadcast|set-map|log-sources|log-list|log-read|bandit-log|bandit-live|config|config-list|config-target|file-list|file-write|override-read|override-write|override-versions|override-rollback|info`)
    and re-validates every argument (mission name whitelisted against installed
    `mpmissions/`; broadcast text reduced to capped printable ASCII; log reads capped at
    500 lines, and only of a bare `*.RPT`/`*.ADM` filename that already exists in the

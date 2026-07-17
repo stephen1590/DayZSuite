@@ -30,12 +30,12 @@ NginxService/                 ← the shared nginx + Let's Encrypt layer
 > declared in its config - see [Api/README.md](Api/README.md).
 
 > **Rule:** if a service is inside `NginxService/`, it sits behind nginx.
-> **DayZ Server** is *not* here - it is UDP, not proxied, and keeps its own
-> `host.env`. It lives at `../DayZ Server/`.
+> **DayZ-Server** is *not* here - it is UDP, not proxied, and keeps its own
+> `host.env`. It lives at `../DayZ-Server/`.
 
 Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, one
 level **above** this repo. This folder is a single git repo rooted **here**
-(branch `main`). DayZ Server is deliberately *not* in it.
+(branch `main`). DayZ-Server is deliberately *not* in it.
 
 Every deploy script dot-sources that shared util from outside the repo. The repo
 assumes it stays in place at `Dev/UbuntuHost/NginxService/` with `Dev/common/`

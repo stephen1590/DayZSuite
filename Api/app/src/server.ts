@@ -3,6 +3,7 @@
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { loadConfig } from './config.js';
+import { bigParse } from './lossless-json.js';
 import { makeAudit } from './audit.js';
 import { makeDayz } from './dayz.js';
 import { buildActions } from './actions.js';
@@ -29,16 +30,18 @@ const app = Fastify({
   logger: true,
   // nginx sets X-Forwarded-For; trust it so req.ip is the real client, not 127.0.0.1.
   trustProxy: true,
-  bodyLimit: 256 * 1024,
+  bodyLimit: 2 * 1024 * 1024,
 });
 
 // Keep the RAW body so HMAC is verified over the exact bytes, while still parsing
 // JSON for handlers. Empty bodies are allowed (many triggers carry no payload).
+// bigParse, not JSON.parse: integer literals above 2^53 (Steam64 IDs) would silently snap
+// to the nearest double here — the config write path restores them exactly (lossless-json.ts).
 app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) => {
   const buf = body as Buffer;
   (_req as { rawBody?: Buffer }).rawBody = buf;
   try {
-    done(null, buf.length ? JSON.parse(buf.toString('utf8')) : {});
+    done(null, buf.length ? bigParse(buf.toString('utf8')) : {});
   } catch {
     // A malformed JSON body is a client error (400), not a server fault (500). Mark
     // the error so Fastify replies 400 instead of surfacing an unhandled exception.

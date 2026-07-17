@@ -36,6 +36,9 @@
 # DayZHeightmap/Build-MapTiles.ps1 -Execute -Deliver
 /ConfigViewer/web/tiles/
 
+# ── Monitoring — vendored Node Exporter Full dashboard (fetched pinned by Deploy-Monitoring.ps1) ──
+/Monitoring/deploy/vendor/
+
 # ── Api — OpenAPI spec generated from code (src/spec.ts via `npm run spec`) ──
 /Api/openapi.json
 

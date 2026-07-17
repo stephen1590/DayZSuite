@@ -1,0 +1,160 @@
+# Grafana alert rules — rendered by Deploy-Monitoring.ps1. Do NOT hand-edit the
+# deployed copy (/etc/grafana/provisioning/alerting/monitoring.yaml); change this
+# template + the Alerts block in deploy.config.json and redeploy.
+#
+# Rules bind to datasource uid 'prometheus' (the contract with
+# grafana-datasource.yml.template) for data, and the built-in '__expr__' datasource
+# for the threshold condition. No contact point / notification policy is defined:
+# "in-Grafana only" — alerts show state on the Alerting page and on dashboards, but
+# notify nowhere. Add a contactPoints:/policies: block later to get pinged off-box.
+#
+# Each rule: an instant Prometheus query (refId A) reduced + thresholded by a
+# classic_conditions expression (refId C). for: holds the condition before firing.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: dayz
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: dayz-server-offline
+        title: DayZ server offline
+        condition: C
+        for: 3m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "DayZ unit is not active (dayz_up < 1), or its /metrics exporter is unreachable."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: "dayz_up", instant: true }
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: classic_conditions
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+      - uid: dayz-collector-down
+        title: DayZ collector down
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "A DayZ collector is failing (dayz_info_ok = sudo bridge, dayz_players_ok = RCon) — the exporter is blind even if the game looks up."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: "(dayz_info_ok < bool 1) + (dayz_players_ok < bool 1)", instant: true }
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: classic_conditions
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+  - orgId: 1
+    name: host
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: host-disk-low
+        title: Host root disk low
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root filesystem free space below __DISK_FREE_PCT__% — persistence and logs are filling the box."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: "100 * node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"}", instant: true }
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: classic_conditions
+              conditions:
+                - evaluator: { type: lt, params: [__DISK_FREE_PCT__] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+      - uid: host-memory-high
+        title: Host memory high
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage above __MEM_USED_PCT__% for 10m."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", instant: true }
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: classic_conditions
+              conditions:
+                - evaluator: { type: gt, params: [__MEM_USED_PCT__] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+      - uid: host-cpu-high
+        title: Host CPU high
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU busy above __CPU_BUSY_PCT__% for 10m."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", instant: true }
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: classic_conditions
+              conditions:
+                - evaluator: { type: gt, params: [__CPU_BUSY_PCT__] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
