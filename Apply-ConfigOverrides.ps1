@@ -38,6 +38,14 @@
     under mpmissions/ (a side project, an admin copy) is never patched or captured.
     XML selector = XPath (attribute //var[@name='X']/@value or element //type[@name='Y']/nominal).
     JSON selector = dotted key path (chanceToSpawn or a.b.c). Keys starting with _ are ignored.
+
+    WHOLE-FILE overrides (the fallback when an edit can't be a clean delta - a deleted baseline
+    key, no captured default, a reshaped XML doc):
+      wholeFiles.files.<relpath>          : "<entire file content>"
+      wholeFiles.mpmissions.common.<rel>  : "<content>"  (into every DECLARED mission on disk)
+      wholeFiles.mpmissions.<mission>.<rel>: "<content>"
+    These OWN the file: written verbatim every boot (so they re-assert over mod/game updates - the
+    trade is they don't track baseline updates), and any selector patch on the same file is skipped.
 #>
 [CmdletBinding()]
 param(
@@ -150,6 +158,53 @@ function Get-Jobs($manifest, [string]$serverDir) {
     return $jobs
 }
 
+# WHOLE-FILE overrides: the fallback when an edit can't be a clean delta (a deleted baseline
+# key, no captured default, a reshaped XML doc). Same layer resolution as Get-Jobs, but the
+# value is the ENTIRE file content, written verbatim - no default, no patches. Returns a list of
+# { File (absolute), Content, Label }. Whole-file wins: the caller drops any selector patch for a
+# file that also has a whole-file entry. Structure: manifest.wholeFiles.{files|mpmissions}.
+function Get-WholeFileJobs($manifest, [string]$serverDir) {
+    $out = [System.Collections.Generic.List[object]]::new()
+    if (-not ($manifest.PSObject.Properties.Name -contains 'wholeFiles')) { return $out }
+    $wf = $manifest.wholeFiles
+    if ($wf.PSObject.Properties.Name -contains 'files') {
+        foreach ($p in $wf.files.PSObject.Properties) {
+            if ($p.Name.StartsWith('_')) { continue }
+            $out.Add([pscustomobject]@{ Label = "wholeFiles/files/$($p.Name)"; File = (Join-Path $serverDir $p.Name); Content = [string]$p.Value })
+        }
+    }
+    if ($wf.PSObject.Properties.Name -contains 'mpmissions') {
+        $mpRoot = Join-Path $serverDir 'mpmissions'
+        $present = if (Test-Path $mpRoot) { Get-ChildItem $mpRoot -Directory | Select-Object -Expand Name } else { @() }
+        $mp = $wf.mpmissions
+        # Missions are DECLARED at the manifest's top-level mpmissions (same as the patch path);
+        # a whole-file-only mission layer counts as a declaration too. common resolves into the union.
+        $declared = @()
+        if ($manifest.PSObject.Properties.Name -contains 'mpmissions') { $declared += @($manifest.mpmissions.PSObject.Properties.Name | Where-Object { $_ -ne 'common' -and -not $_.StartsWith('_') }) }
+        $declared += @($mp.PSObject.Properties.Name | Where-Object { $_ -ne 'common' -and -not $_.StartsWith('_') })
+        $declared = @($declared | Select-Object -Unique)
+        $emit = {
+            param($layerObj, $missionName, $srcTag)
+            foreach ($fileProp in $layerObj.PSObject.Properties) {
+                if ($fileProp.Name.StartsWith('_')) { continue }
+                $out.Add([pscustomobject]@{
+                    Label = "wholeFiles/$srcTag/$missionName/$($fileProp.Name)"
+                    File = (Join-Path (Join-Path $mpRoot $missionName) $fileProp.Name); Content = [string]$fileProp.Value
+                })
+            }
+        }
+        if ($mp.PSObject.Properties.Name -contains 'common') {
+            foreach ($mission in @($declared | Where-Object { $present -contains $_ })) { & $emit $mp.common $mission 'common' }
+        }
+        foreach ($layer in $mp.PSObject.Properties) {
+            if ($layer.Name -eq 'common' -or $layer.Name.StartsWith('_')) { continue }
+            if ($present -notcontains $layer.Name) { Show-Warn "wholeFiles mission '$($layer.Name)' not on disk under mpmissions/ - skipped"; continue }
+            & $emit $layer.Value $layer.Name 'mission'
+        }
+    }
+    return $out
+}
+
 # --- XML / JSON single-file patchers (mutate an in-memory doc, report per selector) --
 
 function Set-XmlNode($doc, [string]$selector, $value, [string]$label) {
@@ -215,6 +270,16 @@ if (-not (Test-Path $ServerDir)) { Show-Warn "server dir not found: $ServerDir";
 # back into a string.
 $mf = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
 $jobs = Get-Jobs $mf $ServerDir
+
+# Whole-file overrides win over selector patches: collect their target files, then drop any patch
+# job for a file owned wholesale (it's replaced verbatim below, so patching it would be pointless).
+$wholeSeen = [ordered]@{}
+foreach ($w in (Get-WholeFileJobs $mf $ServerDir)) { $wholeSeen[$w.File] = $w }
+if ($wholeSeen.Count) {
+    $before = $jobs.Count
+    $jobs = @($jobs | Where-Object { -not $wholeSeen.Contains($_.File) })
+    if ($jobs.Count -lt $before) { Show-Same "whole-file override(s) present - $($before - $jobs.Count) selector patch(es) on those files skipped (whole-file wins)" }
+}
 
 # Collapse duplicate (file, selector) jobs, keeping the LAST (jobs are emitted common->
 # mission, so the mission layer SUPERSEDES common for a shared field). Without this the
@@ -285,6 +350,24 @@ foreach ($grp in ($jobs | Group-Object File)) {
     catch {
         # Whole-file failure (parse error, unreadable) - warn every job in it, keep going.
         foreach ($j in $grp.Group) { Show-Warn "$($j.Label) : file error - $($_.Exception.Message)" }
+    }
+}
+
+# --- whole-file overrides: write the stored content verbatim (no default, no patches) ----------
+# These OWN the file: written every boot, so they re-assert over any mod/game update that rewrote
+# it (that's the "won't track baseline updates" trade the whole-file fallback accepts). The target
+# DIR must exist (an override is for a real config location); a missing dir is a loud skip.
+foreach ($w in $wholeSeen.Values) {
+    $dir = Split-Path -Parent $w.File
+    if (-not (Test-Path -LiteralPath $dir)) { Show-Warn "$($w.Label) : target dir not present ($dir) - skipped"; continue }
+    $len = ([string]$w.Content).Length
+    if ($Fix) {
+        try {
+            Set-Content -LiteralPath $w.File -Value $w.Content -Encoding utf8 -NoNewline
+            Show-Change "$($w.Label) : whole-file override written ($len chars)"
+        } catch { Show-Warn "$($w.Label) : write failed - $($_.Exception.Message)" }
+    } else {
+        Show-Change "$($w.Label) : would write whole-file override ($len chars)"
     }
 }
 

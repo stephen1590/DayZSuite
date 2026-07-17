@@ -34,7 +34,7 @@ build against OpenSSL 3. Install once: AUR `hemtt-bin`, a GitHub release binary,
 `hemtt build` is the whole build:
 
 ```sh
-cd "UbuntuHost/DayZ Server/serverMods/AIB_Tracker"
+cd "UbuntuHost/DayZ-Server/serverMods/AIB_Tracker"
 hemtt build
 # -> .hemttout/build/addons/AIB_Tracker_main.pbo
 ```
