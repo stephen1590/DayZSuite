@@ -19,13 +19,13 @@
 
     NO usable box copy (fresh box, empty, or invalid): the repo working copy is LEFT UNTOUCHED and
     ships as-is. There is no separate fallback seed because the repo copy already IS the seed — it
-    was migrated from the last VPP snapshot by deprecated/Migrate-SpawnPoints.ps1 and is authoritative until
+    was migrated from the last VPP snapshot (Migrate-SpawnPoints.ps1, deleted 2026-07-16 — git history) and is authoritative until
     the box has real edits to mirror back. Every overwrite is snapshotted to backups/, so nothing
     is ever lost.
 
     TRANSITION NOTE: until an admin edits spawns on the box (via the web editor), the box copy is
     just the last-deployed one, so a pull is a no-op. Deprecates the old VPP pull path
-    (archived under deprecated/, not part of the deploy).
+    (deleted 2026-07-16 — recover from git history if ever needed).
 .EXAMPLE
     ./Sync-SpawnPoints.ps1                     # dry-run: what pulling the box would change
 .EXAMPLE

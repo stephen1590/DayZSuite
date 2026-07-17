@@ -6,15 +6,25 @@ do now and never download anything. Use this for backend/admin logic only.
 
 ## AIB_Tracker
 
-Exports **live AI Bandit positions** for the Config UI map overlay. The `@aibandits`
-mod logs nothing about active NPCs (verified against the live RPT), so this is the only
-way to get them. It:
+Exports **live AI positions** (AI Bandits + ExpansionAI) for the Config UI map overlay.
+Neither `@aibandits` nor Expansion logs active NPC positions (verified against the live
+RPT), so this is the only way to get them. It:
 
-- hooks `InfectedBanditBase` (`extends DayZInfected`) via `EEInit`/`EEDelete` into a live registry,
-- every 20s writes living bandits' `[{x,z}]` to `profiles/AI_Bandits/live_positions.json`.
+- hooks two AI base classes via `EEInit`/`EEDelete` into one live registry (`AIB_Tracker.c`):
+  - `InfectedBanditBase` (`extends DayZInfected`, `@aibandits`) — tagged `type: "bandit"`,
+  - `eAIBase` (`extends PlayerBase`, bundled in `@expansion/scripts.pbo` — what
+    `ExpansionAIPatrol` / Missions / Quests spawn) — tagged `type: "eai"`,
+- every 20s writes living NPCs to `profiles/AI_Bandits/live_positions.json` as
+  `[{x,z,type,age}]` — `age` = seconds alive this session (game clock, resets on restart).
 
-The API reads that file; the map draws the dots. Anonymised is moot (NPCs), and no
-client ever sees the mod.
+`x`/`z` are unchanged from the original schema, so every existing consumer keeps working;
+`type`/`age` are additive. The API reads that file; the map draws the dots. Anonymised is
+moot (NPCs), and no client ever sees the mod.
+
+> **Reaching the map:** `dayz-ctl bandit-live` inlines the file verbatim, but the API's
+> `bandits` response schema (`Api/app/src/actions.ts`) only serialises fields it declares —
+> so `type`/`age` are declared there too (regenerate `openapi.json` with `npm run spec`).
+> Colouring bandit vs eAI differently on the overlay is a separate UI change, not yet done.
 
 ### Build (Arch, libre toolchain - no DayZ Tools/Windows)
 
@@ -48,10 +58,11 @@ and harmless: `Arma 3 Tools not found` (nothing to binarize) and `INVALID-PBOPRE
 Get a player near a bandit camp so a group spawns, then on the box:
 
 ```sh
-cat profiles/AI_Bandits/live_positions.json    # should be [{"x":..,"z":..}, ...]
+cat profiles/AI_Bandits/live_positions.json    # should be [{"x":..,"z":..,"type":..,"age":..}, ...]
 ```
 
-**If it stays `[]` with bandits up:** the `modded class` didn't apply - almost always the
-`requiredAddons` name in `config.cpp` (`AI_Bandits`) not matching the real `@aibandits`
-CfgPatches class. Confirm that name (unrapify its `config.bin`) and re-pack. Everything
-else (the class, the hook, the write path) is confirmed against the live box.
+**If it stays `[]` with AI up:** a `modded class` didn't apply - almost always a
+`requiredAddons` name in `config.cpp` not matching the real CfgPatches class of the PBO
+that owns the base (`AI_Bandits` for bandits, `DayZExpansion_Scripts` for `eAIBase`).
+Confirm the name (unrapify its `config.bin`) and re-pack. **If only one `type` is missing,**
+just that tree's addon name is wrong - the other proves the class/hook/write path work.

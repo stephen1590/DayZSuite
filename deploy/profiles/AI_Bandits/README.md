@@ -97,7 +97,7 @@ the next restart. The deploy pulls the box copy back into the repo (`Sync-SpawnP
 stays the durable record. You can also hand-edit `spawn-points.json` directly.
 
 `spawn-points.json` was seeded once from the last VPP snapshot. VPP is no longer the source — the
-old importer/migrator is archived under `deprecated/` (see `deprecated/README.md`), not part of the
+old importer/migrator was deleted 2026-07-16 (git history has it), not part of the
 deploy. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays per-map.
 
 Schema note: on a mod update that changes the flat-file schema, adjust the builder's output shape

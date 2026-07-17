@@ -122,14 +122,22 @@ commit the mirrors — git history is the long-term config backup.
 Config changes go through a repeatable, gated pipeline so a broken config can't reach prod:
 
 1. **Test (before deploy)** — `./Test-Configs.ps1` builds the real artifacts *offline* from
-   the repo mirrors, running the same engines the box runs (`Apply-ConfigOverrides` force-create
-   and `Build-AIBandits`) against a throwaway server dir. It fails on a dead override, a malformed
-   composed artifact, or a missing force-created key. Because the inputs and engines are identical
-   to the box's, a green result means the live build is already known-good. It runs **automatically
-   inside `Deploy-DayZServer.ps1 -Fix`** (after the pulls, before the ship) and **aborts the deploy**
-   on failure — `-SkipConfigTest` bypasses in an emergency. A "file not found" for a common override
+   the repo mirrors, running **every engine the box runs at prestart** against a throwaway server
+   dir: `Apply-ConfigOverrides` (force-create), `Build-AIBandits`, `Build-BabakuSpawns`,
+   `Apply-CustomCE`, and `Build-TransferSpawns` — per declared mission. It fails on a dead override,
+   a malformed composed artifact, a missing force-created key, an unregistered custom-CE type, or a
+   spawn file that won't compose. Because the inputs and engines are identical to the box's, a green
+   result means the live build is already known-good. It runs **automatically inside
+   `Deploy-DayZServer.ps1 -Fix`** (after the pulls, before the ship) and **aborts the deploy** on
+   failure — `-SkipConfigTest` bypasses in an emergency. A "file not found" for a common override
    into a mission that lacks that file (e.g. parked Chernarus) is reported as a benign note, not a
    failure.
+
+   Two prestart inputs — `cfgeconomycore.xml` and `cfgplayerspawnpoints.xml` — are game-owned
+   mission files the game rewrites and prestart re-derives, so they're never mirrored. The gate runs
+   `Apply-CustomCE`/`Build-TransferSpawns` against real-shaped `test/fixtures/` copies, which proves
+   the *engines* are sound; the live mission-file shape is confirmed in step 3. Mod-owned custom-CE
+   sources (`@aibandits`, `@dayzdog`) are absent offline and reported as skipped, confirmed live.
 2. **Deploy** — `./Deploy-DayZServer.ps1 -Fix` pulls the box's live config into the mirrors, runs
    the gate, ships code, restarts.
 3. **Validate (after deploy)** — `./Confirm-LiveConfigs.ps1` confirms the *running* server matches:
@@ -211,8 +219,8 @@ pwsh ./Sync-SpawnPoints.ps1            # dry-run: what pulling the box's spawn-p
 pwsh ./Sync-SpawnPoints.ps1 -Execute   # pull the box's live spawn-points.json into the repo
 ```
 
-VPP is no longer the source. The old one-shot importer/migrator is archived under
-`deprecated/` (see `deprecated/README.md`) and never runs in the deploy. The live TeleportLocation
+VPP is no longer the source. The old one-shot importer/migrator was deleted 2026-07-16
+(git history has it) and never runs in the deploy. The live TeleportLocation
 store is read-only from this tooling's side — it also holds
 admins' personal teleport bookmarks, so it's never written back to.
 

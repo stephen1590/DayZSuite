@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+    TEST FIXTURE — representative vanilla cfgeconomycore.xml. Used ONLY by Test-Configs.ps1 to run
+    Apply-CustomCE.ps1 offline against a real-shaped mission file. This is NOT mirrored config: the
+    live cfgeconomycore.xml is a game-owned mission file (rewritten by game updates, re-registered
+    each boot), so it is never pulled into the repo. The gate proves the ENGINE is sound against
+    this fixture; the LIVE file's shape is confirmed AFTER by Confirm-LiveConfigs.ps1.
+
+    Shape mirrors a stock mission: a <classes>/<defaults> preamble and an existing <ce folder="db">
+    block, so the gate exercises the engine's "leave other <ce> blocks alone, insert one custom
+    block before </economycore>" path — not a stripped-down stub that would hide that behaviour.
+-->
+<economycore>
+	<classes>
+		<rootclass name="ChildrenContainer" reportMemoryLOD="no" />
+		<rootclass name="CargoContainer" reportMemoryLOD="no" />
+	</classes>
+	<defaults>
+		<default name="dyn_radius" value="30" />
+		<default name="dyn_smin" value="0" />
+		<default name="dyn_smax" value="4" />
+	</defaults>
+	<ce folder="db">
+		<file name="types.xml" type="types" />
+		<file name="events.xml" type="events" />
+	</ce>
+</economycore>

@@ -49,39 +49,39 @@ Password + Steam Guard code once; after that, credentials are cached and every l
 is non-interactive. The Steam *client* itself never needs to run on this box — steamcmd
 is a standalone downloader that exits when done.
 
-## 4. Clone this repo and configure
+## 4. Configure host.env (on the server)
+
+The repo never lives on the server (single-source model, 2026-07-16). Deploys run from
+your dev machine and stage only the runtime payload into
+`~/servers/dayz-server/deploy-stage` — a transient subfolder that is wiped and
+re-shipped on every deploy, so the box has exactly one DayZ location. The one
+persistent per-host file is `host.env`, and it lives WITH the server:
 
 ```bash
-git clone <this-repo-url> ~/dayz-tooling && cd ~/dayz-tooling
-cp host.env.example host.env
-$EDITOR host.env    # DEPLOY_USER/GROUP/HOME, DEPLOY_STEAM_ACCOUNT,
-                     # DEPLOY_SERVER_PASSWORD, DEPLOY_ADMIN_PASSWORD
+mkdir -p ~/servers/dayz-server
+# the first deploy seeds host.env from host.env.example automatically; to pre-create it:
+$EDITOR ~/servers/dayz-server/host.env   # DEPLOY_USER/GROUP/HOME, DEPLOY_STEAM_ACCOUNT,
+                                          # DEPLOY_SERVER_PASSWORD, DEPLOY_ADMIN_PASSWORD
 ```
 
-`host.env` is gitignored and never leaves this host — it's the only place these values
-live. It describes *this* server; it has no opinion on how anything reaches it.
+`host.env` never leaves this host — it's the only place these values live. It describes
+*this* server; it has no opinion on how anything reaches it.
 
-## 5. Deploy
+## 5. Deploy (from your dev machine)
 
-You're running these commands directly on the host you just set up, so use `-Local` —
-it applies the payload to this machine instead of trying to rsync/ssh somewhere:
+Deploy needs to know which host to reach — that's *your* machine's config, not the
+server's: `cp deployer.env.example deployer.env` next to the script and set
+`DEPLOY_REMOTE_HOST` — see
+[CONFIGURATION.md](CONFIGURATION.md#deploy_remote_host--deploy_remote_user).
 
 ```bash
-pwsh ./Deploy-DayZServer.ps1 -Local          # drift report — should show everything Missing
-pwsh ./Deploy-DayZServer.ps1 -Local -Fix     # renders + installs everything, downloads the
-                                              # DayZ app and every enabled mod, starts the service
+./Deploy-DayZServer.ps1          # drift report — on a fresh box everything shows Missing
+./Deploy-DayZServer.ps1 -Fix     # renders + installs everything, downloads the DayZ app
+                                 # and every enabled mod, starts the service
 ```
 
-**Deploying from a separate control machine instead?** You don't need to clone this repo
-onto the server by hand at all — `Deploy-DayZServer.ps1` without `-Local` pushes the
-tooling over rsync/ssh and re-runs itself there automatically (auto-seeding the server's
-`host.env` from the example on first run — you'd still fill in the secrets afterward).
-It just needs to know which host to reach, which is *your* machine's config, not the
-server's: `cp deployer.env.example deployer.env` on your control machine and set
-`DEPLOY_REMOTE_HOST` there — see
-[CONFIGURATION.md](CONFIGURATION.md#deploy_remote_host--deploy_remote_user). Steps 1–3
-above (steamcmd, the one-time Steam login) still have to happen on the server itself
-either way — they can't be done remotely.
+Steps 1–3 above (steamcmd, the one-time Steam login) still have to happen on the server
+itself — they can't be done remotely.
 
 `-Fix` auto-runs `update.sh` (steamcmd) whenever the systemd unit references a mod that
 isn't on disk yet — on a fresh host that's everything, so the first `-Fix` can take a

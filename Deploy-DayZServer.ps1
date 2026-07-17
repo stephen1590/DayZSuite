@@ -17,15 +17,23 @@
 
     Host portability: the systemd units in the payload are TEMPLATES with
     {{DEPLOY_USER}}/{{DEPLOY_GROUP}}/{{DEPLOY_HOME}} placeholders; per-host values
-    come from `host.env` beside this script (or the -Deploy* params), and the units
-    are RENDERED before comparing and deploying — the SAME payload is drift-clean on
-    any host. host.env is per-host and NOT part of the payload (like map.env); absent
-    => built-in defaults (ubuntu, the VPS). Copy host.env.example on each new host.
+    come from `host.env` (or the -Deploy* params), and the units are RENDERED before
+    comparing and deploying — the SAME payload is drift-clean on any host. host.env
+    is per-host, never in the payload, and lives ON THE BOX at
+    <server dir>/host.env (moved there 2026-07-16 when the persistent ~/dayz-tooling
+    checkout was retired); absent => built-in defaults (ubuntu, the VPS). A fresh box
+    gets it seeded from host.env.example — then fill in the secrets there.
 
     Two separate local, gitignored files: host.env describes the SERVER (lives there,
     rendered into what runs there). deployer.env describes where to REACH the server
     (dev-machine-local; only read when NOT -Local; never rsynced over). Never conflate
     the two — see deployer.env.example.
+
+    SINGLE SOURCE OF TRUTH (2026-07-16): the box's ~/servers/dayz-server is the ONLY
+    home of live config; this repo is CODE + committed config HISTORY. Deploy stages
+    the runtime payload into a transient $RemoteDir (deploy-stage/ INSIDE the server
+    dir, wiped each run) — the box never carries a second copy of the repo, and there
+    is exactly one DayZ location on the box.
 
     Full output goes to a timestamped transcript in ./logs plus a CSV summary; -NoLog disables both.
 .EXAMPLE
@@ -43,7 +51,7 @@ param(
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
     [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
     [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
-    [string]$RemoteDir    = "dayz-tooling",
+    [string]$RemoteDir    = "servers/dayz-server/deploy-stage",  # transient payload staging INSIDE the server dir (home-relative for ssh/rsync) — wiped and re-shipped every deploy, so the box has exactly ONE DayZ location and this subfolder is just the delivery truck: templates land here, get rendered with host.env's secrets, pass the player guard, then are PLACED into the server dir / systemd. Never a second copy of the repo (~/dayz-tooling retired 2026-07-16).
     [string]$HostEnv     = (Join-Path $PSScriptRoot "host.env"),
     [string]$DeployerEnv = (Join-Path $PSScriptRoot "deployer.env"),
     [string]$DeployUser,
@@ -136,6 +144,22 @@ if (-not $Local) {
         }
     }
 
+    # Committed config history: each -Fix deploy commits the just-pulled box config state,
+    # so `git log -- config-overrides.json` is the browsable history of what actually ran
+    # on the box ("backup the configs to the repo; commit the history on sync" — user
+    # directive 2026-07-16). Pathspec-limited on purpose: only the pulled mirrors are ever
+    # committed here, never unrelated working-tree changes.
+    if ($Fix) {
+        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Bandits/spawn-points.json', 'config-defaults')
+        git -C $PSScriptRoot add -- $mirrorPaths 2>$null
+        if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
+            git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
+            Write-Host "config backup committed (git log -- config-overrides.json for history)`n"
+        } else {
+            Write-Host "config backup: no changes since last commit`n"
+        }
+    }
+
     # PULL-ONLY CONFIG MODEL (2026-07-16): the dev box does not push config content, full
     # stop (MAINTENANCE-PLAN.md addendum 2026-07-16b). Config-content items in $items below
     # are flagged Seed=$true: copied only when MISSING on the box (fresh box / disaster
@@ -143,17 +167,55 @@ if (-not $Local) {
     # the overrides engine (force-create) via the web editor — nothing config-shaped ships
     # from here to an existing box.
 
-    Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (Fix=$Fix)`n"
-    # --exclude=deprecated: ./deprecated/ is an archive of retired tooling (e.g. the old VPP-coordinate
-    # importer + its data, superseded by spawn-points.json on 2026-07-15). Kept in the repo for history,
-    # NEVER shipped to the box and never read by the server.
-    & rsync -az --delete -e $sshOpt --exclude=logs --exclude=mirror --exclude=backups --exclude=deprecated --exclude=host.env --exclude=deployer.env "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
-    if ($LASTEXITCODE) { Write-Error "tooling rsync failed (exit $LASTEXITCODE)"; exit 1 }
+    # The server-only PBOs ship as artifacts — fail fast HERE (with the build command)
+    # rather than confusing the remote leg with a path that never left this machine.
+    foreach ($pbo in 'serverMods/AIB_Tracker/.hemttout/build/addons/AIB_Tracker_main.pbo',
+                     'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
+        if (-not (Test-Path (Join-Path $PSScriptRoot $pbo))) {
+            Write-Error "server-only PBO not built: $pbo`nBuild it first:  cd '$(Split-Path (Split-Path (Split-Path (Join-Path $PSScriptRoot $pbo))))'; hemtt build"
+            exit 4
+        }
+    }
+
+    # PAYLOAD-ONLY STAGING (2026-07-16, replaces the whole-repo ~/dayz-tooling mirror): ship
+    # exactly what the -Local leg needs — the runtime payload, its seeds, and this script —
+    # into a transient staging dir that is WIPED first (no stale files, no drift, no second
+    # source of truth on the box). Dev-only tooling (Sync-*, Test-*, docs/, serverMods
+    # source, test/) never leaves this repo. host.env is NOT staged: it lives on the box in
+    # the server dir and survives every wipe.
+    Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (payload-only staging, Fix=$Fix)`n"
+    $payload = [System.Collections.Generic.List[string]]::new()
+    foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
+                   'Build-AIBandits.ps1', 'config-registry.json', 'host.env.example',
+                   'config-overrides.json',
+                   'serverMods/AIB_Tracker/.hemttout/build/addons/AIB_Tracker_main.pbo',
+                   'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
+        if (Test-Path (Join-Path $PSScriptRoot $f)) { $payload.Add($f) }
+    }
+    foreach ($d in 'deploy', 'config-defaults') {
+        $base = Join-Path $PSScriptRoot $d
+        if (Test-Path $base) {
+            Get-ChildItem $base -Recurse -File | ForEach-Object {
+                $payload.Add($_.FullName.Substring($PSScriptRoot.Length + 1))
+            }
+        }
+    }
+    $listFile = [IO.Path]::GetTempFileName()
+    [IO.File]::WriteAllLines($listFile, $payload)
+    ssh -o ConnectTimeout=10 $RemoteTarget "rm -rf $RemoteDir && mkdir -p $RemoteDir"
+    if ($LASTEXITCODE) { Write-Error "staging-dir reset failed (exit $LASTEXITCODE)"; exit 1 }
+    & rsync -az -e $sshOpt --files-from=$listFile "$PSScriptRoot/" "${RemoteTarget}:${RemoteDir}/"
+    $rsyncExit = $LASTEXITCODE
+    Remove-Item $listFile -Force
+    if ($rsyncExit) { Write-Error "payload rsync failed (exit $rsyncExit)"; exit 1 }
     $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "common/ rsync failed (exit $LASTEXITCODE)"; exit 1 }
+    # host.env lives in the server dir on the box (survives the staging wipe; rescued out of
+    # ~/dayz-tooling 2026-07-16). Fresh box: seed it from the example, then the -Local leg
+    # hard-fails on the placeholder secrets with instructions — fill them in ON THE BOX.
     $flags = @('-Local'); if ($Fix) { $flags += '-Fix' }; if ($NoRestart) { $flags += '-NoRestart' }; if ($NoLog) { $flags += '-NoLog' }; if ($Force) { $flags += '-Force' }
-    ssh -t -o ConnectTimeout=10 $RemoteTarget "cd $RemoteDir && { [ -f host.env ] || cp host.env.example host.env; } && pwsh -NoProfile ./Deploy-DayZServer.ps1 $($flags -join ' ')"
+    ssh -t -o ConnectTimeout=10 $RemoteTarget "mkdir -p ~/servers/dayz-server && { [ -f ~/servers/dayz-server/host.env ] || cp $RemoteDir/host.env.example ~/servers/dayz-server/host.env; } && cd $RemoteDir && pwsh -NoProfile ./Deploy-DayZServer.ps1 $($flags -join ' ')"
     exit $LASTEXITCODE
 }
 
@@ -170,6 +232,13 @@ if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried .
 # this tracked script. serverDZ.cfg/update.sh carry them only as {{...}} placeholders; see the
 # hard-fail check below.
 $hv = [ordered]@{ DEPLOY_USER = 'ubuntu'; DEPLOY_GROUP = 'ubuntu'; DEPLOY_HOME = '/home/ubuntu'; DEPLOY_SERVER_PASSWORD = $null; DEPLOY_ADMIN_PASSWORD = $null; DEPLOY_STEAM_ACCOUNT = $null; DEPLOY_UPDATE_CHECK_INTERVAL = '4h' }
+# host.env lives ON THE BOX in the server dir (moved out of the retired ~/dayz-tooling,
+# 2026-07-16) — the staging dir beside this script is transient and never carries it.
+# The script-dir path stays first so an explicit -HostEnv (or a legacy layout) still wins.
+if (-not (Test-Path $HostEnv)) {
+    $boxEnv = Join-Path $HOME 'servers/dayz-server/host.env'
+    if (Test-Path $boxEnv) { $HostEnv = $boxEnv }
+}
 if (Test-Path $HostEnv) {
     foreach ($line in Get-Content $HostEnv) {
         if ($line -match '^\s*(DEPLOY_USER|DEPLOY_GROUP|DEPLOY_HOME|DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD|DEPLOY_STEAM_ACCOUNT|DEPLOY_UPDATE_CHECK_INTERVAL)\s*=\s*(.+?)\s*$') { $hv[$Matches[1]] = $Matches[2] }
@@ -200,7 +269,9 @@ $envState = if (Test-Path $HostEnv) { "from $(Split-Path -Leaf $HostEnv)" } else
 Write-Host "Target host: user=$DeployUser group=$DeployGroup home=$DeployHome  [$envState]`n"
 
 $deployDir = Join-Path $PSScriptRoot "deploy"
-$logDir    = Join-Path $PSScriptRoot "logs"
+# Box-side deploy logs live with the server, NOT in the staging dir — staging is wiped on
+# every deploy, and these transcripts are the record of what shipped when.
+$logDir    = Join-Path $ServerDir ".deploy-logs"
 $stamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 if (-not $NoLog) {
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -344,7 +415,11 @@ $items = @(
     @{ Src = "custom-ce/custom-ce.json";     Dst = Join-Path $ServerDir "custom-ce/custom-ce.json";   Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/custom_types.xml";   Dst = Join-Path $ServerDir "custom-ce/custom_types.xml"; Sudo = $false; Exec = $false }
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
-    # (Babaku per-map sources are box-owned content — seeded from config-registry.json below.)
+    # Bubaku spawner composer lives in the server dir so prestart writes the fixed-path file from
+    # the active map's source on every start (mirrors Build-TransferSpawns/Build-AIBandits). Engine
+    # is CODE (ships on drift); the per-map SOURCES are box-owned content — seeded from
+    # config-registry.json below.
+    @{ Src = "Build-BabakuSpawns.ps1"; Dst = Join-Path $ServerDir "Build-BabakuSpawns.ps1"; Sudo = $false; Exec = $false }
     @{ Src = "dayz-server.service"; Dst = $UnitPath;                            Sudo = $true;  Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.service"; Dst = "/etc/systemd/system/dayz-logarchive.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.timer";   Dst = "/etc/systemd/system/dayz-logarchive.timer";   Sudo = $true; Exec = $false }
@@ -529,4 +604,8 @@ if (-not $NoLog) {
         Timestamp = Get-Date -Format "s"; File = "(summary)"; State = "Fix=$Fix"; Action = "restarted=$restarted"
     })
     Stop-Transcript | Out-Null
+    # Retention: the CSV appends forever (one summary row per run), transcripts get pruned.
+    Get-ChildItem $logDir -Filter 'deploy_*.log' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 30 |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }

@@ -1,4 +1,4 @@
-// Server tick: every 20s, dump the live bandit registry to the profiles dir.
+// Server tick: every 20s, dump the live AI registry (bandits + eAI) to the profiles dir.
 //
 // MissionServer only exists on the server, so this never runs on a client even if the PBO
 // were mis-loaded. 20s matches the map overlay's 30s poll comfortably (the file is always

@@ -61,6 +61,20 @@ if ($failed.Count) {
     Write-Error "Pull-Configs: $($failed.Count) sync(s) failed or blocked: $($failed -join ', ')"
     exit 1
 }
-$mode = if ($Execute) { "mirrors updated - review with 'git status' and commit them (git history is the long-term backup)" } else { "dry-run only - re-run with -Execute to write the mirrors" }
-Write-Host "Pull-Configs: all syncs OK. $mode" -ForegroundColor Green
+
+# Commit the pulled state so git history IS the backup ("commit the history on sync" —
+# user directive 2026-07-16; Deploy-DayZServer.ps1 -Fix does the same). Pathspec-limited:
+# only the mirrors this script pulls are committed, never unrelated working-tree changes.
+if ($Execute) {
+    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Bandits/spawn-points.json', 'config-defaults')
+    git -C $PSScriptRoot add -- $mirrorPaths 2>$null
+    if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
+        git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
+        Write-Host "Pull-Configs: all syncs OK - config backup committed (git log -- config-overrides.json for history)" -ForegroundColor Green
+    } else {
+        Write-Host "Pull-Configs: all syncs OK - no config changes since last commit" -ForegroundColor Green
+    }
+} else {
+    Write-Host "Pull-Configs: all syncs OK. dry-run only - re-run with -Execute to write + commit the mirrors" -ForegroundColor Green
+}
 exit 0

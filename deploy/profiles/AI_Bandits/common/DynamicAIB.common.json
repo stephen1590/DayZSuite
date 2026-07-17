@@ -6,7 +6,8 @@
         "version": 2,
         "showtriggers": 0,
         "cleanzerovector": 0,
-        "crashsitegroup": "Random",
+        "_readme_crashsitegroup": "Group template (a NAME from groupTemplates) whose class pool AI_Bandits spawns at helicopter crash sites - fired at runtime by Expansion heli-wreck events, independent of useSpawnLocations. MUST be a real groupTemplates name: 'Random' is NOT one, so SpawnBandits hit a null 'npcclasses' and hard-crashed the server at every Wreck_Mi8_Crashed/Wreck_UH1Y (~10 crashes/day, 2026-07-16). 'patrol' = the standard military squad, fitting a crash site.",
+        "crashsitegroup": "patrol",
         "cardamage": 1,
         "spawnTypes": {
             "_readme": "Per-type spawn switch (builder-read, stripped from the composed file - like useSpawnLocations). Key = a groupTemplates/sniperTemplates NAME (patrol, holdout, raider_heavy, scavenger, desperate, roadblock, patrol_akm, airfield_m4, guard_patrol, hermit, sniper, svd_nest). Absent or 1 = that type spawns normally; 0 = every placement of that type emits no bandits, reversibly (authored placements untouched). Does NOT affect native full-file maps (e.g. Chernarus), which carry raw GroupLocations with no templates. Editable in the Server Files UI as the 'Aib-common' item. Example: set \"sniper\": 0 to turn off all sniper nests.",

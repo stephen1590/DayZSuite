@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+    TEST FIXTURE — representative vanilla cfgplayerspawnpoints.xml. Used ONLY by Test-Configs.ps1
+    to run Build-TransferSpawns.ps1 offline against a real-shaped mission file. NOT mirrored config:
+    the live file is game-owned (ships with each mission, rewritten by updates), so it is never
+    pulled into the repo. The gate proves the ENGINE reads <travel> (falling back to <fresh>) and
+    writes a well-formed transfer_spawn.json; the LIVE points are confirmed AFTER by
+    Confirm-LiveConfigs.ps1 parse-checking the produced profiles/transfer_spawn.json.
+
+    Both a <travel> group (the engine's primary source) and a <fresh> group (its fallback) are
+    present with real x/z pos nodes, so the gate exercises the primary path, not just the fallback.
+-->
+<playerspawnpoints>
+	<fresh>
+		<group name="coast">
+			<pos x="2400.0" z="1600.0" />
+			<pos x="10600.0" z="2200.0" />
+		</group>
+	</fresh>
+	<travel>
+		<group name="transfer">
+			<pos x="7500.0" z="7500.0" />
+			<pos x="3800.0" z="9100.0" />
+			<pos x="11200.0" z="12400.0" />
+		</group>
+	</travel>
+</playerspawnpoints>

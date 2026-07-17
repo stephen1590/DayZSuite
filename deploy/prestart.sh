@@ -97,17 +97,14 @@ if [ -f "$SERVER/Apply-ConfigOverrides.ps1" ] && command -v pwsh >/dev/null 2>&1
     pwsh -NoProfile -File "$SERVER/Apply-ConfigOverrides.ps1" -ServerDir "$SERVER" -Fix || true
 fi
 
-# Babaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Drop the
-# ACTIVE map's source into that path so a map switch can never leave the previous map's spawns;
-# a map with no Babaku source gets an empty-but-valid file (spawns nothing). Runs AFTER
-# Apply-ConfigOverrides so a UI override on the per-map source is included in the copy. `|| true`.
-BABAKU_SRC="$SERVER/profiles/SpawnerBubaku/maps/$TARGET/SpawnerBubakuV2.json"
-BABAKU_DST="$SERVER/profiles/SpawnerBubaku/SpawnerBubakuV2.json"
-mkdir -p "$(dirname "$BABAKU_DST")" || true
-if [ -f "$BABAKU_SRC" ]; then
-    cp -f "$BABAKU_SRC" "$BABAKU_DST" || true
-else
-    printf '{ "loglevel": 0, "BubakLocations": [] }\n' > "$BABAKU_DST" || true
+# Bubaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Compose the
+# fixed file from the ACTIVE map's source so a map switch can never leave the previous map's
+# spawns; a map with no source (or a corrupt one) gets an empty-but-valid file (spawns nothing).
+# Runs AFTER Apply-ConfigOverrides so a UI override on the per-map source rides along. The SAME
+# engine runs in Test-Configs offline, so the gate proves this output before deploy. Fail-soft +
+# `|| true`: can never block boot.
+if [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
 # AI bandit configs (DynamicAIB/StaticAIB) are RAW per-map world coords, but the mod reads one

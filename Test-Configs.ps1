@@ -7,10 +7,12 @@
     "Box builds, dev validates" done properly: not a prediction, an actual build. The box
     rebuilds every patched file as frozen-default + override patches at prestart, then composes
     the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines + config-overrides.json
-    + the AI_Bandits source tree + spawn-points) and the same engines (Apply-ConfigOverrides,
-    Build-AIBandits). So this stages a throwaway ServerDir from the mirrors, runs the ACTUAL
-    build chain against it, and validates the produced artifacts. If it passes, the live deploy
-    runs the identical scripts on the identical inputs — the result is already known.
+    + the AI_Bandits source tree + spawn-points + Babaku sources + the custom-CE manifest) and
+    the SAME engines the box runs at prestart (Apply-ConfigOverrides, Build-AIBandits,
+    Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
+    from the mirrors, runs the ACTUAL build chain against it, and validates the produced artifacts.
+    If it passes, the live deploy runs the identical scripts on the identical inputs — the result
+    is already known.
 
     This is the GATE. Run it (after Pull-Configs refreshes the mirrors from the box) before a
     -Fix deploy. Confirm-LiveConfigs.ps1 is the AFTER: it confirms the running server matches.
@@ -21,7 +23,14 @@
         the box's reversible-default rebuild.
       - registry seed rows WITHOUT a captured baseline (classification, StaticAIB, Babaku,
         messages) are placed from their repo seed - identical to a box that has them.
-    Then: Apply-ConfigOverrides -Fix (force-create) + Build-AIBandits -Fix per declared mission.
+    Then per declared mission, the full prestart config chain: Apply-ConfigOverrides -Fix
+    (force-create), Build-AIBandits, Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns.
+
+    Two prestart inputs are GAME-OWNED mission files (cfgeconomycore.xml, cfgplayerspawnpoints.xml)
+    that a game update rewrites and prestart re-derives - so they are not mirrored. The gate stages
+    real-shaped test/fixtures/ copies to run Apply-CustomCE + Build-TransferSpawns against, which
+    proves the ENGINES are sound. The live mission-file shape is confirmed AFTER by
+    Confirm-LiveConfigs.ps1, not here.
 
     Read-only w.r.t. the repo and the box: only the throwaway staging dir is written. Exit 0 =
     green (safe to deploy), 1 = a real problem to fix first.
@@ -104,6 +113,32 @@ if ($mf.PSObject.Properties.Name -contains 'mpmissions') {
 }
 $missions = @($declared | Where-Object { Test-Path (Join-Path $StagingDir "mpmissions/$_") })
 
+# Pass 3: prestart-engine inputs that are NOT box-mirrored config.
+#   - custom-ce/ (manifest + our own types source) ships from deploy/ as CODE; stage it so
+#     Apply-CustomCE has its manifest. Mod-owned sources (@aibandits, @dayzdog) aren't present
+#     offline -> skipped fail-soft, exactly as on a box without those mods installed.
+#   - cfgeconomycore.xml / cfgplayerspawnpoints.xml are GAME-owned mission files (not mirrored);
+#     stage real-shaped test/fixtures/ copies into each mission so the CE + transfer engines run.
+$ceSrc = Join-Path $deployDir "custom-ce"
+if (Test-Path $ceSrc) {
+    $ceDst = Join-Path $StagingDir "custom-ce"
+    New-Item -ItemType Directory -Force -Path $ceDst | Out-Null
+    Copy-Item (Join-Path $ceSrc '*') $ceDst -Recurse -Force
+}
+$fixturesDir = Join-Path $PSScriptRoot "test/fixtures"
+$stagedFixtures = 0
+foreach ($m in $missions) {
+    foreach ($fx in @('cfgeconomycore.xml', 'cfgplayerspawnpoints.xml')) {
+        $src = Join-Path $fixturesDir $fx
+        if (-not (Test-Path $src)) { continue }
+        $dst = Join-Path $StagingDir "mpmissions/$m/$fx"
+        if (Test-Path $dst) { continue }   # a real mirrored copy (future) wins over the fixture
+        Copy-Item $src $dst -Force
+        $stagedFixtures++
+    }
+}
+Write-Host "  staged custom-ce/ + $stagedFixtures game-file fixture(s) across $($missions.Count) mission(s)"
+
 # --- Run the REAL build chain against the staged dir ----------------------------------------
 Write-Host "`nRunning the build chain (Apply-ConfigOverrides + Build-AIBandits) against staging" -ForegroundColor Cyan
 # Capture the information stream (6>&1) so the [WARN] lines are inspectable, AND keep the
@@ -148,16 +183,77 @@ if (Test-Path $aib) {
 }
 
 # 3. Compose EACH mission and validate its artifacts (the mod reads these; invalid = boots blind).
-#    Build overwrites the fixed output path per mission, so validate each before the next runs.
+#    Every prestart engine that writes a FIXED output path overwrites it per mission, so run +
+#    validate each mission before the next runs. Each engine is guarded independently: one bad
+#    engine surfaces its own failure without masking the others.
 foreach ($m in $missions) {
+    # AI bandits: compose the flat DynamicAIB/StaticAIB from common + maps/<m>; assert they parse.
     try { $null = & (Join-Path $PSScriptRoot "Build-AIBandits.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
-    catch { Show-Fail "Build-AIBandits threw for ${m}: $($_.Exception.Message)"; continue }
+    catch { Show-Fail "Build-AIBandits threw for ${m}: $($_.Exception.Message)" }
     foreach ($rel in @("profiles/AI_Bandits/DynamicAIB.json", "profiles/AI_Bandits/StaticAIB.json")) {
         $p = Join-Path $StagingDir $rel
         if (-not (Test-Path $p)) { Show-Fail "$rel not produced for $m"; continue }
         try { $null = Get-Content -Raw $p | ConvertFrom-Json; Show-Pass "$rel composed for $m parses" }
         catch { Show-Fail "$rel for $m - invalid JSON: $($_.Exception.Message)" }
     }
+
+    # Bubaku: fixed-path spawner file from the active map's source (or empty-valid fallback).
+    try { $null = & (Join-Path $deployDir "Build-BabakuSpawns.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
+    catch { Show-Fail "Build-BabakuSpawns threw for ${m}: $($_.Exception.Message)" }
+    $bab = Join-Path $StagingDir "profiles/SpawnerBubaku/SpawnerBubakuV2.json"
+    if (-not (Test-Path $bab)) { Show-Fail "SpawnerBubakuV2.json not produced for $m" }
+    else {
+        try {
+            $bd = Get-Content -Raw $bab | ConvertFrom-Json
+            if ($null -eq $bd.BubakLocations) { Show-Fail "Bubaku for $m - built file has no BubakLocations array" }
+            else { Show-Pass "Bubaku composed for $m parses ($(@($bd.BubakLocations).Count) location(s))" }
+        } catch { Show-Fail "Bubaku for $m - invalid JSON: $($_.Exception.Message)" }
+    }
+
+    # Custom CE: register <ce folder="custom"> into the (fixture) mission cfgeconomycore.xml.
+    try { $null = & (Join-Path $PSScriptRoot "Apply-CustomCE.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
+    catch { Show-Fail "Apply-CustomCE threw for ${m}: $($_.Exception.Message)" }
+    $core = Join-Path $StagingDir "mpmissions/$m/cfgeconomycore.xml"
+    if (-not (Test-Path $core)) { Show-Fail "cfgeconomycore.xml missing for $m (fixture not staged?)" }
+    else {
+        try {
+            $cx = [xml](Get-Content -Raw $core)
+            $customCe = @($cx.economycore.ce | Where-Object { $_.folder -eq 'custom' })
+            $regFiles = @($customCe.file.name)
+            if (-not $customCe.Count) { Show-Fail "Custom CE for $m - no <ce folder='custom'> block registered" }
+            elseif ($regFiles -notcontains 'custom_types.xml') { Show-Fail "Custom CE for $m - custom_types.xml not registered (got: $($regFiles -join ', '))" }
+            elseif (-not (Test-Path (Join-Path $StagingDir "mpmissions/$m/custom/custom_types.xml"))) { Show-Fail "Custom CE for $m - custom_types.xml not copied into custom/" }
+            else { Show-Pass "Custom CE for $m registers <ce folder='custom'> [$($regFiles -join ', ')], cfgeconomycore.xml valid" }
+        } catch { Show-Fail "Custom CE for $m - cfgeconomycore.xml invalid XML after edit: $($_.Exception.Message)" }
+    }
+
+    # Transfer spawns: read the (fixture) spawn points, write transfer_spawn.json for the PBO.
+    try { $null = & (Join-Path $deployDir "Build-TransferSpawns.ps1") -ServerDir $StagingDir -Mission $m -Gen 1 -Fix 6>&1 }
+    catch { Show-Fail "Build-TransferSpawns threw for ${m}: $($_.Exception.Message)" }
+    $ts = Join-Path $StagingDir "profiles/transfer_spawn.json"
+    if (-not (Test-Path $ts)) { Show-Fail "transfer_spawn.json not produced for $m" }
+    else {
+        try {
+            $td = Get-Content -Raw $ts | ConvertFrom-Json
+            $pts = @($td.points)
+            if ($null -eq $td.gen -or $pts.Count -eq 0) { Show-Fail "transfer_spawn.json for $m - missing gen or empty points" }
+            elseif ($null -eq $pts[0].x -or $null -eq $pts[0].z) { Show-Fail "transfer_spawn.json for $m - point missing x/z" }
+            else { Show-Pass "transfer_spawn.json for $m parses (gen $($td.gen), $($pts.Count) point(s))" }
+        } catch { Show-Fail "transfer_spawn.json for $m - invalid JSON: $($_.Exception.Message)" }
+    }
+}
+
+# Mod-owned CE sources (e.g. @aibandits, @dayzdog) live only on the box; offline they're skipped
+# fail-soft. Surface which, so a green gate never implies they were tested here.
+$ceManifest = Join-Path $StagingDir "custom-ce/custom-ce.json"
+if (Test-Path $ceManifest) {
+    try {
+        $absent = @((Get-Content -Raw $ceManifest | ConvertFrom-Json).files | Where-Object { $_.from -and -not (Test-Path (Join-Path $StagingDir $_.from)) })
+        if ($absent.Count) {
+            Write-Host "  [note] $($absent.Count) custom-CE source(s) are mod-owned (absent offline, skipped) - confirmed live by Confirm-LiveConfigs:" -ForegroundColor DarkYellow
+            $absent | ForEach-Object { Write-Host "         $($_.name) <- $($_.from)" -ForegroundColor DarkYellow }
+        }
+    } catch { }
 }
 
 # 4. Every staged/patched JSON + XML file parses (a corrupt rebuild = a corrupt live file).

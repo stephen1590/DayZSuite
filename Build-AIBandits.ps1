@@ -160,8 +160,8 @@ if (-not (Test-Path $commonPath)) {
     }
 
     # --- spawn-points OVERLAY (non-destructive) -------------------------------------------
-    # spawn-points.json is the DEFINITIVE spawn store: repo/web-edited (see deprecated/Migrate-SpawnPoints.ps1
-    # for the historical seed and the ConfigViewer Map tab for the editor). Update/create placements IN
+    # spawn-points.json is the DEFINITIVE spawn store: box/web-edited (seeded once from the last
+    # VPP snapshot in 2026-07; the ConfigViewer Map tab is the editor). Update/create placements IN
     # MEMORY from it; the authored maps/*.json on disk is NEVER rewritten - we only mutate the
     # parsed $groupsSpec before composing. Match is by name (point .name == group .name, the
     # stable unique key). A point with a 'category' sets template (+ 'size' when given); a point
