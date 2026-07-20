@@ -62,6 +62,9 @@
       "name": "S_Hold_AnivaIndustrial",
       "map": "S",
       "category": "Hold",
+      "spawns": [
+        "expansion"
+      ],
       "x": 13079.880859375,
       "y": 3.509999990463257,
       "z": 7677.4931640625
