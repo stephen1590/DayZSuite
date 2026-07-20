@@ -1,15 +1,16 @@
-# HEMTT build config for AIB_Tracker — the server-only live bandit-position exporter.
-# Libre packer (MIT/Apache), replaces the abandoned armake2. `hemtt build` -> a flat-prefix
-# PBO at .hemttout/build/addons/AIB_Tracker_main.pbo. No signing: serverMods aren't sent to
+# HEMTT build config for CustomServerMods (ex-AIB_Tracker) — the server-only grab-bag mod:
+# live AI position export + fresh-spawn survival buff. Libre packer (MIT/Apache), replaces
+# the abandoned armake2. `hemtt build` -> a flat-prefix PBO at
+# .hemttout/build/addons/CustomServerMods_main.pbo. No signing: serverMods aren't sent to
 # clients, so they don't need a key. The INVALID-PBOPREFIX warning HEMTT prints is cosmetic —
-# it prefers its Arma `z\prefix\addons\component` scheme; DayZ wants the flat `AIB_Tracker`
+# it prefers its Arma `z\prefix\addons\component` scheme; DayZ wants the flat `CustomServerMods`
 # prefix in addons/main/$PBOPREFIX$, which HEMTT honors and bakes into the PBO correctly.
-name = "AIB Tracker"
-prefix = "AIB_Tracker"
+name = "Custom Server Mods"
+prefix = "CustomServerMods"
 mainprefix = ""
 
 [version]
 major = 0
-minor = 1
+minor = 2
 patch = 0
 git_hash = 0

@@ -86,7 +86,7 @@ if (-not $Local) {
     $sshOpt = "ssh -o ConnectTimeout=10"
 
     # Spawn points: the live box is authoritative for AI-bandit spawn locations (the web Map
-    # editor writes spawn-points.json at runtime via the API). Pull it DOWN into the repo
+    # editor writes map-points.json at runtime via the API). Pull it DOWN into the repo
     # mirror — committed backup + fresh-box seed; the deploy below only ever SEEDS it to a
     # box that has none. Report-only unless -Fix; the sync validates JSON and snapshots the
     # mirror before overwriting.
@@ -150,7 +150,7 @@ if (-not $Local) {
     # directive 2026-07-16). Pathspec-limited on purpose: only the pulled mirrors are ever
     # committed here, never unrelated working-tree changes.
     if ($Fix) {
-        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Bandits/spawn-points.json', 'config-defaults')
+        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults')
         git -C $PSScriptRoot add -- $mirrorPaths 2>$null
         if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
             git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
@@ -169,7 +169,7 @@ if (-not $Local) {
 
     # The server-only PBOs ship as artifacts — fail fast HERE (with the build command)
     # rather than confusing the remote leg with a path that never left this machine.
-    foreach ($pbo in 'serverMods/AIB_Tracker/.hemttout/build/addons/AIB_Tracker_main.pbo',
+    foreach ($pbo in 'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                      'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
         if (-not (Test-Path (Join-Path $PSScriptRoot $pbo))) {
             Write-Error "server-only PBO not built: $pbo`nBuild it first:  cd '$(Split-Path (Split-Path (Split-Path (Join-Path $PSScriptRoot $pbo))))'; hemtt build"
@@ -186,9 +186,9 @@ if (-not $Local) {
     Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (payload-only staging, Fix=$Fix)`n"
     $payload = [System.Collections.Generic.List[string]]::new()
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
-                   'Build-AIBandits.ps1', 'config-registry.json', 'host.env.example',
+                   'Build-AIBandits.ps1', 'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
-                   'serverMods/AIB_Tracker/.hemttout/build/addons/AIB_Tracker_main.pbo',
+                   'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
         if (Test-Path (Join-Path $PSScriptRoot $f)) { $payload.Add($f) }
     }
@@ -316,15 +316,16 @@ $enabledMods = @(Get-Content $modsConfPath | ForEach-Object { $_.Trim() } |
 $ModLine = $enabledMods -join ';'
 Write-Host "Mod chain (deploy/mods.conf, $($enabledMods.Count) enabled): $ModLine`n"
 
-# Server-only mod (-serverMod=@aib_tracker): OUR AIB_Tracker PBO. It is NOT a workshop item,
-# so it's NOT in mods.conf and never touches update.sh — it's an artifact HEMTT packs from
-# serverMods/AIB_Tracker (the build output IS the addons folder). Build and deploy stay
-# separate explicit steps, like the rest of Code->Document->Deploy: the PBO must already be
-# built here. If it's missing we STOP with the build command rather than silently packing
-# mid-deploy. The PBO ships as a normal $items entry below into @aib_tracker/addons on the box.
+# Server-only mod (-serverMod=@custom_server_mods): OUR CustomServerMods PBO (ex-AIB_Tracker;
+# AI position export + fresh-spawn buff). It is NOT a workshop item, so it's NOT in mods.conf
+# and never touches update.sh — it's an artifact HEMTT packs from serverMods/CustomServerMods
+# (the build output IS the addons folder). Build and deploy stay separate explicit steps,
+# like the rest of Code->Document->Deploy: the PBO must already be built here. If it's
+# missing we STOP with the build command rather than silently packing mid-deploy. The PBO
+# ships as a normal $items entry below into @custom_server_mods/addons on the box.
 # serverMods/ is a sibling of deploy/ (the tooling root, $PSScriptRoot) — NOT under deploy/.
-$trackerSrcDir = Join-Path $PSScriptRoot "serverMods/AIB_Tracker"
-$trackerPbo    = Join-Path $trackerSrcDir ".hemttout/build/addons/AIB_Tracker_main.pbo"
+$trackerSrcDir = Join-Path $PSScriptRoot "serverMods/CustomServerMods"
+$trackerPbo    = Join-Path $trackerSrcDir ".hemttout/build/addons/CustomServerMods_main.pbo"
 if (-not (Test-Path $trackerPbo)) {
     Write-Error "Server-only tracker PBO not built: $trackerPbo`nBuild it first:  cd '$trackerSrcDir'; hemtt build"
     if (-not $NoLog) { Stop-Transcript | Out-Null }
@@ -335,7 +336,7 @@ if (-not (Test-Path $trackerPbo)) {
 $trackerNewest = Get-ChildItem (Join-Path $trackerSrcDir "addons") -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 if ($trackerNewest -and $trackerNewest.LastWriteTimeUtc -gt (Get-Item $trackerPbo).LastWriteTimeUtc) {
-    Write-Warning "AIB_Tracker source ($($trackerNewest.Name)) is newer than its PBO — run 'hemtt build' in $trackerSrcDir to repack before deploying the tracker."
+    Write-Warning "CustomServerMods source ($($trackerNewest.Name)) is newer than its PBO — run 'hemtt build' in $trackerSrcDir to repack before deploying it."
 }
 
 # Second server-only mod (-serverMod=…;@transfer_spawn): OUR TransferSpawn PBO — relocates
@@ -363,10 +364,12 @@ $items = @(
     @{ Src = "update-check.sh";     Dst = Join-Path $ServerDir "update-check.sh"; Sudo = $false; Exec = $true; Render = $true }
     # The registry ships next to update.sh so on-box (manual) update runs read the same set.
     @{ Src = "mods.conf";           Dst = Join-Path $ServerDir "mods.conf";   Sudo = $false; Exec = $false }
-    # Server-only tracker PBO -> @aib_tracker/addons on the box (matches -serverMod=@aib_tracker
-    # in the unit). OUR artifact from HEMTT, guarded above; drift-checked like any payload file.
-    @{ Src = "../serverMods/AIB_Tracker/.hemttout/build/addons/AIB_Tracker_main.pbo"
-       Dst = Join-Path $ServerDir "@aib_tracker/addons/AIB_Tracker_main.pbo"; Sudo = $false; Exec = $false }
+    # Server-only CustomServerMods PBO -> @custom_server_mods/addons on the box (matches
+    # -serverMod=@custom_server_mods in the unit). OUR artifact from HEMTT, guarded above;
+    # drift-checked like any payload file. (The old @aib_tracker dir on the box is inert once
+    # the unit renders the new name — remove it whenever convenient.)
+    @{ Src = "../serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo"
+       Dst = Join-Path $ServerDir "@custom_server_mods/addons/CustomServerMods_main.pbo"; Sudo = $false; Exec = $false }
     # Second server-only PBO -> @transfer_spawn/addons (matches -serverMod=…;@transfer_spawn).
     @{ Src = "../serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo"
        Dst = Join-Path $ServerDir "@transfer_spawn/addons/TransferSpawn_main.pbo"; Sudo = $false; Exec = $false }
@@ -382,14 +385,14 @@ $items = @(
     @{ Src = "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
        Dst = Join-Path $ServerDir "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
        Sudo = $false; Exec = $false }
-    # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, spawn-points.json, classification,
+    # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, map-points.json, classification,
     # per-map StaticAIB, messages.xml, config-overrides.json, the Babaku per-map sources) is NO
     # LONGER listed here. It is declared once in config-registry.json and seeded-if-missing by the
     # "Config content" section below (single source; the API allowlist + pulls + validator read the
     # same file). $items now carries CODE only (ships on drift). Architecture recap that used to
     # live here: AI_Bandits DynamicAIB/StaticAIB are per-map raw coords composed at prestart from
     # common (shared templates, scope:shared) + maps/<mission> (per-map, scope:map:<mission>);
-    # Sakhal's dynamic spawns come entirely from spawn-points.json; Chernarus is PARKED (map.env +
+    # Sakhal's dynamic spawns come entirely from map-points.json; Chernarus is PARKED (map.env +
     # its registry/seed present but not the active mission — see maps/dayzOffline.chernarusplus/PARKED.md);
     # KnockKnock/AIB_UL/etc. are mod-generated, patched via config-overrides.json (not seeded).
     @{ Src = "dayz-rcon.ps1";       Dst = Join-Path $ServerDir "dayz-rcon.ps1"; Sudo = $false; Exec = $true  }
@@ -407,6 +410,14 @@ $items = @(
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     @{ Src = "../Build-AIBandits.ps1";       Dst = Join-Path $ServerDir "Build-AIBandits.ps1";       Sudo = $false; Exec = $true }
+    # Expansion AI patrol builder (twin of Build-AIBandits): prestart composes AIPatrolSettings.json
+    # from the frozen base + 'expansion'-toggled map-points on every start. Same map-points store,
+    # independent on/off (profiles/ExpansionMod/AIPatrols.control.json). Lives in the server dir.
+    @{ Src = "../Build-AIPatrols.ps1";       Dst = Join-Path $ServerDir "Build-AIPatrols.ps1";       Sudo = $false; Exec = $true }
+    # Expansion AI location builder (twin of Build-AIPatrols): prestart composes AILocationSettings.json
+    # (RoamingLocations) from the frozen base + 'expansion'-toggled map-points on every start. Same
+    # map-points store, geography only (no factions/loadouts). Lives in the server dir.
+    @{ Src = "../Build-AILocations.ps1";     Dst = Join-Path $ServerDir "Build-AILocations.ps1";     Sudo = $false; Exec = $true }
     # Custom CE types (modded loot like CodeLock + the AI Bandits mod's bandit_types.xml): the
     # manifest (custom-ce.json) lists every extra types file; our own live in custom-ce/, mod ones
     # are pulled from their doc folder at prestart. Apply-CustomCE copies them into the active

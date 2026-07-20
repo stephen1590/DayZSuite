@@ -115,6 +115,24 @@ if [ -f "$SERVER/Build-AIBandits.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AIBandits.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
+# Expansion AI roaming destinations: compose the active map's AILocationSettings.json from the
+# frozen default (mod's auto-gen settlements) + map-points that opt into 'expansion'. Runs AFTER
+# Build-AIBandits (same map-points store, different consumer). Fail-soft + `|| true`; a mission with
+# no 'expansion' points is left untouched, so this can never block boot or wipe the mod's locations.
+if [ -f "$SERVER/Build-AILocations.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-AILocations.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+fi
+
+# Expansion AI SPAWNS: compose the active map's AIPatrolSettings.json (the file that actually spawns
+# Expansion AI - Faction/Loadout/NumberOfAI/Waypoints) from the frozen base (mod/admin patrols,
+# captured once) + map-points that opt into 'expansion'. Independent master switch lives in
+# profiles/ExpansionMod/AIPatrols.control.json (enabled). Same map-points store as Build-AIBandits,
+# different consumer - AIB is never touched. Fail-soft + `|| true`; an empty base can never wipe the
+# authored patrols (the builder captures them first), and no 'expansion' points leaves the file alone.
+if [ -f "$SERVER/Build-AIPatrols.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-AIPatrols.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+fi
+
 # Common custom CE types (modded items, e.g. CodeLock): copy the map-agnostic custom_types.xml
 # into the active mission's custom/ folder and register <ce folder="custom"> in its
 # cfgeconomycore.xml, idempotently - the vanilla db/types.xml is never touched, so a game update

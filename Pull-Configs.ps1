@@ -10,7 +10,7 @@
     This runs every mirror pull in sequence:
 
       Sync-ConfigOverrides.ps1   config-overrides.json        (the overrides document)
-      Sync-SpawnPoints.ps1       deploy/profiles/AI_Bandits/spawn-points.json
+      Sync-SpawnPoints.ps1       deploy/profiles/AI_Shared/map-points.json
       Sync-ConfigDefaults.ps1    config-defaults/**           (frozen <stem>.defaults<ext> baselines)
 
     Together these reconstruct every managed config: live file = frozen default + override
@@ -66,7 +66,7 @@ if ($failed.Count) {
 # user directive 2026-07-16; Deploy-DayZServer.ps1 -Fix does the same). Pathspec-limited:
 # only the mirrors this script pulls are committed, never unrelated working-tree changes.
 if ($Execute) {
-    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Bandits/spawn-points.json', 'config-defaults')
+    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults')
     git -C $PSScriptRoot add -- $mirrorPaths 2>$null
     if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
         git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths

@@ -1,0 +1,21 @@
+{
+  "_readme": "ExpansionAI map-point spawn control, read by Build-AIPatrols.ps1 - the Expansion twin of DynamicAIB.common flags.useSpawnLocations. INDEPENDENT of BanditAI: this switch only governs Expansion patrols composed from map points; it never touches AIB. enabled=1 composes every 'expansion'-toggled map point into AIPatrolSettings.json as a ROAMING patrol (base + ours). enabled=0 emits the frozen base ONLY (no map-point patrols) - reversible, authored/base patrols untouched. categoryLoadouts maps a point's category token to an Expansion loadout file (filename stem under profiles/ExpansionMod/Loadouts/); unmapped categories use defaultLoadout. A point may override per-point via its own faction/loadout/count fields. Editable in the Server Files UI as 'ExpansionAI-patrols'.",
+  "enabled": 1,
+  "defaultFaction": "Raiders",
+  "defaultLoadout": "PlayerSurvivorLoadout",
+  "defaultBehaviour": "ROAMING",
+  "defaultNumberOfAI": 1,
+  "categoryLoadouts": {
+    "Mil": "MilitaryLoadout",
+    "MilH": "MilitaryHeavyLoadout",
+    "Scav": "TownLoadout",
+    "Desp": "MeleeLoadout",
+    "Hold": "MilitaryLoadout",
+    "Guard": "MilitaryLoadout",
+    "Air": "RaiderM4Loadout",
+    "AKM": "MilitaryLoadout",
+    "Road": "PistolLoadout",
+    "Hermit": "HermitLoadout",
+    "Sniper": "SniperLoadout"
+  }
+}

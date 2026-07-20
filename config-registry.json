@@ -24,7 +24,14 @@
     "web      - how the UI exposes it: patch (override editor) | file (whole-file) | store (Map",
     "           editor) | view (read-only) | browse (folder) | none (not shown; e.g. seed-only).",
     "writable - whole-file write verb (box-owned operational lists only: bans/whitelist).",
-    "check    - Confirm-LiveConfigs parse assertion: json | xml | none."
+    "check    - Confirm-LiveConfigs parse assertion: json | xml | none.",
+    "",
+    "generated - relpaths (mission '*' glob allowed) of files a prestart COMPILER writes: they are",
+    "  artifacts, never inputs. The API renders these into dayz-ctl; the web editor shows any match",
+    "  READ-ONLY (no edit, no save) and override-write REFUSES a patch that targets one - so a value",
+    "  that is auto-generated can never be hand-edited into a silent loss. Edit the SOURCE (map-points",
+    "  via the Map tab, the common templates, the frozen base), never the output. Add a compiler",
+    "  output = add one line here."
   ],
   "surfaces": [
     { "name": "overrides", "box": "config-overrides.json", "scope": "shared", "seed": "config-overrides.json", "mirror": "overrides", "web": "patch", "check": "json" },
@@ -32,13 +39,14 @@
     { "name": "mods", "box": "mods.conf", "scope": "shared", "seed": null, "mirror": null, "web": "view", "check": "none" },
     { "name": "messages", "box": "messages.xml", "scope": "shared", "seed": "deploy/messages.xml", "mirror": null, "web": "view", "check": "xml" },
     { "name": "Aib-common", "box": "profiles/AI_Bandits/common/DynamicAIB.common.json", "scope": "shared", "seed": "deploy/profiles/AI_Bandits/common/DynamicAIB.common.json", "mirror": "defaults", "web": "patch", "check": "json" },
-    { "name": "Aib-classes", "box": "profiles/AI_Bandits/common/classification.json", "scope": "shared", "seed": "deploy/profiles/AI_Bandits/common/classification.json", "mirror": null, "web": "file", "check": "json" },
+    { "name": "AI-Classes", "box": "profiles/AI_Bandits/common/classification.json", "scope": "shared", "seed": "deploy/profiles/AI_Bandits/common/classification.json", "mirror": null, "web": "file", "check": "json" },
+    { "name": "ExpansionAI-patrols", "box": "profiles/ExpansionMod/AIPatrols.control.json", "scope": "shared", "seed": "deploy/profiles/ExpansionMod/AIPatrols.control.json", "mirror": "defaults", "web": "patch", "check": "json" },
     { "name": "Aib-ul-config", "box": "profiles/AIB_Unleashed/AIB_UL_Config.json", "scope": "shared", "seed": null, "mirror": "defaults", "web": "patch", "check": "json" },
     { "name": "Basebuilding", "box": "profiles/BaseBuildingPlus/BBP_Settings.json", "scope": "shared", "seed": null, "mirror": null, "web": "file", "check": "json" },
     { "name": "Bans", "box": "ban.txt", "scope": "shared", "seed": null, "mirror": null, "web": "file", "writable": true, "check": "none" },
     { "name": "Allowlist", "box": "whitelist.txt", "scope": "shared", "seed": null, "mirror": null, "web": "file", "writable": true, "check": "none" },
     { "name": "Aib-knock", "box": "profiles/KnockKnockAIBandits/KnockKnockAIBandits_Settings.json", "scope": "shared", "seed": null, "mirror": "defaults", "web": "patch", "check": "json" },
-    { "name": "Spawn-points", "box": "profiles/AI_Bandits/spawn-points.json", "scope": "shared", "seed": "deploy/profiles/AI_Bandits/spawn-points.json", "mirror": "spawns", "web": "store", "check": "json" },
+    { "name": "Map-points", "box": "profiles/AI_Shared/map-points.json", "scope": "shared", "seed": "deploy/profiles/AI_Shared/map-points.json", "mirror": "spawns", "web": "store", "check": "json" },
     { "name": "Babaku-spawner", "box": "profiles/SpawnerBubaku/maps/dayzOffline.sakhal/SpawnerBubakuV2.json", "scope": "map:dayzOffline.sakhal", "seed": "deploy/profiles/SpawnerBubaku/maps/dayzOffline.sakhal/SpawnerBubakuV2.json", "mirror": null, "web": "file", "check": "json" },
     { "name": "staticaib-sakhal", "box": "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json", "scope": "map:dayzOffline.sakhal", "seed": "deploy/profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json", "mirror": null, "web": "none", "check": "json" },
     { "group": "Expansion Settings", "dir": "profiles/ExpansionMod/Settings", "scope": "shared", "web": "browse" },
@@ -48,5 +56,11 @@
     { "group": "Map; Chernarus Settings", "dir": "mpmissions/dayzOffline.chernarusplus", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.chernarusplus", "web": "browse" },
     { "group": "Map; Enoch Settings", "dir": "mpmissions/dayzOffline.enoch", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.enoch", "web": "browse" },
     { "group": "Map; Sakhal Settings", "dir": "mpmissions/dayzOffline.sakhal", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.sakhal", "web": "browse" }
+  ],
+  "generated": [
+    "profiles/AI_Bandits/DynamicAIB.json",
+    "profiles/AI_Bandits/StaticAIB.json",
+    "mpmissions/*/expansion/settings/AIPatrolSettings.json",
+    "mpmissions/*/expansion/settings/AILocationSettings.json"
   ]
 }

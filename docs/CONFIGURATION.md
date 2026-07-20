@@ -96,7 +96,7 @@ Every file is in exactly one class, and the class decides the direction it moves
   injection layer, VPP permission files. Only the deploy writes these — edit in the repo,
   redeploy.
 - **Config content (box-owned, seed-if-missing):** `config-overrides.json`,
-  `spawn-points.json`, the AI_Bandits source tree, the Babaku per-map sources,
+  the shared `AI_Shared/map-points.json` store, the AI_Bandits source tree, the Babaku per-map sources,
   `messages.xml`, every mod-generated settings file, and the frozen `.defaults`
   baselines. The box writes these (web editor, prestart's capture); the deploy copies
   one to the box **only when it's missing there** (fresh box / disaster recovery —
@@ -201,10 +201,10 @@ See [`deploy/profiles/AI_Bandits/README.md`](../deploy/profiles/AI_Bandits/READM
 the full schema, including the native-passthrough escape hatch for dropping in an
 unmodified community config.
 
-### Spawn points sourced from spawn-points.json (repo/web-edited)
+### Spawn points sourced from the shared map-points store (repo/web-edited)
 
-Some maps source their dynamic spawns entirely from `spawn-points.json` — the definitive
-AI-bandit spawn store — instead of a hand-authored per-map file. Each point has `name`,
+Some maps source their dynamic spawns entirely from `profiles/AI_Shared/map-points.json` — the
+SHARED spawn store feeding BOTH BanditAI and ExpansionAI — instead of a hand-authored per-map file. Each point has `name`,
 `map` (the S/C/E letter), optional `category`/`size`, and `x`/`y`/`z`. `classification.json`
 maps the `category` token to a template and the `size` letter to a member count
 (`deploy/profiles/AI_Bandits/common/classification.json`); a point with no `category` becomes
@@ -215,8 +215,8 @@ Save). Save writes the box copy live and applies at the next restart; the deploy
 into the repo (`Sync-SpawnPoints.ps1`, box-authoritative). You can also hand-edit the file.
 
 ```bash
-pwsh ./Sync-SpawnPoints.ps1            # dry-run: what pulling the box's spawn-points would change
-pwsh ./Sync-SpawnPoints.ps1 -Execute   # pull the box's live spawn-points.json into the repo
+pwsh ./Sync-SpawnPoints.ps1            # dry-run: what pulling the box's map-points would change
+pwsh ./Sync-SpawnPoints.ps1 -Execute   # pull the box's live map-points.json into the repo
 ```
 
 VPP is no longer the source. The old one-shot importer/migrator was deleted 2026-07-16

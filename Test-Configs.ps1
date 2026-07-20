@@ -197,6 +197,36 @@ foreach ($m in $missions) {
         catch { Show-Fail "$rel for $m - invalid JSON: $($_.Exception.Message)" }
     }
 
+    # Expansion AI patrols: compose AIPatrolSettings.json (frozen base + 'expansion' map-points);
+    # assert it parses. The SAME engine the box runs at prestart - proves the generated file offline
+    # before any restart. Only asserts on missions that actually produce the file (a mission with no
+    # frozen base and no 'expansion' points leaves it untouched by design - not a failure).
+    try { $null = & (Join-Path $PSScriptRoot "Build-AIPatrols.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
+    catch { Show-Fail "Build-AIPatrols threw for ${m}: $($_.Exception.Message)" }
+    $patRel = "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
+    $patP   = Join-Path $StagingDir $patRel
+    if (Test-Path $patP) {
+        try {
+            $pd = Get-Content -Raw $patP | ConvertFrom-Json
+            Show-Pass "$patRel composed for $m parses ($(@($pd.Patrols).Count) patrol(s), Enabled=$($pd.Enabled))"
+        } catch { Show-Fail "$patRel for $m - invalid JSON: $($_.Exception.Message)" }
+    }
+
+    # Expansion AI locations: compose AILocationSettings.json (frozen base + 'expansion' map-points);
+    # assert it parses. The SAME engine the box runs at prestart - the twin of Build-AIPatrols, proven
+    # offline before any restart. Only asserts on missions that actually produce the file (zero
+    # 'expansion' points leaves it untouched by design - not a failure).
+    try { $null = & (Join-Path $PSScriptRoot "Build-AILocations.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
+    catch { Show-Fail "Build-AILocations threw for ${m}: $($_.Exception.Message)" }
+    $locRel = "mpmissions/$m/expansion/settings/AILocationSettings.json"
+    $locP   = Join-Path $StagingDir $locRel
+    if (Test-Path $locP) {
+        try {
+            $ld = Get-Content -Raw $locP | ConvertFrom-Json
+            Show-Pass "$locRel composed for $m parses ($(@($ld.RoamingLocations).Count) location(s))"
+        } catch { Show-Fail "$locRel for $m - invalid JSON: $($_.Exception.Message)" }
+    }
+
     # Bubaku: fixed-path spawner file from the active map's source (or empty-valid fallback).
     try { $null = & (Join-Path $deployDir "Build-BabakuSpawns.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
     catch { Show-Fail "Build-BabakuSpawns threw for ${m}: $($_.Exception.Message)" }

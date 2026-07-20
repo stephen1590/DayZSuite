@@ -1,18 +1,18 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Pull the LIVE spawn-points.json off the box into the repo mirror — the backup path for
+    Pull the LIVE map-points.json off the box into the repo mirror — the backup path for
     the box-owned spawn store (ConfigViewer Map editor -> configs/set-spawns).
 .DESCRIPTION
-    The LIVE box is authoritative for spawn-points.json (the definitive AI-bandit spawn
+    The LIVE box is authoritative for map-points.json (the definitive AI-bandit spawn
     store, written whole via the API's spawn-write verb and snapshotted there). This pulls
     that copy DOWN into the repo MIRROR — a committed backup, and the seed a fresh box gets
     (the deploy only ever seeds it to a box that has none; it never overwrites a live copy).
     Same box-authoritative shape as Sync-ConfigOverrides.ps1.
 
     Read-only by default (shows what pulling WOULD change). -Execute writes:
-      deploy/profiles/AI_Bandits/spawn-points.json   the working copy the deploy ships (= the box's)
-      backups/spawn-points/*.json                     timestamped snapshot of the PREVIOUS repo copy
+      deploy/profiles/AI_Shared/map-points.json      the working copy the deploy ships (= the box's)
+      backups/map-points/*.json                       timestamped snapshot of the PREVIOUS repo copy
 
     VALIDATOR: a pulled file that is not valid JSON, or that lacks a `points` array, is REJECTED —
     a corrupt/foreign file never enters the repo or the ship.
@@ -29,16 +29,16 @@
 .EXAMPLE
     ./Sync-SpawnPoints.ps1                     # dry-run: what pulling the box would change
 .EXAMPLE
-    ./Sync-SpawnPoints.ps1 -Execute            # pull the box's live spawn-points.json into the repo
+    ./Sync-SpawnPoints.ps1 -Execute            # pull the box's live map-points.json into the repo
 #>
 [CmdletBinding()]
 param(
     [string]$RemoteHost,
     [string]$RemoteUser = "ubuntu",
     [string]$RemotePath = "/home/ubuntu/servers/dayz-server",
-    [string]$SpawnRel   = "profiles/AI_Bandits/spawn-points.json",             # under the server root
-    [string]$LocalPath  = (Join-Path $PSScriptRoot "deploy/profiles/AI_Bandits/spawn-points.json"),
-    [string]$BackupDir  = (Join-Path $PSScriptRoot "backups/spawn-points"),
+    [string]$SpawnRel   = "profiles/AI_Shared/map-points.json",                # shared spawn store (feeds AIB + Expansion), neutral location
+    [string]$LocalPath  = (Join-Path $PSScriptRoot "deploy/profiles/AI_Shared/map-points.json"),
+    [string]$BackupDir  = (Join-Path $PSScriptRoot "backups/map-points"),
     [int]$KeepVersions  = 10,
     [switch]$Execute,
     [switch]$NoLog
@@ -64,15 +64,15 @@ function Backup-Local {
     if (-not (Test-Path $LocalPath)) { return }
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    Copy-Item -LiteralPath $LocalPath -Destination (Join-Path $BackupDir "spawn-points.$stamp.json") -Force
-    Get-ChildItem $BackupDir -Filter "spawn-points.*.json" | Sort-Object Name -Descending |
+    Copy-Item -LiteralPath $LocalPath -Destination (Join-Path $BackupDir "map-points.$stamp.json") -Force
+    Get-ChildItem $BackupDir -Filter "map-points.*.json" | Sort-Object Name -Descending |
         Select-Object -Skip $KeepVersions | Remove-Item -Force -ErrorAction SilentlyContinue
-    Write-Host "  snapshot -> $BackupDir/spawn-points.$stamp.json (keep $KeepVersions)"
+    Write-Host "  snapshot -> $BackupDir/map-points.$stamp.json (keep $KeepVersions)"
 }
 
-# --- Fetch the box's live spawn-points.json (read-only) -----------------------------------
+# --- Fetch the box's live map-points store (read-only) ------------------------------------
 $remoteFile = "$RemotePath/$SpawnRel"
-Write-Host "Fetching spawn-points from ${target}:$remoteFile"
+Write-Host "Fetching map-points from ${target}:$remoteFile"
 $raw = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$remoteFile'" } | Out-String
 
 $pullOk = $true
@@ -80,7 +80,7 @@ if ($LASTEXITCODE -ne 0 -or -not $raw.Trim()) {
     Write-Warning "Could not read $remoteFile on $target (ssh exit $LASTEXITCODE) — no live spawns this run; keeping the repo copy."
     $pullOk = $false
 } elseif (-not (Test-SpawnText $raw)) {
-    Write-Warning "Box spawn-points.json is not valid JSON with a 'points' array — REJECTED; keeping the repo copy."
+    Write-Warning "Box map-points.json is not valid JSON with a 'points' array — REJECTED; keeping the repo copy."
     $pullOk = $false
 }
 
@@ -93,7 +93,7 @@ if ($pullOk) {
     } elseif ($Execute) {
         Backup-Local
         $boxTrim | Set-Content -LiteralPath $LocalPath -Encoding utf8
-        Write-Host "Pulled the box's live spawn-points.json into the repo (admin/web edits preserved)."
+        Write-Host "Pulled the box's live map-points.json into the repo (admin/web edits preserved)."
     } else {
         Write-Host "Dry-run — the box's spawn-points DIFFER from the repo copy; -Execute would pull them in (snapshotting the current one first)."
     }

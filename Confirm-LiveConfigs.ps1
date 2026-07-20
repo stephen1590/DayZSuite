@@ -9,7 +9,7 @@
 
       LOCAL (repo mirrors/seeds parse - a corrupt mirror is a corrupt backup):
         1. config-overrides.json parses as JSON
-        2. deploy/profiles/AI_Bandits/spawn-points.json parses + has a `points` array
+        2. deploy/profiles/AI_Shared/map-points.json parses + has a `points` array
         3. every JSON seed in the deploy payload parses; messages.xml parses as XML
       LIVE (over ssh, all read-only):
         4. dayz-server unit is active

@@ -69,9 +69,9 @@ needs a one-time interactive login first.
 | `deployer.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`). Gitignored, never rsynced to the server. |
 | `Pull-DayZServer.ps1` | Pulls server saves/config down to a local machine over rsync/ssh — an off-box backup, or to work against real data locally. |
 | `Pull-Configs.ps1` | One command to pull the box's entire config state into the repo mirrors (overrides, spawn points, frozen defaults). `-Execute` also COMMITS the pulled state (pathspec-limited) — git history is the config backup. `Deploy-DayZServer.ps1 -Fix` does the same pull+commit automatically. |
-| `Sync-SpawnPoints.ps1` | Pulls the live `spawn-points.json` (the definitive AI-bandit spawn store, edited in the ConfigViewer Map tab) off the box into the repo mirror. |
-| *(retired tooling)* | The old VPP-coordinate spawn source (`deprecated/`, superseded by `spawn-points.json` 2026-07-15) and the VPP webhook checker (`Sync-VPPWebHooks.ps1`, no webhooks ever registered) were deleted 2026-07-16 — git history has them. |
-| `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + `spawn-points.json` (or per-map placements). Runs automatically on every server boot. |
+| `Sync-SpawnPoints.ps1` | Pulls the live `profiles/AI_Shared/map-points.json` (the SHARED spawn store feeding both BanditAI and ExpansionAI, edited in the ConfigViewer Map tab) off the box into the repo mirror. |
+| *(retired tooling)* | The old VPP-coordinate spawn source (`deprecated/`, superseded by the map-points store 2026-07-15) and the VPP webhook checker (`Sync-VPPWebHooks.ps1`, no webhooks ever registered) were deleted 2026-07-16 — git history has them. |
+| `Build-AIBandits.ps1` | Composes each map's bandit spawn config from shared templates + the shared `map-points.json` store (or per-map placements). Runs automatically on every server boot. |
 | `Apply-ConfigOverrides.ps1` | Applies `config-overrides.json`'s field-level patches to live config files. Runs automatically on every server boot. |
 | `_DZSync.ps1` | Shared rsync/host-resolution helpers for the Pull/Sync scripts. |
 

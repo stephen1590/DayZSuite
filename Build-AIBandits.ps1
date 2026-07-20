@@ -160,7 +160,7 @@ if (-not (Test-Path $commonPath)) {
     }
 
     # --- spawn-points OVERLAY (non-destructive) -------------------------------------------
-    # spawn-points.json is the DEFINITIVE spawn store: box/web-edited (seeded once from the last
+    # map-points.json is the DEFINITIVE spawn store: box/web-edited (seeded once from the last
     # VPP snapshot in 2026-07; the ConfigViewer Map tab is the editor). Update/create placements IN
     # MEMORY from it; the authored maps/*.json on disk is NEVER rewritten - we only mutate the
     # parsed $groupsSpec before composing. Match is by name (point .name == group .name, the
@@ -170,15 +170,22 @@ if (-not (Test-Path $commonPath)) {
     #   * point + group     -> UPDATE  (coords always; category also overrides template+size)
     # Unlike the retired VPP mirror this is a UNION/UPSERT - it NEVER removes authored groups,
     # because the file is now hand-edited, not a live 1:1 pull that could legitimately delete.
-    # FAIL-SOFT: missing classification.json or spawn-points.json => no overlay at all.
+    # FAIL-SOFT: missing classification.json or map-points.json => no overlay at all.
     $clsPath   = Join-Path $aiRoot 'common/classification.json'
-    $spawnPath = Join-Path $aiRoot 'spawn-points.json'
+    # The SHARED spawn store: one neutral file feeding BOTH AIB and Expansion (not under any one
+    # mod's folder). classification.json (the token vocabulary) still lives in AI_Bandits/common.
+    $spawnPath = Join-Path $ServerDir 'profiles/AI_Shared/map-points.json'
     if ($spawnsEnabled -and -not $native -and (Test-Path $clsPath) -and (Test-Path $spawnPath)) {
         $cls     = Read-Json $clsPath
         # Map letter(s) for this mission = classification.maps keys whose value == $Mission.
         $letters = @($cls.maps.PSObject.Properties | Where-Object { $_.Value -eq $Mission } | ForEach-Object { $_.Name })
         $spawnDoc = Read-Json $spawnPath
-        $mapPts   = @($spawnDoc.points | Where-Object { $letters -contains $_.map })
+        # Per-point system toggle: a point joins AIB only when its effective `spawns` (own, else the
+        # doc's defaultSpawns, else both) includes 'aib' - lets a point be Expansion-only, or neither.
+        $defSpawns = if ($spawnDoc.PSObject.Properties['defaultSpawns'] -and $null -ne $spawnDoc.defaultSpawns) { @($spawnDoc.defaultSpawns) } else { @('aib', 'expansion') }
+        # Property PRESENT (even empty = 'none') is authoritative; ABSENT inherits defaultSpawns.
+        $wantsAib  = { param($p) $eff = if ($p.PSObject.Properties['spawns']) { @($p.spawns) } else { $defSpawns }; $eff -contains 'aib' }
+        $mapPts   = @($spawnDoc.points | Where-Object { $letters -contains $_.map -and (& $wantsAib $_) })
         if ($letters.Count -and $mapPts.Count) {
             $byName = @{}
             foreach ($g in $groupsSpec) { if ($g.name) { $byName[[string]$g.name] = $g } }

@@ -1,16 +1,23 @@
-// AIB_Tracker — SERVER-ONLY live position exporter for the server's AI NPCs.
+// CustomServerMods (ex-AIB_Tracker) — OUR server-only mod for backend logic that can't be
+// expressed as config: live AI position export + fresh-spawn survival buff. Grows one small
+// feature at a time; class/method names from the tracker era are kept (AIB_Tracker etc.).
 //
 // Loaded via -serverMod ONLY: it is never sent to, required by, or downloaded by clients.
-// It hooks the AI entity classes and, on a server timer, writes the living NPCs'
-// [{x,z,type,age}] positions to $profile:AI_Bandits/live_positions.json — which the API
-// reads and the Config UI map overlays, exactly like the anonymised player layer.
 //
+// Feature 1 — AI position export: hooks the AI entity classes and, on a server timer, writes
+// the living NPCs' [{x,z,type,age}] positions to $profile:AI_Bandits/live_positions.json —
+// which the API reads and the Config UI map overlays, exactly like the anonymised player layer.
 // Two AI class trees are tracked, each in its own 4_World hook file, both feeding one
 // registry (AIB_Tracker.c):
 //   - AI Bandits    InfectedBanditBase (extends DayZInfected)   type "bandit"  — @aibandits
 //   - ExpansionAI   eAIBase            (extends PlayerBase)      type "eai"     — bundled in
 //                                                                                 @expansion
 //                   (ExpansionAIPatrol / Missions / Quests all spawn eAIBase)
+//
+// Feature 2 — fresh-spawn flu buff (5_Mission/MissionServer.c): influenza resistance
+// (ONLY — no stat changes) on every NEW character, applied via OnClientNewEvent — ABOVE the
+// EquipCharacter fork Expansion hijacks when StartingClothing.EnableCustomClothing=1
+// (which silently killed the old init.c StartingEquipSetup approach).
 //
 // requiredAddons names the addon that OWNS each hooked base class, so this compiles AFTER
 // them and the `modded class` overrides actually apply:
@@ -21,7 +28,7 @@
 // match it here. Everything else (the classes, the hooks, the write dir) is confirmed.
 class CfgPatches
 {
-    class AIB_Tracker
+    class CustomServerMods
     {
         units[] = {};
         weapons[] = {};
@@ -32,10 +39,10 @@ class CfgPatches
 
 class CfgMods
 {
-    class AIB_Tracker
+    class CustomServerMods
     {
-        dir = "AIB_Tracker";
-        name = "AIB Live Tracker (server-only)";
+        dir = "CustomServerMods";
+        name = "Custom Server Mods (server-only)";
         author = "servermander";
         type = "mod";
         dependencies[] = {"World", "Mission"};
@@ -44,12 +51,12 @@ class CfgMods
             class worldScriptModule
             {
                 value = "";
-                files[] = {"AIB_Tracker/scripts/4_World"};
+                files[] = {"CustomServerMods/scripts/4_World"};
             };
             class missionScriptModule
             {
                 value = "";
-                files[] = {"AIB_Tracker/scripts/5_Mission"};
+                files[] = {"CustomServerMods/scripts/5_Mission"};
             };
         };
     };

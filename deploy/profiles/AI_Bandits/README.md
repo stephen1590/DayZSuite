@@ -76,16 +76,17 @@ The builder auto-detects which format a `maps/<mission>/DynamicAIB.json` is:
    templates/kits. Merged with `common/` into the flat file. **Chernarus uses this** — its
    coordinates come from scalespeeder (see its `SOURCE.md`) but its bandits are the shared
    `common` templates. Chernarus is currently **parked**: kept in-repo but **not deployed**
-   (see its `PARKED.md`). (Sakhal has no per-map file — its spawns come from `spawn-points.json`;
-   see below.)
+   (see its `PARKED.md`). (Sakhal has no per-map file — its spawns come from the shared map-points
+   store; see below.)
 2. **Native passthrough** — a complete mod-format file (top-level `GroupLocations` /
    `SniperLocations` / `PredefinedWeapons`, no `groups`). Copied **verbatim**, `common/` ignored.
    Kept as an escape hatch to drop in a community config unchanged without converting it.
 
-## Sakhal spawns come from spawn-points.json (no per-map DynamicAIB)
+## Sakhal spawns come from the shared map-points store (no per-map DynamicAIB)
 
-Sakhal dynamic bandits are sourced **entirely from `spawn-points.json`** — the definitive,
-repo/web-edited spawn store — so there is no `maps/dayzOffline.sakhal/DynamicAIB.json`. Each point
+Sakhal dynamic bandits are sourced **entirely from `profiles/AI_Shared/map-points.json`** — the
+SHARED spawn store (it feeds ExpansionAI too), web-edited — so there is no
+`maps/dayzOffline.sakhal/DynamicAIB.json`. Each point
 carries `name`, `map`, optional `category`/`size`, and `x`/`y`/`z`; `common/classification.json`
 maps the `category` token to a template and the `size` letter to a member count, and the builder
 composes a group per point at prestart (a point with no `category` becomes a base holdout).
@@ -94,9 +95,9 @@ composes a group per point at prestart (a point with no `category` becomes a bas
 click empty map to add one, edit fields in the panel, and **Save**. Save writes the box copy live
 (via the API's `configs/set-spawns` -> `dayz-ctl spawn-write`, snapshotted, keep 10) and applies at
 the next restart. The deploy pulls the box copy back into the repo (`Sync-SpawnPoints.ps1`) so git
-stays the durable record. You can also hand-edit `spawn-points.json` directly.
+stays the durable record. You can also hand-edit `profiles/AI_Shared/map-points.json` directly.
 
-`spawn-points.json` was seeded once from the last VPP snapshot. VPP is no longer the source — the
+The map-points store was seeded once from the last VPP snapshot. VPP is no longer the source — the
 old importer/migrator was deleted 2026-07-16 (git history has it), not part of the
 deploy. `StaticAIB.json` for Sakhal (3 fixed sentry NPCs) is a separate system and stays per-map.
 

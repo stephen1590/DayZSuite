@@ -98,8 +98,7 @@
       "BBP_DisableCraftVanillaFence": 1,
       "BBP_DisableCraftVanillaWatchtower": 1
     },
-    "profiles/ExpansionMod/Settings/AirdropSettings.json": {},
-    "profiles/AI_Bandits/spawn-points.json": {}
+    "profiles/ExpansionMod/Settings/AirdropSettings.json": {}
   },
   "mpmissions": {
     "common": {
