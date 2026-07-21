@@ -1,0 +1,15 @@
+meta {
+  name: override-versions
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/dayz/configs/override-versions
+  body: none
+  auth: none
+}
+
+docs {
+  list config-overrides.json snapshots (newest first) for rollback
+}

@@ -1,0 +1,12 @@
+{
+  "name": "dayz-api-bruno",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node spec-to-bru.mjs"
+  },
+  "dependencies": {
+    "@usebruno/lang": "^0.37.1",
+    "yaml": "^2.6.0"
+  }
+}

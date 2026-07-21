@@ -1,0 +1,47 @@
+{
+  // Monitoring stack — generic Prometheus + node_exporter + Grafana.
+  // Repeatable by design: nothing service-specific is baked into the templates or
+  // provision.sh. To stand this up on another box, copy this file to
+  // deploy.config.json, point host.config.env at that box, and trim ScrapeJobs.
+  "SiteName": "monitoring",
+
+  // Loopback-only listeners: nothing in the stack is TLS'd or authed box-to-box.
+  // Grafana is the one public face, and only via the nginx vhost below.
+  // Grafana's default port is 3000 — already claimed on this box (port map:
+  // ../../../CLAUDE.md), so use 3001. On a
+  // fresh box, check `ss -tln` for a free loopback port before picking one.
+  "PrometheusListen": "127.0.0.1:9090",
+  "NodeExporterListen": "127.0.0.1:9100",
+  "GrafanaListen": "127.0.0.1:3001",
+
+  // TSDB history window — this is how far back Grafana can look.
+  "RetentionTime": "30d",
+
+  // Alert-rule thresholds (provisioned into Grafana as code, bound to the
+  // Prometheus datasource). "In-Grafana only" for now — no contact point, so
+  // alerts show state on Grafana's Alerting page + dashboards but notify nowhere.
+  // Add a contact point later to get pinged off-box.
+  "Alerts": {
+    "DiskFreePctBelow": 10,
+    "MemUsedPctAbove": 90,
+    "CpuBusyPctAbove": 90
+  },
+
+  // Global scrape cadence (node + prometheus jobs).
+  "ScrapeIntervalSec": 15,
+
+  // App exporters on this box, one row each. Job: [a-z0-9_-]. Target: host:port.
+  // Path defaults to /metrics, IntervalSec to the global cadence. This list is the
+  // ONLY box-specific part of the stack.
+  "ScrapeJobs": [
+    // The API exports the DayZ series (unit footprint + players) at /metrics.
+    // 30s: each scrape crosses the sudo bridge + RCon; the app caches for 10s.
+    { "Job": "dayz-api", "Target": "127.0.0.1:3100", "IntervalSec": 30 }
+  ],
+
+  // --- Grafana's public face (../../Provision-Tls.ps1 -Service Monitoring) ---
+  "Hostnames": ["grafana.${BaseDomain}"],
+  "NginxTemplate": "nginx/grafana.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/grafana-http-only.conf.template",
+  "TemplateVars": { "__GRAFANA_UPSTREAM__": "${GrafanaListen}" }
+}

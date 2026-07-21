@@ -1,0 +1,61 @@
+{{- $id    := .Get "id" -}}
+{{- $field := .Get "field" -}}
+{{- $org   := index (where $.Site.Data.organizations "id" $id) 0 -}}
+{{- if not $org -}}{{- errorf "sporg: no organization with id %q" $id -}}{{- end -}}
+
+{{- if eq $field "name" -}}
+  {{- $org.name -}}
+
+{{- else if eq $field "phone" -}}
+  {{- with $org.phone -}}
+    {{- $tel := printf "+1%s" (. | replaceRE "[^0-9]" "") -}}
+    <a href="tel:{{ $tel }}">{{ . }}</a>
+  {{- end -}}
+
+{{- else if eq $field "email" -}}
+  {{- with $org.email -}}
+    <a href="mailto:{{ . }}">{{ . }}</a>
+  {{- end -}}
+
+{{- else if eq $field "website" -}}
+  {{- with $org.website -}}{{ . }}{{- end -}}
+
+{{- else if eq $field "donate" -}}
+  {{- with $org.donate -}}{{ . }}{{- end -}}
+
+{{- else if eq $field "logo" -}}
+  {{- with $org.logo -}}
+    <img src="{{ . }}" alt="{{ $org.name }}">
+  {{- end -}}
+
+{{- else if eq $field "socials" -}}
+  {{- $iconMap := dict
+    "instagram" "/images/icons/Instagram.png"
+    "facebook"  "/images/icons/Facebook.png"
+    "tiktok"    "/images/icons/TikTok.png"
+    "youtube"   "/images/icons/Youtube.png"
+    "linkedin"  "/images/icons/LinkedIN.png"
+  -}}
+  {{- $order := slice "instagram" "facebook" "tiktok" "youtube" "linkedin" -}}
+  <span class="sc-sporg-socials">
+    {{- with $org.donate -}}
+      <a href="{{ . }}" target="_blank" rel="noopener noreferrer"><img src="/images/icons/Donation%20Hearts.png" width="25px" alt="Donate"></a>
+    {{- end -}}
+    {{- with $org.phone -}}
+      {{- $tel := printf "+1%s" (. | replaceRE "[^0-9]" "") -}}
+      <a href="tel:{{ $tel }}"><img src="/images/icons/Phone.png" width="25px" alt="Phone"></a>
+    {{- end -}}
+    {{- with $org.email -}}
+      <a href="mailto:{{ . }}"><img src="/images/icons/Email.png" width="25px" alt="Email"></a>
+    {{- end -}}
+    {{- range $order -}}
+      {{- $url := index $org.social . -}}
+      {{- if $url -}}
+        <a href="{{ $url }}" target="_blank" rel="noopener noreferrer"><img src="{{ index $iconMap . }}" width="25px" alt="{{ . }}"></a>
+      {{- end -}}
+    {{- end -}}
+  </span>
+
+{{- else -}}
+  {{- errorf "sporg: unknown field %q (org: %q). Valid: name, phone, email, website, donate, logo, socials" $field $id -}}
+{{- end -}}

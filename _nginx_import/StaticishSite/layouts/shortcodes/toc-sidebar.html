@@ -1,0 +1,167 @@
+{{- $title := .Get "title" | default .Page.Title -}}
+{{- $collapsed := eq (.Get "collapsed") "true" -}}
+<aside class="sc-toc-sidebar">
+  <nav class="sc-toc-nav" aria-label="Page contents">
+    <div class="sc-toc-header">
+      <p class="sc-toc-label">{{ $title }}</p>
+      <button class="sc-toc-collapse-btn" data-state="{{ if $collapsed }}closed{{ else }}open{{ end }}" onclick="scCollapseToggle(this)">{{ if $collapsed }}Expand all{{ else }}Collapse all{{ end }}</button>
+    </div>
+    {{ .Page.TableOfContents }}
+  </nav>
+</aside>
+<script>
+(function () {
+  function buildSections() {
+    var sidebar = document.querySelector('.sc-toc-sidebar');
+    if (!sidebar) return;
+    var container = sidebar.closest('.post-content, .md-content, main') || document.body;
+    var directContent = null;
+    var el = sidebar;
+    while (el.parentElement) {
+      el = el.parentElement;
+      if (el.classList.contains('post-content') || el.classList.contains('md-content')) {
+        directContent = el;
+        break;
+      }
+    }
+    if (!directContent) return;
+
+    var groups = [];
+    var cur = null;
+
+    Array.from(directContent.children).forEach(function (node) {
+      if (node === sidebar) return;
+      if (node.tagName === 'H2') {
+        cur = { heading: node, nodes: [] };
+        groups.push(cur);
+      } else if (cur) {
+        cur.nodes.push(node);
+      }
+    });
+
+    groups.forEach(function (g) {
+      var d = document.createElement('details');
+      d.className = 'sc-section';
+      d.open = {{ if $collapsed }}false{{ else }}true{{ end }};
+      if (g.heading.id) { d.id = g.heading.id; }
+
+      var s = document.createElement('summary');
+      s.className = 'sc-section-summary';
+      s.innerHTML = g.heading.innerHTML;
+      d.appendChild(s);
+
+      g.heading.parentNode.insertBefore(d, g.heading);
+      g.heading.remove();
+
+      // If the section opens with a banner image, lift it onto the summary as
+      // a background so the title overlays it (keeps the h2 real for TOC).
+      var banner = g.nodes[0];
+      if (banner && banner.classList && banner.classList.contains('sc-section-banner')) {
+        var bImg = banner.querySelector('img');
+        var bSrc = bImg ? bImg.getAttribute('src') : '';
+        if (bSrc) {
+          s.classList.add('sc-section-summary--banner');
+          s.style.backgroundImage = "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 55%), url('" + bSrc + "')";
+          if (banner.style.height) { s.style.minHeight = banner.style.height; }
+          if (bImg && bImg.alt) { s.setAttribute('aria-label', bImg.alt); }
+        }
+        banner.remove();
+        g.nodes.shift();
+      }
+
+      // Indent the section body and group each H3 + its content into a
+      // sub-block, so orgs read as children of the H2 (rail/dot styled in CSS).
+      var body = document.createElement('div');
+      body.className = 'sc-section-body';
+      var sub = null;
+      g.nodes.forEach(function (n) {
+        if (n.tagName === 'H3') {
+          sub = document.createElement('div');
+          sub.className = 'sc-subsection';
+          body.appendChild(sub);
+        } else if (n.tagName === 'HR') {
+          sub = null;
+          body.appendChild(n);
+          return;
+        }
+        (sub || body).appendChild(n);
+      });
+      d.appendChild(body);
+    });
+  }
+
+  // Opening a section grows the page; if we scroll before that new layout is
+  // committed, the browser caps the scroll against the old (shorter) height and
+  // lands short — the "needs a 2nd click" bug. A single delay is fragile (large
+  // sections take a few frames), so re-align over a short window until layout
+  // settles. Bound to the latest target so a new click cancels a pending settle.
+  var scActiveTarget = null;
+  function scScrollTo(target) {
+    scActiveTarget = target;
+    // Re-align every frame for a short window: opening a section grows the page
+    // over a few frames, and the position briefly plateaus at a capped value
+    // before settling, so stopping early lands short. Bound to the latest target
+    // so a new click cancels a pending settle.
+    var end = performance.now() + 350;
+    (function settle() {
+      if (scActiveTarget !== target) return;
+      target.scrollIntoView();
+      if (performance.now() < end) { requestAnimationFrame(settle); }
+    })();
+  }
+
+  // Expand the section a hash points at (TOC click or direct link), then scroll
+  // to it — the target may sit inside a collapsed <details>.
+  function revealHash() {
+    var id = location.hash ? decodeURIComponent(location.hash.slice(1)) : '';
+    if (!id) return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    var sec = target.closest && target.closest('.sc-section');
+    if (sec && !sec.open) { sec.open = true; }
+    scScrollTo(target);
+  }
+
+  function init() {
+    buildSections();
+    revealHash();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  if (!window.scHashRevealBound) {
+    window.scHashRevealBound = true;
+    // Direct links / back-forward navigation.
+    window.addEventListener('hashchange', revealHash);
+    // In-page anchor clicks (TOC links). Capture phase + stopPropagation so the
+    // theme's own handler doesn't also run: it would scroll before the section
+    // has expanded (needing a second click). We open, then scroll after reflow.
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href^="#"]');
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      var target = id && document.getElementById(id);
+      if (!target) return;
+      var sec = target.closest && target.closest('.sc-section');
+      if (!sec) return; // not one of our sections — let the theme handle it
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!sec.open) { sec.open = true; }
+      if (location.hash !== '#' + id) { history.pushState(null, '', '#' + id); }
+      scScrollTo(target);
+    }, true);
+  }
+})();
+
+function scCollapseToggle(btn) {
+  var all = document.querySelectorAll('.sc-section');
+  var opening = btn.dataset.state !== 'open';
+  all.forEach(function (d) { d.open = opening; });
+  btn.dataset.state = opening ? 'open' : 'closed';
+  btn.textContent = opening ? 'Collapse all' : 'Expand all';
+}
+</script>

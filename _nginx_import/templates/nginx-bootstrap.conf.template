@@ -1,0 +1,12 @@
+# Port-80-only bootstrap vhost — RENDERED by ../Provision-Tls.ps1 into the
+# service's stage/tls/. Installed FIRST so nginx can answer the ACME HTTP-01
+# challenge before the certificate exists; replaced by the full site config
+# (nginx-site.conf) in the same run once the cert is issued.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __SERVER_NAMES__;
+    client_max_body_size 20M;
+    location ^~ /.well-known/acme-challenge/ { root __ACME_WEBROOT__; default_type "text/plain"; try_files $uri =404; }
+    location / { return 301 https://$host$request_uri; }
+}

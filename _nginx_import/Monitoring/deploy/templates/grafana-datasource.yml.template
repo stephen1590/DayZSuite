@@ -1,0 +1,16 @@
+# Grafana datasource provisioning. Rendered by Deploy-Monitoring.ps1 — do NOT
+# hand-edit the deployed copy (/etc/grafana/provisioning/datasources/monitoring.yaml).
+# The uid 'prometheus' is a CONTRACT: shipped dashboards bind their panels to it
+# (Deploy-Monitoring substitutes it into vendored dashboards at stage time).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://__PROMETHEUS_LISTEN__
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: __SCRAPE_INTERVAL__s

@@ -1,0 +1,110 @@
+# Personal Projects — nginx + Let's Encrypt (HTTP-01).
+# Provision-Tls.ps1 fills in the hostname, site webroot, and ACME webroot when
+# it renders this. Do not edit the deployed copy by hand — change this template
+# and re-run provisioning.
+#
+# ROUTING / DEFAULT SERVER: *.cytonicmushroom.ddns.net all resolves to this box,
+# so nginx must decide what an UNMATCHED hostname gets. The static site is the
+# box's default_server (the catch-all blocks at the bottom of this file). That
+# means a vhost is reached ONLY on its own exact server_name: the apex here, and
+# their own vhosts (installed per service by Provision-Tls). Any other subdomain
+# falls through to the catch-all here and gets a 404 — it never reaches another
+# service's vhost. (Each service still deploys independently.)
+
+# Port 80: ACME challenge + redirect only. No site content is served over HTTP.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __HOSTNAME__;
+
+    # HTTP-01 challenge lives in a directory separate from the site root, so
+    # content deploys (rsync --delete) never touch it.
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_WEBROOT__;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# Port 443: the actual static site.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name __HOSTNAME__;
+
+    root __WEBROOT__;
+    index index.html;
+    error_page 404 /404.html;
+
+    ssl_certificate     /etc/letsencrypt/live/__HOSTNAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__HOSTNAME__/privkey.pem;
+
+    # Mozilla "intermediate" TLS baseline.
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # HSTS without includeSubDomains/preload — safe on a shared DDNS domain.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Catch-all (default_server): any hostname pointing at this box that is NOT an
+# exact match above (apex) or claimed by another service's vhost lands here and
+# gets a 404. This is what makes the static site — no other service — the box's
+# fallback. Exactly ONE default_server may exist per port across all enabled
+# sites; the other vhosts are deliberately NOT default_server.
+
+# Port 80 fallback. Still answers ACME so a future name can be validated; every
+# other path 404s (no redirect — an unknown name has no cert to redirect to).
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_WEBROOT__;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+    location / { return 404; }
+}
+
+# Port 443 fallback. Uses the apex certificate; a browser hitting an unknown
+# subdomain over HTTPS sees a cert-name mismatch first (there is no wildcard
+# cert — .ddns.net can't do DNS-01), and if it proceeds it gets the 404 page.
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /etc/letsencrypt/live/__HOSTNAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__HOSTNAME__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+
+    root __WEBROOT__;
+    error_page 404 /404.html;
+    location = /404.html { internal; }
+    location / { return 404; }
+}

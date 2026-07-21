@@ -1,0 +1,24 @@
+{
+  // Config Viewer deploy config. Deploy-ConfigViewer.ps1 ships the static app to
+  // the webroot; ../../Provision-Tls.ps1 -Service ConfigViewer reads the TLS keys.
+  // Shared host + domain values come from ../../host.config.env (merged in by
+  // Load-DeployConfig.ps1); ${BaseDomain} resolves from there, so the domain
+  // lives in exactly one place. No secrets here — the viewer holds none; each
+  // user pastes their own API key in the browser.
+
+  // --- content deploy (Deploy-ConfigViewer.ps1) ---
+  "RemotePath": "/var/www/config-viewer",       // web root nginx serves the app from
+
+  // --- TLS provisioning (../../Provision-Tls.ps1 -Service ConfigViewer) ---
+  "SiteName": "config-viewer",
+  "Hostnames": ["configs.${BaseDomain}"],        // 1 name: the viewer subdomain
+  "NginxTemplate": "nginx/config-viewer.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/config-viewer-http-only.conf.template",
+  "Webroot": "/var/www/config-viewer",           // = RemotePath; engine mkdir+chowns to SshUser
+  "TemplateVars": {
+    // Where /api/ is proxied. MUST match the API service's Port (Api/deploy.config.json
+    // "Port": 3100). Kept literal here because that port is a stable primitive and
+    // the two services deploy independently.
+    "__API_UPSTREAM__": "localhost:3100"
+  }
+}

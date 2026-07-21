@@ -1,0 +1,33 @@
+# Personal Projects — a static-ish Hugo site (Delver-themed hugo-book).
+# Portable: relativeURLs makes internal links page-relative so the site works on
+# any host, under a subpath, or opened straight from disk. If you later settle on
+# a domain, set baseURL to it and drop relativeURLs for cleaner canonical/RSS.
+baseURL = '/'
+relativeURLs = true
+languageCode = 'en-us'
+title = 'Personal Projects'
+theme = 'hugo-book'
+
+# hugo-book builds the left sidebar automatically from content/docs/**.
+disablePathToLower = true
+enableGitInfo = false
+
+[params]
+  # Custom Delver palette (light + dark) — defined in assets/_custom.scss.
+  # The dark variant is the "nowhere"; it engages on prefers-color-scheme: dark.
+  BookTheme = 'delver'
+  BookSection = 'docs'
+  BookToC = true
+  BookSearch = true
+  BookServiceWorker = false   # no PWA cache — simpler, and plays nice with relative URLs
+  BookFavicon = 'images/favicon.svg'
+
+[markup]
+  [markup.goldmark.renderer]
+    unsafe = true             # allow raw HTML in markdown (needed by some shortcodes)
+  [markup.tableOfContents]
+    startLevel = 2
+    endLevel = 3
+  [markup.highlight]
+    style = 'base16-snazzy'   # dark code theme, reads well on the Delver ground
+    noClasses = true

@@ -1,0 +1,12 @@
+{{- $src := .Get "src" -}}
+{{- $title := .Get "title" -}}
+{{- $height := .Get "height" | default "300px" -}}
+
+<div class="sc-section-cover" style="height:{{ $height }}">
+  <img src="{{ $src }}" alt="{{ $title }}">
+  {{- with $title }}
+  <div class="sc-section-cover-title">
+    <h2>{{ . }}</h2>
+  </div>
+  {{- end }}
+</div>

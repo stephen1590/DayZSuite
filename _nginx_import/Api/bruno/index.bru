@@ -1,0 +1,17 @@
+meta {
+  name: index
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+docs {
+  whole-API discovery: every endpoint + the dayz action allowlist (public, no auth)
+  
+  The one place to see the entire surface. `endpoints` is auto-collected from the live route table (new endpoints/namespaces appear here for free), and `actions.dayz` expands the single POST /dayz/:action route into its named actions. Per-namespace action detail also lives at GET /dayz/actions.
+}

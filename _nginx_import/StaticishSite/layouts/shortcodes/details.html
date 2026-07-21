@@ -1,0 +1,7 @@
+{{- $summary := .Get "summary" | default "Details" -}}
+{{- $open := .Get "open" -}}
+
+<details class="sc-details"{{ if $open }} open{{ end }}>
+  <summary>{{ $summary }}</summary>
+  <div class="sc-details-content">{{ .Inner | markdownify }}</div>
+</details>

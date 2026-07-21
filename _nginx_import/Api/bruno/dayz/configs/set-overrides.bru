@@ -1,0 +1,15 @@
+meta {
+  name: set-overrides
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/dayz/configs/set-overrides
+  body: none
+  auth: none
+}
+
+docs {
+  replace config-overrides.json with a new document (snapshots first; restart to apply)
+}

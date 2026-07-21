@@ -1,0 +1,30 @@
+# Config Viewer — plain HTTP, no TLS. TEMPORARY.
+# Written by Provision-Tls.ps1 -SkipTls, for use before configs.<domain> DNS
+# actually points here (so the ACME HTTP-01 challenge would fail). Once DNS is
+# correct, re-run Provision-Tls.ps1 WITHOUT -SkipTls to replace this with the
+# HTTPS vhost and issue the certificate.
+#
+# Named-only (NOT default_server) — the static site owns the catch-all.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __SERVER_NAMES__;
+    client_max_body_size 20M;
+    root __WEBROOT__;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://__API_UPSTREAM__/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+        client_max_body_size 2m;   # writes (set-overrides/set-file) carry real bodies — match the API app limit (bodyLimit in server.ts; 256k 413'd real override docs 2026-07-16)
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

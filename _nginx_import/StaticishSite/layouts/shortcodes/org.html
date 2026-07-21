@@ -1,0 +1,14 @@
+{{- $name := .Get "name" -}}
+{{- $logo := .Get "logo" -}}
+{{- $width := .Get "width" -}}
+{{- $height := .Get "height" -}}
+
+<div class="sc-org">
+  {{- with $name }}<h3 class="sc-org-name">{{ . }}</h3>{{ end }}
+  {{- with $logo }}
+  <div class="sc-org-logo">
+    <img src="{{ . }}" alt="{{ $name }}"
+      {{- if or $width $height }} style="{{ if $width }}width:{{ $width }};{{ end }}{{ if $height }}height:{{ $height }};{{ end }}"{{ end }}>
+  </div>
+  {{- end }}
+</div>

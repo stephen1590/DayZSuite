@@ -1,0 +1,958 @@
+#!/usr/bin/env bash
+# dayz-ctl — the ONE privileged action script. Installed at /usr/local/bin/dayz-ctl
+# and callable by the API service ONLY as `sudo dayz-ctl <verb> [arg...]`
+# (see api.sudoers). This is the entire privilege surface of the API:
+# a closed verb set, every argument re-validated here regardless of what the caller
+# claims to have checked. Rendered from this template by Deploy-Api.ps1
+# (__UNIT__ / __SERVER_DIR__ filled in) — never hand-edit the installed copy.
+set -euo pipefail
+
+UNIT='__UNIT__'
+SERVER_DIR='__SERVER_DIR__'
+RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (config-registry.json, DayZ-Server repo)
+CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
+IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
+WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
+GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; override-write refuses to target them
+NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
+DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
+DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
+DOCS_NAMES='__DOCS_NAMES__'        # space list of doc basename prefixes (Docs.Names, e.g. readme license) - catches extensionless files
+DOCS_MAXDEPTH='__DOCS_MAXDEPTH__'  # find maxdepth within each root (Docs.MaxDepth)
+LOG_SOURCES='__LOG_SOURCES__'      # rendered "id<TAB>reldir<TAB>glob<TAB>label" log-source registry (deploy.config.json Dayz.LogSources); log-sources/log-list/log-read resolve an id to its dir + filename glob
+
+die() { echo "dayz-ctl: $*" >&2; exit 1; }
+
+OVERRIDES="$SERVER_DIR/config-overrides.json"
+OVR_VERSIONS="$SERVER_DIR/.overrides-versions"
+# The SHARED spawn store: one neutral file feeding BOTH AIB and Expansion (Build-AIBandits,
+# Build-AILocations, Build-AIPatrols all read it). Neutral location, not under any one mod's folder.
+SPAWNS="$SERVER_DIR/profiles/AI_Shared/map-points.json"
+SPAWN_VERSIONS="$SERVER_DIR/.spawn-versions"
+
+# Snapshot the current config-overrides.json into the versions dir (keep the 10 newest),
+# restoring the server-dir owner so a later ubuntu-run deploy can still replace it. Best-effort.
+snapshot_overrides() {
+  [ -f "$OVERRIDES" ] || return 0
+  mkdir -p "$OVR_VERSIONS"
+  cp -p "$OVERRIDES" "$OVR_VERSIONS/config-overrides.$(date -u +%Y%m%dT%H%M%S%NZ).json"
+  find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' | sort -r | tail -n +11 \
+    | while IFS= read -r _old; do rm -f "$_old"; done
+  _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+  [ -n "$_own" ] && chown -R "$_own" "$OVR_VERSIONS" 2>/dev/null || true
+}
+
+# Same pattern for the map-points store (keep the 10 newest). A save is reversible from these.
+snapshot_spawns() {
+  [ -f "$SPAWNS" ] || return 0
+  mkdir -p "$SPAWN_VERSIONS"
+  cp -p "$SPAWNS" "$SPAWN_VERSIONS/map-points.$(date -u +%Y%m%dT%H%M%S%NZ).json"
+  find "$SPAWN_VERSIONS" -maxdepth 1 -name 'map-points.*.json' | sort -r | tail -n +11 \
+    | while IFS= read -r _old; do rm -f "$_old"; done
+  _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+  [ -n "$_own" ] && chown -R "$_own" "$SPAWN_VERSIONS" 2>/dev/null || true
+}
+
+# Read + print ONE config file: the resolved relpath on line 1, then the contents with
+# well-known secret values masked (backstop; the allowlists exclude secret-bearing files).
+# Callers pass a relpath THEY resolved from an allowlist — this never forms a path from
+# caller input. Exit 2 = not present, 3 = too large.
+print_config_file() {
+  _rel="$1"
+  _file="$SERVER_DIR/$_rel"
+  [ -f "$_file" ] || { echo "dayz-ctl: config file not present: $_rel" >&2; exit 2; }
+  # Defence in depth: the resolved real path must stay under the server dir
+  # (guards against a symlink slipped into an allowlisted folder).
+  _base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+  _real="$(realpath -- "$_file" 2>/dev/null || printf '')"
+  case "$_real" in "$_base"/*) ;; *) die "config resolved outside the server dir" ;; esac
+  _sz="$(wc -c < "$_file")"
+  [ "$_sz" -le 786432 ] || { echo "dayz-ctl: config too large ($_sz bytes): $_rel" >&2; exit 3; }
+  printf '%s\n' "$_rel"
+  sed -E 's/((passwordadmin|password|token|secret|apikey|api_key)"?[[:space:]]*[:=][[:space:]]*")[^"]*/\1REDACTED/Ig' "$_file"
+}
+
+# True if a path's BASENAME qualifies as documentation: extension in DOCS_EXT, or the name
+# starts with a DOCS_NAMES prefix (catches extensionless LICENSE/NOTICE). Case-insensitive.
+is_doc() {
+  _b="${1##*/}"; _lc="${_b,,}"; _e="${_b##*.}"
+  case ",${DOCS_EXT,,}," in *",${_e,,},"*) return 0 ;; esac
+  for _p in $DOCS_NAMES; do case "$_lc" in "${_p,,}"*) return 0 ;; esac; done
+  return 1
+}
+
+# Resolve a log-source id (deploy.config.json Dayz.LogSources) to its "reldir<TAB>glob".
+# Prints nothing and returns 1 for an unknown id. The id set is a closed rendered table,
+# so log-list/log-read never form a dir or glob from caller input - only the id is matched.
+log_source_lookup() {
+  _hit="$(printf '%s\n' "$LOG_SOURCES" | awk -F'\t' -v id="$1" '$1==id{print $2"\t"$3; exit}')"
+  [ -n "$_hit" ] || return 1
+  printf '%s\n' "$_hit"
+}
+
+# Read config-overrides.json and print its TARGET-FILE keys as TAB tokens:
+#   F <TAB> <filerel>              (files.<filerel>)
+#   M <TAB> <mission> <TAB> <filerel>  (mpmissions.<mission>.<filerel>; mission may be 'common')
+#   D <TAB> <mission>              (a DECLARED mission key - even an empty {} slot)
+# The D lines drive the common-layer expansion: common targets resolve only into declared
+# missions (same rule as Apply-ConfigOverrides), so a foreign dir under mpmissions/ (a side
+# project, an admin copy) never enters the read allowlist. No empty fields (read treats TAB
+# as whitespace). _-prefixed keys are skipped. jq preferred, python3 fallback; no tool = none.
+_extract_targets() {
+  # Emit tokens from BOTH the selector-patch layers (root .files/.mpmissions) and the whole-file
+  # layers (.wholeFiles.files/.mpmissions) so a file owned wholesale stays readable/editable.
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '
+      def emit($o):
+        ($o.files // {} | keys[] | select(startswith("_")|not) | "F\t" + .),
+        ($o.mpmissions // {} | keys[] | select(. != "common") | select(startswith("_")|not) | "D\t" + .),
+        ($o.mpmissions // {} | to_entries[] | .key as $m
+           | (.value // {} | keys[] | select(startswith("_")|not) | "M\t" + $m + "\t" + .));
+      emit(.), emit(.wholeFiles // {})
+    ' 2>/dev/null || true
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+def ks(o): return [k for k in o.keys() if not k.startswith("_")] if isinstance(o, dict) else []
+def emit(o):
+    if not isinstance(o, dict): return
+    for k in ks(o.get("files") or {}): print("F\t" + k)
+    mp = o.get("mpmissions") or {}
+    if isinstance(mp, dict):
+        for m in mp.keys():
+            if m != "common" and not m.startswith("_"): print("D\t" + m)
+        for m, v in mp.items():
+            if m.startswith("_"): continue
+            for k in ks(v or {}): print("M\t" + m + "\t" + k)
+emit(d); emit(d.get("wholeFiles") or {})
+' 2>/dev/null || true
+  fi
+}
+
+# Emit every EXISTING file targeted by config-overrides.json in emit_allowed's 4-col
+# format (group=Overrides). files.<rel> -> <rel>; mpmissions.<mission>.<rel> ->
+# mpmissions/<mission>/<rel>; mpmissions.common.<rel> -> that file under EACH mission dir.
+# Only files that actually exist are emitted, so the allowlist stays real paths only.
+# <name>.<ext> -> <name>.defaults.<ext> (the frozen-default companion Apply-ConfigOverrides
+# writes beside each patched file). Extensionless -> <name>.defaults.
+_defaults_path() {
+  case "$1" in
+    *.*) printf '%s.defaults.%s' "${1%.*}" "${1##*.}" ;;
+    *)   printf '%s.defaults' "$1" ;;
+  esac
+}
+_emit_target() {
+  [ -n "$1" ] || return 0
+  [ -f "$SERVER_DIR/$1" ] || return 0
+  printf 'Overrides\t%s\t%s\t%s\n' "$1" "$1" "$1"
+  # Also expose the frozen default companion if present, so the editor can show default values.
+  # Hidden from config-list (emit_allowed skips *.defaults.*); readable only via config-target.
+  _def="$(_defaults_path "$1")"
+  [ -n "$_def" ] && [ -f "$SERVER_DIR/$_def" ] && printf 'Overrides\t%s\t%s\t%s\n' "$_def" "$_def" "$_def"
+}
+emit_override_targets() {
+  [ -f "$OVERRIDES" ] || return 0
+  _tokens="$(_extract_targets < "$OVERRIDES")"
+  # Declared missions (D lines) - the only dirs the common layer may resolve into.
+  _declared="$(printf '%s\n' "$_tokens" | awk -F'\t' '$1=="D" && $2 !~ /[\/]|\.\./ {print $2}')"
+  printf '%s\n' "$_tokens" | while IFS=$'\t' read -r -a _f; do
+    case "${_f[0]:-}" in
+      F)
+        _filerel="${_f[1]:-}"
+        case "$_filerel" in ''|*..*) continue ;; esac
+        _emit_target "$_filerel"
+        ;;
+      M)
+        _mission="${_f[1]:-}"; _filerel="${_f[2]:-}"
+        case "$_filerel" in ''|*..*) continue ;; esac
+        case "$_mission" in ''|*/*|*..*) continue ;; esac   # mission is a single dir name
+        if [ "$_mission" = common ]; then
+          for _m in $_declared; do
+            [ -d "$SERVER_DIR/mpmissions/$_m" ] || continue
+            _emit_target "mpmissions/$_m/$_filerel"
+          done
+        else
+          _emit_target "mpmissions/$_mission/$_filerel"
+        fi
+        ;;
+    esac
+  done
+  return 0
+}
+
+# --- Generated-artifact guard -----------------------------------------------------------------
+# A prestart COMPILER writes these (config-registry.json "generated"); they are read-only outputs,
+# never edit inputs. GENERATED holds one ServerDir-relative glob per line ('*' = the mission
+# wildcard). A case-glob '*' spans '/' too, which is exactly what we want for the mission segment.
+_is_generated() {
+  # $1 = a concrete ServerDir-relative path. exit 0 = generated (locked), 1 = not.
+  [ -n "$GENERATED" ] || return 1
+  _rel_ig="$1"; _oldifs_ig="$IFS"; IFS=$'\n'
+  for _g in $GENERATED; do
+    [ -n "$_g" ] || continue
+    case "$_rel_ig" in $_g) IFS="$_oldifs_ig"; return 0 ;; esac
+  done
+  IFS="$_oldifs_ig"; return 1
+}
+# Read an override document on stdin; emit the generated relpath(s) it TARGETS, one per line, sorted
+# unique. An F target is its own relpath; an M target resolves to mpmissions/<mission>/<filerel>
+# (mission 'common' -> mpmissions/common/..., which the '*' wildcard still matches, so a common-layer
+# patch on a generated file is caught too). Empty output = the document touches no generated file.
+_override_generated_hits() {
+  # `if...fi` (not `_is_generated && printf`): under `set -euo pipefail` a while-loop whose last
+  # body command returns non-zero (the common case - most targets are NOT generated) makes the loop,
+  # and via pipefail the whole pipeline, exit non-zero, which would abort override-write in a `$(...)`.
+  # The if-statement always returns 0, so a clean doc yields empty output and exit 0.
+  _extract_targets | while IFS=$'\t' read -r _k _a _b; do
+    case "$_k" in
+      F) _rel="$_a" ;;
+      M) _rel="mpmissions/$_a/$_b" ;;
+      *) continue ;;
+    esac
+    if _is_generated "$_rel"; then printf '%s\n' "$_rel"; fi
+  done | LC_ALL=C sort -u
+}
+
+# Emit the full set of retrievable configs, one file per line, TAB-separated:
+#   group <TAB> name <TAB> relpath <TAB> label
+# Sources: explicit files (CONFIG_MAP "name<TAB>relpath", grouped "General") and
+# every real file under each allowlisted folder (CONFIG_DIRS "group<TAB>reldir").
+# `find -type f` does NOT follow symlinks, so nothing outside a folder is listed.
+# This is the ONE authority for what may be read: a config request must name a
+# relpath this function produced, so no caller-invented path can ever escape.
+emit_allowed() {
+  if [ -n "$CONFIG_MAP" ]; then
+    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel; do
+      [ -n "$_name" ] || continue
+      printf 'General\t%s\t%s\t%s\n' "$_name" "$_rel" "$_name"
+    done
+  fi
+  if [ -n "$CONFIG_DIRS" ]; then
+    # Each line: group<TAB>reldir<TAB>subfolders(comma-sep). Files come from the
+    # ROOT of reldir (non-recursive) plus the root of each named subfolder — you
+    # pick exactly which folders' files appear; nothing recurses into a mission's
+    # persistence tree unless you name that subfolder. Per-location cap (1000) is a
+    # silent backstop against a pathologically large directory.
+    printf '%s\n' "$CONFIG_DIRS" | while IFS=$'\t' read -r _grp _dir _subs; do
+      { [ -n "$_grp" ] && [ -n "$_dir" ]; } || continue
+      {
+        printf '%s\n' "$_dir"
+        [ -n "$_subs" ] && printf '%s\n' "$_subs" | tr ',' '\n' | while IFS= read -r _s; do
+          [ -n "$_s" ] && printf '%s/%s\n' "$_dir" "$_s"
+        done
+      } | while IFS= read -r _loc; do
+        [ -n "$_loc" ] || continue
+        _ld="$SERVER_DIR/$_loc"
+        [ -d "$_ld" ] || continue
+        find "$_ld" -maxdepth 1 -type f 2>/dev/null | LC_ALL=C sort | {
+          _n=0
+          while IFS= read -r _f; do
+            case "${_f##*/}" in *.defaults.*) continue ;; esac   # hide frozen-default baselines
+            if [ -n "$IGNORE_EXT" ]; then
+              _e="${_f##*.}"
+              case ",$IGNORE_EXT," in *",${_e,,},"*) continue ;; esac   # global ignore-filetype
+            fi
+            _n=$((_n + 1))
+            [ "$_n" -le 1000 ] || break
+            printf '%s\t%s\t%s\t%s\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
+          done
+        } || true
+      done
+    done
+  fi
+  return 0
+}
+
+# --- Update system helpers (see the update-arm/disarm/status verbs) ----------------
+# The DayZ deploy owns the update MACHINERY (update.sh + prestart.sh apply it, update-check.sh
+# arms it on a timer). dayz-ctl only crosses the privilege bridge to: arm/disarm the pending
+# flag (the server dir is the game user's, unwritable by the API service account) and read the
+# status the machinery leaves behind. State files, all under SERVER_DIR:
+#   .update-pending  present = an update is queued for the next start (first line = reason)
+#   .update-check    last auto-check: installedBuild/latestBuild/checkedAt/checkOk (KEY=VALUE)
+#   .update-lastrun  last applied update: started/finished/exitCode/ok/from/to/reason (KEY=VALUE)
+#   .update-lastlog  tail of the last update's steamcmd output (plain text)
+UPDATE_PENDING="$SERVER_DIR/.update-pending"
+UPDATE_MANIFEST="$SERVER_DIR/steamapps/appmanifest_223350.acf"
+
+# Value for KEY from a KEY=VALUE file (first match; keeps any '=' in the value). Fail-safe
+# under set -e: a missing file (sed exits 2) or SIGPIPE from head must yield empty, not abort.
+_kv() { [ -f "$2" ] || return 0; sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1 || true; }
+
+# Installed server APP build id from the Steam manifest on disk (empty if absent). Must be
+# fail-safe: this script runs under `set -e`, so guard the missing-file / no-match / SIGPIPE
+# cases so a status read never aborts just because the manifest isn't there yet.
+_installed_build() {
+  [ -f "$UPDATE_MANIFEST" ] || return 0
+  grep -oE '"buildid"[[:space:]]*"[0-9]+"' "$UPDATE_MANIFEST" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true
+}
+
+# Emit the update status as one JSON object on stdout. Values come from the manifest +
+# the state files; string fields go through jq/python3 so arbitrary log/reason text is
+# safely escaped. jq preferred, python3 fallback (matching this script's other JSON paths).
+emit_update_status() {
+  local installed latest checkedAt checkOkRaw updateAvailable pending pendingReason
+  installed="$(_installed_build)"
+  latest="$(_kv latestBuild "$SERVER_DIR/.update-check")"
+  checkedAt="$(_kv checkedAt "$SERVER_DIR/.update-check")"
+  checkOkRaw="$(_kv checkOk "$SERVER_DIR/.update-check")"
+  updateAvailable=false
+  [ "$checkOkRaw" = 1 ] && [ -n "$latest" ] && [ -n "$installed" ] && [ "$latest" != "$installed" ] && updateAvailable=true
+  pending=false; pendingReason=""
+  [ -f "$UPDATE_PENDING" ] && { pending=true; pendingReason="$(head -1 "$UPDATE_PENDING" 2>/dev/null || true)"; }
+
+  local hasLast=false lrStarted="" lrFinished="" lrExit="" lrOkRaw="" lrFrom="" lrTo="" lrReason="" lrLog=""
+  if [ -f "$SERVER_DIR/.update-lastrun" ]; then
+    hasLast=true
+    lrStarted="$(_kv startedAt "$SERVER_DIR/.update-lastrun")"
+    lrFinished="$(_kv finishedAt "$SERVER_DIR/.update-lastrun")"
+    lrExit="$(_kv exitCode "$SERVER_DIR/.update-lastrun")"
+    lrOkRaw="$(_kv ok "$SERVER_DIR/.update-lastrun")"
+    lrFrom="$(_kv fromBuild "$SERVER_DIR/.update-lastrun")"
+    lrTo="$(_kv toBuild "$SERVER_DIR/.update-lastrun")"
+    lrReason="$(_kv reason "$SERVER_DIR/.update-lastrun")"
+    lrLog="$(cat "$SERVER_DIR/.update-lastlog" 2>/dev/null || true)"
+  fi
+
+  # Export for the JSON engines (avoids all arg-quoting); booleans/numbers converted inside.
+  export U_installed="$installed" U_latest="$latest" U_checkedAt="$checkedAt" \
+         U_checkOk="$checkOkRaw" U_updateAvailable="$updateAvailable" \
+         U_pending="$pending" U_pendingReason="$pendingReason" U_hasLast="$hasLast" \
+         U_lrStarted="$lrStarted" U_lrFinished="$lrFinished" U_lrExit="$lrExit" \
+         U_lrOk="$lrOkRaw" U_lrFrom="$lrFrom" U_lrTo="$lrTo" U_lrReason="$lrReason" U_lrLog="$lrLog"
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -n '
+      def nz: if . == "" then null else . end;
+      def numornull: if test("^[0-9]+$") then tonumber else null end;
+      {
+        installedBuild:  ($ENV.U_installed | nz),
+        latestBuild:     ($ENV.U_latest | nz),
+        updateAvailable: ($ENV.U_updateAvailable == "true"),
+        checkedAt:       ($ENV.U_checkedAt | nz),
+        checkOk:         ($ENV.U_checkOk == "1"),
+        pending:         ($ENV.U_pending == "true"),
+        pendingReason:   ($ENV.U_pendingReason | nz),
+        lastRun: (if $ENV.U_hasLast == "true" then {
+          startedAt:  ($ENV.U_lrStarted | nz),
+          finishedAt: ($ENV.U_lrFinished | nz),
+          exitCode:   ($ENV.U_lrExit | numornull),
+          ok:         ($ENV.U_lrOk == "1"),
+          fromBuild:  ($ENV.U_lrFrom | nz),
+          toBuild:    ($ENV.U_lrTo | nz),
+          reason:     ($ENV.U_lrReason | nz),
+          log:        ($ENV.U_lrLog | nz)
+        } else null end)
+      }'
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import os, json
+def nz(v): return v if v else None
+e = os.environ
+last = None
+if e.get("U_hasLast") == "true":
+    ex = e.get("U_lrExit", "")
+    last = {
+        "startedAt": nz(e.get("U_lrStarted")), "finishedAt": nz(e.get("U_lrFinished")),
+        "exitCode": int(ex) if ex.isdigit() else None, "ok": e.get("U_lrOk") == "1",
+        "fromBuild": nz(e.get("U_lrFrom")), "toBuild": nz(e.get("U_lrTo")),
+        "reason": nz(e.get("U_lrReason")), "log": nz(e.get("U_lrLog")),
+    }
+print(json.dumps({
+    "installedBuild": nz(e.get("U_installed")), "latestBuild": nz(e.get("U_latest")),
+    "updateAvailable": e.get("U_updateAvailable") == "true", "checkedAt": nz(e.get("U_checkedAt")),
+    "checkOk": e.get("U_checkOk") == "1", "pending": e.get("U_pending") == "true",
+    "pendingReason": nz(e.get("U_pendingReason")), "lastRun": last,
+}))'
+  else
+    die "update-status: no JSON tool (jq/python3) on the box"
+  fi
+}
+
+verb="${1:-}"
+arg="${2:-}"
+
+case "$verb" in
+  restart|start|stop)
+    exec systemctl "$verb" "$UNIT"
+    ;;
+
+  status)
+    # Print active/inactive/... and always exit 0 (status is a query, not a failure).
+    systemctl is-active "$UNIT" || true
+    ;;
+
+  players)
+    [ -f "$RCON" ] || die "rcon script not found: $RCON"
+    exec pwsh -NoProfile -File "$RCON" "$SERVER_DIR" players
+    ;;
+
+  broadcast)
+    [ -n "$arg" ] || die "broadcast needs a message"
+    # Second line of defence: printable ASCII only, capped. The service sanitizes
+    # too, but this script trusts nothing it is handed.
+    msg="$(printf '%s' "$arg" | tr -cd '\11\12\40-\176' | cut -c1-200)"
+    [ -n "$msg" ] || die "empty message after sanitising"
+    [ -f "$RCON" ] || die "rcon script not found: $RCON"
+    exec pwsh -NoProfile -File "$RCON" "$SERVER_DIR" "say -1 $msg"
+    ;;
+
+  set-map)
+    # Validate the mission NAME (no path traversal) AND that it is actually installed,
+    # then persist it and restart. Exit 2 specifically = unknown mission (the service
+    # maps that to a 400 for the caller).
+    case "$arg" in
+      ''|*/*|*..*) die "invalid mission name" ;;
+    esac
+    [ -d "$SERVER_DIR/mpmissions/$arg" ] || { echo "dayz-ctl: mission not installed: $arg" >&2; exit 2; }
+    printf 'DAYZ_MISSION=%s\n' "$arg" > "$SERVER_DIR/map.env"
+    exec systemctl restart "$UNIT"
+    ;;
+
+  log-sources)
+    # log-sources — the browsable log-source registry (deploy.config.json Dayz.LogSources),
+    # one per line: id<TAB>label. Feeds the viewer's source selector. No caller input.
+    printf '%s\n' "$LOG_SOURCES" | awk -F'\t' 'NF>=4{print $1"\t"$4}'
+    ;;
+
+  log-list)
+    # These log verbs exist because the service user cannot traverse into the game
+    # user's home (0750), so log reads cross the same sudo bridge as everything else.
+    # log-list <source-id> — enumerate ONE source's files (deploy.config.json
+    # Dayz.LogSources), newest first, capped at 200. The id selects a fixed dir + glob
+    # from the rendered registry; no caller input forms a path. Output per file:
+    #   name<TAB>bytes<TAB>mtime-iso
+    # Exit 2 = unknown source id.
+    src="${arg:-rpt}"
+    meta="$(log_source_lookup "$src")" || { echo "dayz-ctl: unknown log source: $src" >&2; exit 2; }
+    dir="${meta%%$'\t'*}"; glob="${meta#*$'\t'}"
+    find "$SERVER_DIR/$dir" -maxdepth 1 -type f -name "$glob" -printf '%T@\t%s\t%f\n' 2>/dev/null \
+      | sort -rn | head -n 200 | while IFS="$(printf '\t')" read -r ts sz name; do
+        printf '%s\t%s\t%s\n' "$name" "$sz" "$(date -u -d "@${ts%.*}" +%Y-%m-%dT%H:%M:%SZ)"
+      done
+    ;;
+
+  log-read)
+    # log-read <source-id> <name|@newest> <start> <count> [pattern] [ci] [raw] — read a
+    # LINE RANGE of one log file within a declared source (deploy.config.json
+    # Dayz.LogSources), optionally only the lines matching an ERE pattern (grep -E).
+    # <source-id> selects a fixed dir + filename glob; <name> is either @newest (the
+    # newest file of that source) or a bare filename that MUST match the source's glob
+    # and already exist in the source dir — the caller never forms a path, and any name
+    # with a slash, dots-trick or a shape the source glob rejects dies before touching
+    # the filesystem.
+    #
+    # NOISE PRE-FILTER: lines matching NOISE_RE (engine spam like Sakhal's
+    # "Unknown object class 'pond'") are hidden by default — dropped BEFORE
+    # counting and paging, so offsets index the visible stream and returned lines
+    # keep their original numbers. 'raw' as arg 8 disables it. NOISE_RE is
+    # prefix-safe by contract (no ^, can't match a "1234:" prefix — enforced at
+    # render time), so applying it to numbered streams is exact. It is inert on mod
+    # logs whose lines don't match the RPT-oriented pattern.
+    #
+    # <start> is 1-based within the visible/matched line stream; 0 = "the last
+    # <count> lines" (tail mode). <count> is hard-capped at 500, pattern at 256
+    # chars, 'ci' as arg 7 makes the match case-insensitive. Output contract:
+    #   line 1: the file's full path
+    #   line 2: total<TAB>matched<TAB>start<TAB>hidden
+    #           (total = raw file lines; matched = pageable lines after noise +
+    #            pattern; hidden = lines the noise filter removed)
+    #   rest:   <original-line-number>:<line text>
+    # Exit 2 = unknown source or no such log, 3 = bad pattern.
+    src="$arg"
+    name="${3:-@newest}"; start="${4:-0}"; count="${5:-100}"; pattern="${6:-}"; ci="${7:-}"; rawmode="${8:-}"
+    meta="$(log_source_lookup "$src")" || { echo "dayz-ctl: unknown log source: $src" >&2; exit 2; }
+    dir="${meta%%$'\t'*}"; glob="${meta#*$'\t'}"
+    case "$start" in ''|*[!0-9]*) die "log start must be a number (0 = tail)" ;; esac
+    case "$count" in ''|*[!0-9]*|0) die "log count must be a number >= 1" ;; esac
+    [ "$count" -le 500 ] || count=500
+    [ "${#pattern}" -le 256 ] || die "log pattern too long (max 256 chars)"
+    case "$name" in
+      @newest)
+        # shellcheck disable=SC2086  # $glob must stay unquoted so the shell expands it
+        file="$(ls -t "$SERVER_DIR/$dir/"$glob 2>/dev/null | head -1)"
+        [ -n "$file" ] || { echo "dayz-ctl: no files for log source: $src" >&2; exit 2; }
+        ;;
+      *[!A-Za-z0-9._-]*|''|.*) die "log name must be a bare filename" ;;
+      *)
+        # The name must match the source's own declared glob (defence in depth on top
+        # of the bare-filename check) and resolve to an existing file in the source dir.
+        case "$name" in
+          $glob) ;;
+          *) die "log name does not match the source pattern" ;;
+        esac
+        file="$SERVER_DIR/$dir/$name"
+        [ -f "$file" ] || { echo "dayz-ctl: no such log: $name" >&2; exit 2; }
+        ;;
+    esac
+    ciflag=''; [ "$ci" != ci ] || ciflag='-i'
+    noise="$NOISE_RE"
+    [ "$rawmode" != raw ] || noise=''
+    total="$(wc -l < "$file")"
+    hidden=0
+    if [ -n "$noise" ]; then
+      set +e; hidden="$(grep -cE -e "$noise" "$file")"; set -e
+      hidden="${hidden:-0}"
+    fi
+    if [ -n "$pattern" ]; then
+      # Probe the regex once against /dev/null: grep exit 2 = invalid pattern.
+      set +e; grep -nE $ciflag -e "$pattern" /dev/null >/dev/null 2>&1; rc=$?; set -e
+      [ "$rc" -le 1 ] || { echo "dayz-ctl: bad pattern (grep -E syntax)" >&2; exit 3; }
+      if [ -n "$noise" ]; then
+        set +e; matched="$({ grep -E $ciflag -e "$pattern" "$file" || true; } | grep -cvE -e "$noise")"; set -e
+      else
+        set +e; matched="$(grep -cE $ciflag -e "$pattern" "$file")"; set -e
+      fi
+      matched="${matched:-0}"
+    else
+      matched=$(( total - hidden ))
+    fi
+    [ "$start" -ge 1 ] || start=$(( matched - count + 1 ))
+    [ "$start" -ge 1 ] || start=1
+    end=$(( start + count - 1 ))
+    printf '%s\n' "$file"
+    printf '%s\t%s\t%s\t%s\n' "$total" "$matched" "$start" "$hidden"
+    # grep may exit 1 (no match) or 141 (SIGPIPE from sed's early quit) — both fine.
+    if [ -n "$pattern" ] && [ -n "$noise" ]; then
+      { grep -nE $ciflag -e "$pattern" "$file" || true; } | { grep -vE -e "$noise" || true; } | sed -n "${start},${end}p;${end}q"
+    elif [ -n "$pattern" ]; then
+      { grep -nE $ciflag -e "$pattern" "$file" || true; } | sed -n "${start},${end}p;${end}q"
+    elif [ -n "$noise" ]; then
+      { grep -nvE -e "$noise" "$file" || true; } | sed -n "${start},${end}p;${end}q"
+    else
+      awk -v s="$start" -v e="$end" 'NR>e{exit} NR>=s{print NR":"$0}' "$file"
+    fi
+    ;;
+
+  bandit-log)
+    # bandit-log [count] — the newest AIB Unleashed log's SPAWN/KILLED lines (each carries
+    # coordinates), for the map's live-bandit overlay. Only a numeric count reaches this; the
+    # path is fixed under the profiles dir, so no caller input forms it. Output:
+    #   line 1: the file's full path
+    #   rest:   the matched SPAWN/KILLED lines, oldest first (newest last)
+    # Exit 2 = no AIB log yet (fresh server / mod off) — the caller treats that as "none".
+    n="${2:-400}"
+    case "$n" in ''|*[!0-9]*|0) n=400 ;; esac
+    [ "$n" -le 2000 ] || n=2000
+    file="$(ls -t "$SERVER_DIR/profiles/AIB_Unleashed/Logs/"AIB_UL_*.log 2>/dev/null | head -1)"
+    [ -n "$file" ] && [ -f "$file" ] || { echo "dayz-ctl: no AIB Unleashed log under profiles/AIB_Unleashed/Logs/" >&2; exit 2; }
+    printf '%s\n' "$file"
+    { grep -aE 'SPAWN:|KILLED:' "$file" || true; } | tail -n "$n"
+    ;;
+
+  bandit-live)
+    # bandit-live — the live bandit snapshot the AIB_Tracker -serverMod writes to
+    # profiles/AI_Bandits/live_positions.json every 20s (even with zero bandits, so the file's
+    # MTIME is a liveness heartbeat). One JSON envelope on stdout:
+    #   {"ageSec": <now - mtime, seconds>, "positions": <file contents: [{"x":..,"z":..}, ...]>}
+    # ageSec lets the API reject a frozen file (server/mod down) instead of plotting ghosts —
+    # the file is never copied (read in-place here), so mtime is trustworthy. A read landing
+    # mid-write may embed partial JSON; the API treats an unparseable envelope as transient.
+    # Exit 2 = file absent (mod not loaded, or server booted <20s ago) — caller treats as "none".
+    f="$SERVER_DIR/profiles/AI_Bandits/live_positions.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no live_positions.json (AIB_Tracker serverMod not loaded yet?)" >&2; exit 2; }
+    age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+    printf '{"ageSec":%d,"positions":%s}\n' "$age" "$(cat "$f")"
+    ;;
+
+  config-list)
+    # Emit "group<TAB>name<TAB>label<TAB>relpath" for every retrievable config: explicit
+    # files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
+    # a file across its read alias, folder listing and any config-overrides target. No
+    # caller input reaches this — pure enumeration of the rendered allowlist. Hard-capped
+    # at 3000 lines so the reply can never overflow the API's 1MB read buffer (retrieval
+    # still works for names past the cap — `config` matches the full set, not this list).
+    emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4"\t"$3}' | head -n 3000 || true
+    ;;
+
+  config-generated)
+    # Emit the read-only COMPILER-OUTPUT globs (rendered GENERATED), one ServerDir-relative glob
+    # per line. The web editor marks any file matching one of these read-only (no edit/no save);
+    # override-write refuses to target one. Pure enumeration of the rendered mask - no caller input.
+    if [ -n "$GENERATED" ]; then printf '%s\n' "$GENERATED"; fi
+    ;;
+
+  config)
+    # config <name> — print ONE allowlisted config file. The NAME must EXACTLY match
+    # one emit_allowed produced (an explicit file, or a real file under an allowlisted
+    # folder). The caller never forms a path: a name not in the enumerated set — any
+    # '..' trick included — simply doesn't match. Output: line 1 = the resolved
+    # relpath, the rest = the file's contents.
+    [ -n "$arg" ] || die "config needs a name"
+    case "$arg" in *..*) die "invalid config name" ;; esac
+    case "$arg" in *[!A-Za-z0-9_./-]*) die "invalid config name" ;; esac
+    rel="$(emit_allowed | awk -F'\t' -v n="$arg" '$2==n{print $3; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: unknown config: $arg" >&2; exit 2; }
+    print_config_file "$rel"
+    ;;
+
+  config-target)
+    # config-target <relpath> — read ONE config-overrides TARGET file in full, for the
+    # overrides editor's whole-file context. Same enumerated-allowlist guarantee as config,
+    # but the set ALSO includes every file config-overrides.json patches (emit_override_targets):
+    # self-maintaining, so whatever we override we can read. A relpath neither emit_allowed nor
+    # emit_override_targets produced simply doesn't match — no caller-invented path escapes.
+    [ -n "$arg" ] || die "config-target needs a relpath"
+    case "$arg" in *..*) die "invalid config name" ;; esac
+    case "$arg" in *[!A-Za-z0-9_./-]*) die "invalid config name" ;; esac
+    rel="$({ emit_allowed; emit_override_targets; } | awk -F'\t' -v n="$arg" '$2==n{print $3; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: unknown config target: $arg" >&2; exit 2; }
+    print_config_file "$rel"
+    ;;
+
+  doc-list)
+    # Enumerate documentation files across the configured mod-folder roots (DOCS_ROOTS globs),
+    # one "mod<TAB>relpath<TAB>relname" line each. Recursive to DOCS_MAXDEPTH, filtered by is_doc
+    # (extension in DOCS_EXT or name in DOCS_NAMES). Pure enumeration — no caller input. This is
+    # the docs analogue of config-list; docs live under @mod folders, not the config allowlist.
+    [ -n "$DOCS_ROOTS" ] || exit 0
+    _md="${DOCS_MAXDEPTH:-3}"; case "$_md" in ''|*[!0-9]*) _md=3 ;; esac
+    {
+      for _glob in $DOCS_ROOTS; do
+        for _root in $SERVER_DIR/$_glob; do
+          [ -d "$_root" ] || continue
+          find -L "$_root" -maxdepth "$_md" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r _f; do
+            is_doc "$_f" || continue
+            _rel="${_f#"$SERVER_DIR"/}"
+            printf '%s\t%s\t%s\n' "${_rel%%/*}" "$_rel" "${_rel#*/}"
+          done
+        done
+      done
+    } | head -n 5000
+    ;;
+
+  doc-read)
+    # doc-read <relpath> — print ONE documentation file (a relpath from doc-list). Validated: no
+    # '..', must sit under a DOCS_ROOTS dir, must pass is_doc; then print_config_file re-checks
+    # realpath-under-server-dir + size cap + secret mask. Caller can't read a non-doc via this.
+    [ -n "$arg" ] || die "doc-read needs a relpath"
+    case "$arg" in *..*) die "invalid doc path" ;; esac
+    case "$arg" in *[!A-Za-z0-9_@./-]*) die "invalid doc path" ;; esac
+    _under=0
+    for _glob in $DOCS_ROOTS; do
+      for _root in $SERVER_DIR/$_glob; do
+        [ -d "$_root" ] || continue
+        case "$SERVER_DIR/$arg" in "$_root"/*) _under=1; break 2 ;; esac
+      done
+    done
+    [ "$_under" -eq 1 ] || die "doc path is not under a documentation root"
+    is_doc "$arg" || die "not a documentation file"
+    print_config_file "$arg"
+    ;;
+
+  info)
+    # info — one privileged snapshot behind the `status` and `sysload` actions:
+    # unit properties, the RUNNING mission + mod list (display names from each
+    # mod's meta.cpp), the scheduled-restart deadline from messages.xml, and the
+    # on-disk sizes the service user cannot stat itself (profiles/, persistence).
+    # Takes NO arguments — nothing to validate, no caller-influenced paths.
+    # Output: KEY=VALUE lines, then one 'MOD=<folder>\t<name>' line per mod.
+    state="$(systemctl is-active "$UNIT" || true)"
+    printf 'STATE=%s\n' "$state"
+
+    ts="$(systemctl show "$UNIT" -p ActiveEnterTimestamp --value || true)"
+    since=0
+    if [ -n "$ts" ] && [ "$ts" != "n/a" ]; then
+      since="$(date -d "$ts" +%s 2>/dev/null || echo 0)"
+    fi
+    printf 'SINCE=%s\n' "$since"
+
+    pid="$(systemctl show "$UNIT" -p MainPID --value || true)"
+    case "$pid" in ''|*[!0-9]*) pid=0 ;; esac
+    printf 'PID=%s\n' "$pid"
+
+    for pair in MemoryCurrent:MEM_BYTES TasksCurrent:TASKS CPUUsageNSec:CPU_NSEC NRestarts:NRESTARTS; do
+      prop="${pair%%:*}"; key="${pair##*:}"
+      val="$(systemctl show "$UNIT" -p "$prop" --value || true)"
+      case "$val" in ''|*[!0-9]*) val=0 ;; esac   # "[not set]" when the unit is down
+      printf '%s=%s\n' "$key" "$val"
+    done
+
+    # Mission + mod line: prefer the RUNNING process cmdline (the truth of what is
+    # loaded); fall back to map.env / the installed unit file when the unit is down.
+    modline=''
+    mission=''
+    if [ "$pid" -gt 0 ] && [ -r "/proc/$pid/cmdline" ]; then
+      while IFS= read -r -d '' a; do
+        case "$a" in
+          -mod=*)     modline="${a#-mod=}" ;;
+          -mission=*) mission="$(basename "${a#-mission=}")" ;;
+        esac
+      done < "/proc/$pid/cmdline"
+    fi
+    if [ -z "$mission" ] && [ -f "$SERVER_DIR/map.env" ]; then
+      mission="$(sed -n 's/^DAYZ_MISSION=//p' "$SERVER_DIR/map.env" | head -1)"
+    fi
+    if [ -z "$modline" ]; then
+      modline="$(systemctl cat "$UNIT" 2>/dev/null | sed -n 's/.*"-mod=\([^"]*\)".*/\1/p' | head -1 || true)"
+    fi
+    case "$mission" in */*|*..*) mission='' ;; esac   # defensive before any path use
+    printf 'MISSION=%s\n' "$mission"
+
+    # Scheduled restart: the native messages.xml scheduler stops the server
+    # <deadline> minutes after start (systemd Restart=always completes the cycle).
+    deadline="$(awk '
+      /<message>/               { d=0; s=0 }
+      /<deadline>/              { line=$0; gsub(/[^0-9]/, "", line); d=line }
+      /<shutdown>1<\/shutdown>/ { s=1 }
+      /<\/message>/             { if (s && d) { print d; exit } }
+    ' "$SERVER_DIR/messages.xml" 2>/dev/null || true)"
+    printf 'DEADLINE_MIN=%s\n' "${deadline:-0}"
+
+    logb="$(du -sb "$SERVER_DIR/profiles" 2>/dev/null | cut -f1 || true)"
+    printf 'LOG_DIR_BYTES=%s\n' "${logb:-0}"
+    stob=''
+    if [ -n "$mission" ] && [ -d "$SERVER_DIR/mpmissions/$mission/storage_1" ]; then
+      stob="$(du -sb "$SERVER_DIR/mpmissions/$mission/storage_1" 2>/dev/null | cut -f1 || true)"
+    fi
+    printf 'STORAGE_BYTES=%s\n' "${stob:-0}"
+
+    if [ -n "$modline" ]; then
+      # %s\n, not %s: read skips a final entry that lacks a trailing newline.
+      printf '%s\n' "$modline" | tr ';' '\n' | while IFS= read -r m; do
+        [ -n "$m" ] || continue
+        name=''
+        case "$m" in
+          */*|*..*) : ;;   # never follow a path-shaped entry
+          *)
+            meta="$SERVER_DIR/$m/meta.cpp"
+            if [ -f "$meta" ]; then
+              name="$(sed -n 's/.*name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$meta" | head -1 | tr -d '\r')"
+            fi
+            ;;
+        esac
+        printf 'MOD=%s\t%s\n' "$m" "${name:-$m}"
+      done
+    fi
+    ;;
+
+  override-read)
+    # override-read — the live config-overrides.json with its content HASH on line 1, so a writer
+    # can prove it edited the version it loaded (override-write base=<hash> rejects a stale write —
+    # the two-admin lost-update guard). Line 1 = sha256 (empty when the file is absent), rest = doc.
+    if [ -f "$OVERRIDES" ]; then
+      sha256sum "$OVERRIDES" | awk '{print $1}'
+      cat "$OVERRIDES"
+    else
+      echo ''
+    fi
+    ;;
+
+  override-write)
+    # override-write <json> — replace config-overrides.json with the JSON document in $2 (the
+    # service computed it: current file + one node change). PRIVILEGED write only. Validates it
+    # is JSON (jq or python3), snapshots the current file (keep 10), writes ATOMICALLY, restores
+    # the server-dir owner. Target is fixed — no caller path input.
+    # A literal '-' document means "read it from stdin" — Linux caps one argv string at
+    # ~128KB (MAX_ARG_STRLEN), which a real override doc can exceed. head caps the read one
+    # byte over the size limit so an oversize doc still fails the explicit check below.
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
+    [ -n "$arg" ] || die "override-write needs the new document"
+    if command -v jq >/dev/null 2>&1; then
+      printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "override-write: input is not valid JSON"
+    elif command -v python3 >/dev/null 2>&1; then
+      printf '%s' "$arg" | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 || die "override-write: input is not valid JSON"
+    else
+      die "override-write: no JSON validator (jq/python3) on the box"
+    fi
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 2097152 ] || die "override-write: too large ($sz bytes)"
+    # Generated-file guard: a prestart compiler OWNS these outputs (config-registry.json
+    # "generated"), so an override targeting one would be silently clobbered at the next boot.
+    # Refuse the whole write with a DISTINCT exit (6) so the editor shows a clear "this file is
+    # generated - read-only" message instead of accepting a patch that will vanish. Server-side on
+    # purpose: protects against every writer, not just the web editor.
+    if [ -n "$GENERATED" ]; then
+      _ghits="$(printf '%s' "$arg" | _override_generated_hits || true)"
+      if [ -n "$_ghits" ]; then
+        echo "dayz-ctl: refusing override on generated file(s): $(printf '%s' "$_ghits" | tr '\n' ' ')- compiled at boot from map-points + the frozen base; edit the source, not the output" >&2
+        exit 6
+      fi
+    fi
+    # Optimistic concurrency + flag parse (order-independent). The caller may pass base=<sha256>
+    # (the version it loaded via override-read); if the file changed since, another admin wrote
+    # first — refuse with a DISTINCT exit so the editor says "reload" instead of silently
+    # clobbering. 'force' is the shrink-override flag. No base= given = no check (back-compat).
+    _force=0; _base='__none__'
+    for _f in "${@:3}"; do case "$_f" in force) _force=1 ;; base=*) _base="${_f#base=}" ;; esac; done
+    if [ "$_base" != '__none__' ] && [ -f "$OVERRIDES" ]; then
+      _cur="$(sha256sum "$OVERRIDES" | awk '{print $1}')"
+      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: config-overrides.json changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    # Shrink circuit-breaker (2026-07-16: a partial save gutted 1361 overrides to 85 and the
+    # next boot reverted everything to defaults). Whole-file replace stays the model, but a
+    # document that DROPS more than half the current override values is refused unless the
+    # caller passes a literal 3rd arg "force" — a deliberate mass-delete is one explicit flag
+    # away, an accidental one is impossible. Counts scalar leaves (each concrete override
+    # value); guard only arms at >=20 so small/young manifests never trip it. Server-side on
+    # purpose: protects against every writer, not just the web editor.
+    _count_leaves() {
+      if command -v jq >/dev/null 2>&1; then
+        jq '[paths(scalars)] | length' 2>/dev/null || echo 0
+      else
+        python3 -c '
+import sys,json
+def n(v):
+    if isinstance(v,dict): return sum(n(x) for x in v.values())
+    if isinstance(v,list): return sum(n(x) for x in v)
+    return 1
+print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
+      fi
+    }
+    if [ -f "$OVERRIDES" ] && [ "$_force" != 1 ]; then
+      _oldn="$(_count_leaves < "$OVERRIDES")"
+      _newn="$(printf '%s' "$arg" | _count_leaves)"
+      case "$_oldn$_newn" in *[!0-9]*) _oldn=0; _newn=0 ;; esac
+      if [ "$_oldn" -ge 20 ] && [ "$_newn" -lt $((_oldn / 2)) ]; then
+        die "shrink-guard: new document carries $_newn override values, current file has $_oldn — refusing the replace (re-send with force to confirm a deliberate mass-delete)"
+      fi
+    fi
+    snapshot_overrides
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    tmp="$(mktemp "$SERVER_DIR/.override-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$OVERRIDES"
+    printf 'ok\n%s\n' "$(sha256sum "$OVERRIDES" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
+    ;;
+
+  spawn-write)
+    # spawn-write <json> — replace the SHARED map-points store (profiles/AI_Shared/map-points.json)
+    # with the JSON document in $2 (the single spawn source for BOTH AIB and Expansion; the
+    # ConfigViewer Map editor computed it). PRIVILEGED write only. Validates it is JSON (jq or
+    # python3), snapshots the current file (keep 10), writes ATOMICALLY into the AI_Shared dir,
+    # restores the server-dir owner. Target is fixed — no caller path input. Takes effect at the
+    # next restart (prestart Build-AIBandits/AIPatrols recompose from it).
+    # '-' = read the document from stdin (argv is capped at ~128KB per string; 5000 spawn
+    # points clear that easily). Same pattern as override-write.
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
+    [ -n "$arg" ] || die "spawn-write needs the new document"
+    if command -v jq >/dev/null 2>&1; then
+      printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
+    elif command -v python3 >/dev/null 2>&1; then
+      printf '%s' "$arg" | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
+    else
+      die "spawn-write: no JSON validator (jq/python3) on the box"
+    fi
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 2097152 ] || die "spawn-write: too large ($sz bytes)"
+    _dir="$(dirname "$SPAWNS")"
+    [ -d "$_dir" ] || die "spawn-write: shared store dir not present ($_dir) — deploy the DayZ server first"
+    snapshot_spawns
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    tmp="$(mktemp "$_dir/.spawn-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$SPAWNS"
+    echo ok
+    ;;
+
+  override-versions)
+    # List snapshots newest-first, one <version> token per line (the service builds the rollback
+    # list from this). No input.
+    [ -d "$OVR_VERSIONS" ] || exit 0
+    find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' -printf '%f\n' 2>/dev/null \
+      | sort -r | sed -E 's/^config-overrides\.(.*)\.json$/\1/'
+    ;;
+
+  file-list)
+    # Enumerate the box-owned files an admin may REPLACE (the rendered WRITE_MAP), one
+    # "name<TAB>relpath" line each. Pure enumeration - no caller input. Empty map = none.
+    [ -n "$WRITE_MAP" ] && printf '%s\n' "$WRITE_MAP"
+    ;;
+
+  file-write)
+    # file-write <name> <content> — REPLACE one box-owned file (ban/allow lists) whole.
+    # The NAME must be in the rendered WRITE_MAP; the path comes from the map, NEVER the
+    # caller. Replace-only (the file must exist - a typo'd map entry can't create files),
+    # size-capped, previous version snapshotted to .owned-versions/ (keep 10 per file),
+    # then written ATOMICALLY with the server-dir owner restored.
+    content="${3:-}"
+    [ -n "$arg" ] || die "file-write needs a name"
+    case "$arg" in *[!A-Za-z0-9_.-]*) die "invalid file name" ;; esac
+    rel="$(printf '%s\n' "$WRITE_MAP" | awk -F'\t' -v n="$arg" '$1==n{print $2; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: not a writable file: $arg" >&2; exit 2; }
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: writable file not present: $rel" >&2; exit 2; }
+    # Defence in depth: the CURRENT file must resolve under the server dir (symlink guard).
+    base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$real" in "$base"/*) ;; *) die "writable file resolved outside the server dir" ;; esac
+    sz="$(printf '%s' "$content" | wc -c)"
+    [ "$sz" -le 262144 ] || die "file-write: too large ($sz bytes)"
+    # Snapshot the outgoing version (keep the 10 newest per file), owner restored.
+    OWNED_VERSIONS="$SERVER_DIR/.owned-versions"
+    mkdir -p "$OWNED_VERSIONS"
+    cp -p "$file" "$OWNED_VERSIONS/$arg.$(date -u +%Y%m%dT%H%M%S%NZ)"
+    find "$OWNED_VERSIONS" -maxdepth 1 -name "$arg.*" | sort -r | tail -n +11 \
+      | while IFS= read -r _old; do rm -f "$_old"; done
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    [ -n "$_own" ] && chown -R "$_own" "$OWNED_VERSIONS" 2>/dev/null || true
+    tmp="$(mktemp "$SERVER_DIR/.file-write.XXXXXX")"
+    printf '%s' "$content" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$file"
+    echo ok
+    ;;
+
+  override-rollback)
+    # override-rollback <version> — restore a snapshot (snapshots the current file first, so a
+    # rollback is itself reversible). <version> validated to timestamp characters only.
+    case "$arg" in ''|*[!0-9TZ]*) die "override-rollback: invalid version" ;; esac
+    src="$OVR_VERSIONS/config-overrides.$arg.json"
+    [ -f "$src" ] || { echo "dayz-ctl: unknown version: $arg" >&2; exit 2; }
+    snapshot_overrides
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    cp -f "$src" "$OVERRIDES"
+    [ -n "$_own" ] && chown "$_own" "$OVERRIDES" 2>/dev/null || true
+    chmod 644 "$OVERRIDES"
+    echo ok
+    ;;
+
+  update-arm)
+    # update-arm [reason] — ARM a deferred update: write .update-pending so the NEXT server
+    # start (prestart.sh) pulls the latest app + mods. Does NOT download or restart anything.
+    # The reason is a free-text note surfaced in the status; sanitized (printable ASCII, one
+    # line, capped) since it's operator-supplied. Owner restored so a later ubuntu-run deploy
+    # can still manage the file. Idempotent — re-arming just refreshes the note.
+    reason="$(printf '%s' "${arg:-manual: queued via API}" | tr -cd '\11\40-\176' | tr '\t' ' ' | cut -c1-200)"
+    [ -n "$reason" ] || reason="manual: queued via API"
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    tmp="$(mktemp "$SERVER_DIR/.update-arm.XXXXXX")"
+    printf '%s\n' "$reason" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$UPDATE_PENDING"
+    echo ok
+    ;;
+
+  update-disarm)
+    # update-disarm — clear a queued update (remove .update-pending). No-op if not armed.
+    rm -f "$UPDATE_PENDING"
+    echo ok
+    ;;
+
+  update-status)
+    # update-status — one JSON object: installed vs latest build, updateAvailable, whether an
+    # update is armed (+ reason), and the last applied update's outcome (+ log tail). Read-only;
+    # no caller input. See emit_update_status above for the field contract.
+    emit_update_status
+    ;;
+
+  mission-list)
+    # mission-list — installed missions (immediate subdirs of mpmissions/), one name per line,
+    # sorted. No caller input. The map-change picker uses this; set-map re-validates the choice.
+    [ -d "$SERVER_DIR/mpmissions" ] || exit 0
+    find "$SERVER_DIR/mpmissions" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | LC_ALL=C sort || true
+    ;;
+
+  *)
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write update-arm update-disarm update-status mission-list)"
+    ;;
+esac

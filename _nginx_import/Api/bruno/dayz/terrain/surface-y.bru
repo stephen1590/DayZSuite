@@ -1,0 +1,15 @@
+meta {
+  name: surface-y
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/dayz/terrain/surface-y
+  body: none
+  auth: none
+}
+
+docs {
+  resolve terrain height Y at world X/Z from the baked heightmap (single: map, x, z — or bulk: body { map, points: [{x,z},…] }; see "terrain/heightmaps" for maps)
+}

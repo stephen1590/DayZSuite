@@ -1,0 +1,23 @@
+meta {
+  name: revoke
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/keys/revoke
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "discord-bot"
+  }
+}
+
+docs {
+  WIZARD ONLY: revoke a derived key
+  
+  requests signed with the revoked key 401 immediately
+}

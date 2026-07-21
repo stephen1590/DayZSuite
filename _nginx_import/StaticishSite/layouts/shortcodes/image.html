@@ -1,0 +1,23 @@
+{{- $src := .Get "src" -}}
+{{- $alt := .Get "alt" | default "" -}}
+{{- $width := .Get "width" -}}
+{{- $caption := .Get "caption" -}}
+{{- $style := .Get "style" | default "" -}}
+{{- $tel := .Get "tel" -}}
+{{- $email := .Get "email" -}}
+{{- $href := .Get "href" | default (.Get "link") -}}
+{{- $external := .Get "external" -}}
+
+{{- $widthAttr := "" -}}
+{{- with $width }}{{ $widthAttr = printf ` style="width:%s"` . }}{{ end -}}
+{{- $img := printf `<img src="%s" alt="%s"%s>` $src $alt $widthAttr -}}
+
+{{- /* Wrap in an anchor via the shared link partial when any link target is set. */ -}}
+{{- if or $tel $email $href -}}
+  {{- $img = partial "link.html" (dict "tel" $tel "email" $email "href" $href "external" $external "content" $img) -}}
+{{- end -}}
+
+<figure class="sc-image{{ with $style }} {{ . }}{{ end }}">
+  {{ $img | safeHTML }}
+  {{- with $caption }}<figcaption>{{ . }}</figcaption>{{ end }}
+</figure>

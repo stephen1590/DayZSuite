@@ -1,0 +1,15 @@
+meta {
+  name: positions
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/dayz/positions
+  body: none
+  auth: none
+}
+
+docs {
+  live player map positions, ANONYMIZED to [{x,z}] only — parsed from the newest .ADM (needs adminLogPlayerList for a full roster)
+}

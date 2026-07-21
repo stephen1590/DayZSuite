@@ -1,0 +1,53 @@
+# NginxService — one repo for the shared nginx/TLS engine + all nested services.
+# Per-subproject .gitignore files also exist (StaticishSite/, Api/app/);
+# this root file is the single place for host-level secrets and cross-cutting
+# generated output. Committable *.example.ps1 siblings stay tracked.
+
+# ── Secrets / machine-specific (never commit; ship a *.example.env/.json instead) ──
+# Per-env host configs (host.config.prod.env / host.config.staging.env; legacy bare
+# host.config.env). The negation keeps the tracked example.
+/host.config.env
+/host.config.*.env
+!/host.config.example.env
+**/deploy/deploy.config.json
+**/deploy/deploy.config.cytonicmushroom.json
+**/secrets.env
+# Bruno collection credentials (Api/bruno/.env — .env.example stays tracked)
+**/.env
+**/customView.bru
+
+# ── Rendered runtime config (generated from *.template) ──
+**/config.json
+
+# ── Deploy artifacts (regenerated every run) ──
+**/deploy/stage/
+**/logs/
+*.log
+
+# ── Node (Webhooks app) ──
+**/node_modules/
+**/dist/
+
+# ── Hugo (StaticishSite) ──
+/StaticishSite/public/
+/StaticishSite/resources/
+/StaticishSite/.hugo_build.lock
+/StaticishSite/bin/
+
+# ── Config Viewer (vendored Swagger UI, provisioned by Deploy-ConfigViewer.ps1) ──
+/ConfigViewer/web/vendor/
+# Map tile pyramids + browser height grids — derived artifacts rendered by
+# DayZHeightmap/Build-MapTiles.ps1 -Execute -Deliver
+/ConfigViewer/web/tiles/
+
+# ── Monitoring — vendored Node Exporter Full dashboard (fetched pinned by Deploy-Monitoring.ps1) ──
+/Monitoring/deploy/vendor/
+
+# ── Api — OpenAPI spec generated from code (src/spec.ts via `npm run spec`) ──
+/Api/openapi.json
+
+# ── Editor / OS / agent cruft ──
+.claude/
+CLAUDE.md
+.DS_Store
+Thumbs.db

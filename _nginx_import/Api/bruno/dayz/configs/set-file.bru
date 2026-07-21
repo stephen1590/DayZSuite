@@ -1,0 +1,15 @@
+meta {
+  name: set-file
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/dayz/configs/set-file
+  body: none
+  auth: none
+}
+
+docs {
+  replace one box-owned file whole (body: { "name": "Bans", "content": "..." }; snapshots first)
+}

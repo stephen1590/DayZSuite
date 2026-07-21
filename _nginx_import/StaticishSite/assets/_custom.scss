@@ -1,0 +1,145 @@
+/* ============================================================================
+   Delver theme for hugo-book — the nowhere.
+   book.scss imports this file BEFORE `:root { @include theme-<BookTheme> }`, so
+   defining `theme-delver` here and setting BookTheme='delver' wires it up.
+   Light + dark variants; dark engages on prefers-color-scheme: dark.
+   ============================================================================ */
+
+@mixin theme-delver-light {
+  --body-background: #f4f5f7;
+  --body-background-tint: none;
+  --body-font-color: #1a1b22;
+
+  --color-link: #0d7d8a;          /* cold teal */
+  --color-visited-link: #6a4fb3;
+
+  --icon-filter: none;
+
+  --gray-100: #e9eaee;
+  --gray-200: #d3d5dd;
+  --gray-500: #6b6d7a;
+
+  --color-accent-default: #475569;
+  --color-accent-note: #0d7d8a;
+  --color-accent-tip: #2f855a;
+  --color-accent-important: #6a4fb3;
+  --color-accent-warning: #c07b1e;
+  --color-accent-caution: #c0392b;
+  --color-accent-info: #0d7d8a;
+  --color-accent-success: #2f855a;
+  --color-accent-danger: #c0392b;
+}
+
+@mixin theme-delver-dark {
+  --body-background: #07070b;      /* the void */
+  --body-background-tint: none;
+  --body-font-color: #c3c4d1;
+
+  --color-link: #6fd6e0;           /* eldritch pale cyan — eyes in the dark */
+  --color-visited-link: #a78bfa;
+
+  --icon-filter: brightness(0) invert(1);
+
+  --gray-100: #101018;             /* panels / menu ground */
+  --gray-200: #22232f;             /* borders / rules */
+  --gray-500: #8a8ca0;             /* muted */
+
+  --color-accent-default: #6fd6e0;
+  --color-accent-note: #6fd6e0;
+  --color-accent-tip: #57c785;
+  --color-accent-important: #a78bfa;
+  --color-accent-warning: #e0a458;
+  --color-accent-caution: #e06767;
+  --color-accent-info: #6fd6e0;
+  --color-accent-success: #57c785;
+  --color-accent-danger: #e06767;
+}
+
+@mixin theme-delver {
+  @include theme-delver-light;
+  @media (prefers-color-scheme: dark) {
+    @include theme-delver-dark;
+  }
+}
+
+/* --- Atmosphere -----------------------------------------------------------
+   A single faint labyrinth thread down the menu edge — the maze the delvers
+   live in. Kept subtle so it reads as texture. */
+.book-menu {
+  border-inline-end: 1px solid var(--gray-200);
+}
+.book-menu .book-menu-content {
+  background:
+    repeating-linear-gradient(
+      0deg,
+      var(--gray-200) 0 2px,
+      transparent 2px 16px
+    ) right / 1px 100% no-repeat;
+}
+
+/* Selection: caught in the light. */
+::selection {
+  background: rgba(111, 214, 224, 0.22);
+}
+
+/* Dark-only: headings hold a still, watching glow; code sits deeper in the dark. */
+@media (prefers-color-scheme: dark) {
+  .markdown h1,
+  .markdown h2 {
+    text-shadow: 0 0 24px rgba(111, 214, 224, 0.12);
+  }
+  .markdown pre,
+  .markdown code {
+    border: 1px solid var(--gray-200);
+  }
+  .book-brand a { letter-spacing: 0.02em; }
+}
+
+/* Ambient backdrop: a moonlit mushroom nowhere, fixed behind every page.
+   Dark-mode only — the image is built for night; on the light palette it
+   would just read as a smudge.
+
+   The pseudo-element IS the image's box: a FIXED pixel size (set --bg-width;
+   height follows the image's 3:2 ratio), anchored bottom-centre. Because the
+   element matches the image exactly, the edge-feather mask maps 1:1 onto the
+   picture and never drifts when the window resizes. Left / top / right edges
+   dissolve into the page before the image's real edges; the bottom stays
+   flush, as if resting on the floor of the page. Faint so it never competes
+   with the content. */
+@media (prefers-color-scheme: dark) {
+  body::before {
+    content: "";
+    // Fixed size — tweak just this. Height derives from the 1536x1024 ratio.
+    --bg-width: 1000px;
+    --feather-x: 17%;   // how far the left/right edges fade inward
+    --feather-top: 10%; // how far the top edge fades down (kept small so the
+                        //  scene isn't cut — bottom never fades)
+
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: var(--bg-width);
+    aspect-ratio: 1536 / 1024;
+    z-index: -1;
+    pointer-events: none;
+
+    background-image: url("/images/cyto_mushroom.png");
+    background-size: 100% 100%;   // element already carries the image ratio
+    background-repeat: no-repeat;
+
+    opacity: 0.15;
+
+    // Feather three edges: intersection of a horizontal fade (both sides) and
+    // a top-only fade. A pixel shows only where BOTH gradients are opaque, so
+    // bottom + centre stay solid while L/T/R dissolve.
+    mask-image:
+      linear-gradient(to right, transparent 0, #000 var(--feather-x), #000 calc(100% - var(--feather-x)), transparent 100%),
+      linear-gradient(to bottom, transparent 0, #000 var(--feather-top));
+    mask-composite: intersect;
+    -webkit-mask-image:
+      linear-gradient(to right, transparent 0, #000 var(--feather-x), #000 calc(100% - var(--feather-x)), transparent 100%),
+      linear-gradient(to bottom, transparent 0, #000 var(--feather-top));
+    -webkit-mask-composite: source-in;
+  }
+}

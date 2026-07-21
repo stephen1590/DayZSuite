@@ -1,0 +1,94 @@
+{
+  // API-service deploy config — EVERY tunable lives HERE; the deploy scripts hold no
+  // values, only flow. Shared host + domain values come from ../../host.config.env
+  // (merged in by Load-DeployConfig.ps1); ${BaseDomain}, ${Port} and ${SshUser}
+  // resolve from the merged config so each primitive lives in exactly one place.
+  // Read by:
+  //   ../../Provision-Tls.ps1 -Service Api  (TLS keys)
+  //   Deploy-Api.ps1                         (app keys)
+  //
+  // NOTE: no secrets here. The HMAC signing secret and the VPP URL token are
+  // generated ONCE on the box by remote/deploy.sh (into /etc/api/secrets.env)
+  // and printed for you to copy — they never touch this file or the repo.
+
+  // --- TLS provisioning ---
+  "SiteName": "api",
+  "Hostnames": ["api.${BaseDomain}"],          // single public name, one cert
+  "NginxTemplate": "nginx/api.conf.template",
+  "NginxHttpOnlyTemplate": "nginx/api-http-only.conf.template",
+  "TemplateVars": {
+    "__UPSTREAM__": "localhost:${Port}"          // nginx proxy_pass target (from Port)
+  },
+
+  // --- app deploy (Deploy-Api.ps1) ---
+  "AppDir":    "/opt/api",       // where the built Node app is installed
+  "NodeMajor": 22,                    // Node.js major (Active LTS)
+  "NodeBin":   "/usr/bin/node",       // node path baked into the systemd unit
+  "RunUser":   "api",            // dedicated, unprivileged service account
+  "Port":      3100,                  // localhost port the Node app listens on
+  "AuditDir":  "/var/log/api",   // CSV audit ledger (journald is the full log)
+  // Derived-API-key store (minted via /keys/create, wizard key only). Lives under
+  // systemd's StateDirectory=api -- if you move it, update api.service.template too.
+  "KeysFile":  "/var/lib/api/keys.json",
+  // Baked terrain grids for the terrain/surface-y action (per-map heightmap.bin + meta.json).
+  // Generated + shipped by the DayZHeightmap project; 404s cleanly while unshipped.
+  "HeightmapsDir": "/var/lib/api/heightmaps",
+
+  // Which DayZ server dayz-ctl drives. ServerDir follows the DayZ deploy home
+  // (/home/<SshUser>); Unit is the systemd unit name.
+  "Dayz": {
+    "Unit":      "dayz-server",
+    "ServerDir": "/home/${SshUser}/servers/dayz-server",
+    // Broadcast a warning and wait this long before restart/stop/mapchange actually run,
+    // but only if someone's connected (RCon "players" > 0) -- nothing to warn
+    // otherwise. Default 15s comfortably fits nginx's 30s proxy_read_timeout on this
+    // vhost (deploy/nginx/api.conf.template); push it past ~25s and bump that
+    // timeout too, or the caller sees a client-side timeout even though the action
+    // still completes server-side.
+    "RestartWarningSeconds": 15
+  },
+
+  // Per-action cooldown (seconds). "default" covers any action not named here.
+  // The "you already asked for a restart" guard — a second call inside the window
+  // gets a friendly 409 telling it how long to wait.
+  "Cooldowns": {
+    "restart":   60,
+    "stop":      60,
+    "start":     10,
+    "mapchange": 120,
+    "broadcast": 5,
+    "configs/get":  0,
+    "configs/list": 0,
+    "logs/files": 0,
+    "logs/read": 0,
+    "terrain/heightmaps": 0,
+    "terrain/surface-y": 0,
+    "default":   3
+  },
+
+  // Refuse destructive actions (restart/stop/mapchange) while players are online,
+  // unless the request body says {"force": true}. Uses the DayZ RCon player count.
+  "PlayerGuard": true,
+
+  // Coarse global rate limit (per source IP) in front of the per-action cooldowns.
+  "RateLimit": { "Max": 120, "WindowMs": 60000 },
+
+  // Config retrieval + write allowlist: NOT defined here. It is the single
+  // config-registry.json in the DayZ-Server repo, read by Deploy-Api at deploy time
+  // (config is a DayZ-Server dependency). Add/change config surfaces there. Default
+  // path assumes DayZ-Server is checked out beside NginxService; override if not:
+  //   "ConfigRegistry": "../../../DayZ-Server/config-registry.json",
+
+  // Global ignore-filetype for FOLDER listings: files with these extensions are
+  // never shown in the picker (single "path" entries above are always shown).
+  "ConfigIgnoreExt": ["cpp", "c", "cs", "ini"],
+
+  // VPP (and other event-source senders) ingress at /sources/vpp/<token>.
+  // Enabled = accept the feed and audit it. Rules map an event's text to an
+  // action (substring match) and are OFF by default — add deliberately, e.g.:
+  //   { "match": "!restart-now", "action": "restart", "params": {} }
+  "Vpp": {
+    "Enabled": true,
+    "Rules": []
+  }
+}

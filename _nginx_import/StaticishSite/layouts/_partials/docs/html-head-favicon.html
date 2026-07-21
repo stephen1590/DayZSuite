@@ -1,0 +1,11 @@
+{{- /*
+  Favicon set — overrides hugo-book's single-link default (themes/hugo-book/.../html-head-favicon.html).
+  One shared mushroom-monogram mark across every servermander domain: a cream toadstool cradled
+  in an amber "C" (cytonicmushroom) with a cyan Delver spore-dot. Assets live in static/
+  (images/favicon.svg is also what hugo.toml's BookFavicon points at). SVG for modern browsers,
+  ICO + PNG fallbacks, apple-touch for iOS. Keep in sync with the ConfigViewer copy.
+*/ -}}
+<link rel="icon" type="image/svg+xml" href="{{ "images/favicon.svg" | relURL }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ "images/favicon-32.png" | relURL }}">
+<link rel="icon" href="{{ "favicon.ico" | relURL }}" sizes="any">
+<link rel="apple-touch-icon" href="{{ "apple-touch-icon.png" | relURL }}">

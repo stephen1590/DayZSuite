@@ -1,0 +1,20 @@
+# Prometheus scrape config. Rendered by Deploy-Monitoring.ps1 — do NOT hand-edit
+# the deployed copy (/etc/prometheus/prometheus.yml); change deploy.config.json or
+# this template and redeploy.
+#
+# The two built-in jobs watch the stack itself. App exporters (this box's
+# services) are appended below them, generated from the ScrapeJobs list in
+# deploy.config.json — the stack itself stays generic and reusable on any box.
+global:
+  scrape_interval: __SCRAPE_INTERVAL__s
+  evaluation_interval: 60s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['__PROMETHEUS_LISTEN__']
+
+  - job_name: node
+    static_configs:
+      - targets: ['__NODE_EXPORTER_LISTEN__']
+__EXTRA_JOBS__

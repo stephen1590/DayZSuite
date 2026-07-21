@@ -1,0 +1,9 @@
+{{- /* Thin wrapper around the shared _partials/link.html anchor builder. */ -}}
+{{- partial "link.html" (dict
+  "tel" (.Get "tel")
+  "email" (.Get "email")
+  "href" (.Get "href")
+  "external" (.Get "external")
+  "class" (.Get "class")
+  "content" .Inner
+) -}}

@@ -1,0 +1,30 @@
+# API service — plain-HTTP fallback for -SkipTls (bring the service up BEFORE its DNS
+# name resolves, so certbot can't issue yet). Rendered by ../../Provision-Tls.ps1
+# -Service Api -SkipTls. Re-run WITHOUT -SkipTls once DNS points here to switch
+# to the HTTPS vhost. Do NOT expose real secrets over this — it is unencrypted.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __SERVER_NAMES__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_WEBROOT__;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    client_max_body_size 20M;
+
+    # /metrics is the on-box Prometheus scrape surface — local-only, never proxied.
+    location = /metrics { return 404; }
+
+    location / {
+        proxy_pass http://__UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+    }
+}

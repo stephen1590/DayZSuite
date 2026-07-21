@@ -1,0 +1,21 @@
+{{- $image := .Get "image" -}}
+{{- $logo := .Get "logo" -}}
+{{- $title := .Get "title" -}}
+
+<div class="sc-org-overlay">
+  {{- if $image }}
+  <div class="sc-org-overlay-image">
+    <img src="{{ $image }}" alt="{{ $title }}">
+    {{- if $logo }}
+    <div class="sc-org-overlay-badge">
+      <img src="{{ $logo }}" alt="{{ with $title }}{{ . }} logo{{ else }}logo{{ end }}">
+      {{- with $title }}<span>{{ . }}</span>{{ end }}
+    </div>
+    {{- end }}
+  </div>
+  {{- else if $logo }}
+  <div class="sc-org-overlay-image sc-org-overlay-logo-only">
+    <img src="{{ $logo }}" alt="{{ $title }}">
+  </div>
+  {{- end }}
+</div>

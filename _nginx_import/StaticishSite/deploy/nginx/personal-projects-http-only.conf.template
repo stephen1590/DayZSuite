@@ -1,0 +1,31 @@
+# Personal Projects — plain HTTP, no TLS. TEMPORARY.
+# Written by Provision-Tls.ps1 -SkipTls, for use before the hostname's DNS
+# actually points at this server (so the ACME HTTP-01 challenge would fail).
+# Once DNS is correct, re-run Provision-Tls.ps1 WITHOUT -SkipTls — it replaces
+# this file with the full HTTPS config and issues the certificate.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __HOSTNAME__;
+
+    root __WEBROOT__;
+    index index.html;
+    error_page 404 /404.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+# Catch-all (default_server) so an unmatched hostname 404s here instead of
+# falling through to another vhost. See the TLS template for the full rationale.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location / { return 404; }
+}

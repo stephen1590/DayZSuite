@@ -1,0 +1,706 @@
+<!--
+  DayZ Config UI — a dependency-free, single-file front end for the DayZ config API.
+
+  It talks ONLY to the same-origin /api/ path, which this site's nginx vhost
+  reverse-proxies to the API service (localhost:3100). The browser signs every
+  request itself (HMAC-SHA256, Web Crypto) with the derived key the user pastes in,
+  exactly the way the API verifies it. No build step, no external scripts, no CDN.
+
+  Layout: a persistent left sidebar (brand + page nav + ONE merged file tree) and a
+  full-width content area. Two pages — Server Files and API (Swagger).
+
+  Server Files model: every row is a FILE (deduped by server-relative path across its
+  read alias, folder listing and any config-overrides target). Every JSON/XML file
+  opens the same Fields ⇄ File editor: overridden fields are highlighted deltas, the
+  rest is context, and editing a context field ADDS an override. Mission files carry
+  LAYERS — 'all missions' (mpmissions.common) and the mission's own layer (mission
+  wins) — chips mark common rows and a selector picks where new overrides land.
+  Box-owned writable files (rw) open a whole-file editor; non-JSON/XML files are
+  locked (ro): viewable, not patchable.
+
+  Auth: paste the Key ID + secret from a key minted via /keys/create. An OBSERVE key
+  can view + read; a FULL-scope key also writes. Credentials live in a cookie and are
+  cleared the moment the API rejects them (401).
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DayZ Config UI</title>
+<!-- Favicon: the shared mushroom-monogram mark (one identity across every servermander domain).
+     SVG for modern browsers; ICO + PNG fallbacks; apple-touch for iOS home-screen. -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  // Resolve the theme before first paint (no flash-of-wrong-theme): a stored choice wins,
+  // otherwise follow the OS. Only an explicit toggle stores a choice — until then it tracks the OS.
+  (function () {
+    try {
+      var t = localStorage.getItem('cfgview-theme');
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  })();
+</script>
+<link rel="stylesheet" href="style.css">
+
+<!-- Login card (pre-auth; centered, no shell) -->
+<section id="login" class="card">
+  <h2>Enter your API key</h2>
+  <p class="hint">
+    Paste a Key&nbsp;ID and secret minted with the Keys API. An <strong>observe</strong> key
+    views files and overrides; a broader-scoped key also writes overrides and unlocks the
+    write endpoints in the <strong>API</strong> page. Credentials stay in a cookie on this
+    device and clear automatically if the server rejects them.
+  </p>
+  <form id="loginForm" autocomplete="off">
+    <label for="keyId">Key ID</label>
+    <input id="keyId" name="keyId" spellcheck="false" autocapitalize="off" placeholder="e.g. config-viewer">
+    <label for="secret">Secret</label>
+    <input id="secret" name="secret" type="password" spellcheck="false" placeholder="64-character hex secret">
+    <button type="submit" id="connect">Connect</button>
+    <div id="loginMsg" class="msg"></div>
+  </form>
+</section>
+
+<!-- App shell (post-auth): sidebar + workspace -->
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="side-brand logo"><a href="./">DayZ <b>Config</b> UI</a><button type="button" id="themeToggle" class="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">☾</button></div>
+    <div class="side-sub">DayZ @ CytonicMushroom.ddns.net</div>
+    <nav class="side-nav" id="tabs" role="tablist">
+      <button id="tabMaint" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg> Maintenance</button>
+      <button id="tabFiles" class="snav active" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v6H4zM4 14h16v6H4z"/></svg> Server Files</button>
+      <button id="tabMap" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg> Map</button>
+      <button id="tabLogs" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 9h16M4 13h10M4 17h13"/></svg> Logs</button>
+      <button id="tabDocs" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM13 3v5h5M8 13h8M8 17h6"/></svg> Mod Docs</button>
+      <button id="tabApi" class="snav" type="button">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg> API</button>
+    </nav>
+    <div class="side-hr"></div>
+    <div class="side-scroll">
+      <!-- ONE merged tree: every readable server file, one row each. Badges: green N =
+           captured overrides, rw = box-owned whole-file editable, ro = locked. -->
+      <div id="filesNav"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <div id="apiNav" class="hidden"><span class="meta">The API explorer opens on the right. Calls are signed with your key.</span></div>
+      <!-- Mod Docs tab: readmes/notices/example configs bundled inside the @mod folders, grouped by mod. -->
+      <div id="docsNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <!-- Map tab: the spawn-bookmark list, sorted by |delta| once heights resolve. -->
+      <div id="mapNav" class="hidden"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
+      <!-- Logs tab: a date picker (default today) narrows to one day, the dropdown
+           picks the RPT/ADM session within it. -->
+      <div id="logsNav" class="hidden">
+        <div class="log-picker">
+          <div class="lp-row"><span class="lp-lbl">Source</span>
+            <select id="logSource" class="lp-sel" aria-label="Log source"><option disabled selected>Loading…</option></select></div>
+          <div class="lp-row" id="logDateRow"><span class="lp-lbl">Date</span>
+            <input type="date" id="logDate" class="lp-date"></div>
+          <select id="logFileSel" class="lp-sel" aria-label="Log file"><option disabled selected>Loading…</option></select>
+          <div class="side-sub2" id="logNavMeta" style="padding-left:8px">Loading…</div>
+        </div>
+      </div>
+      <!-- Maintenance tab: access level + an at-a-glance summary; full controls on the right. -->
+      <div id="maintNav" class="hidden">
+        <div class="mnt-nav">
+          <div class="mnt-nav-role" id="mntNavRole">Access: <span>…</span></div>
+          <div class="side-sub2" id="mntNavSummary" style="padding:8px">Loading…</div>
+        </div>
+      </div>
+    </div>
+    <div class="side-foot"><button id="signout" class="ghost" type="button">Sign out</button></div>
+  </aside>
+
+  <main id="workspace">
+    <!-- Server Files: landing + the shared Fields ⇄ File editor -->
+    <section id="editorPage" class="hidden">
+      <div id="edEmpty" class="empty ovr-empty">Pick a file on the left — every JSON/XML file opens the Fields ⇄ File editor; editing a field captures it as an override.</div>
+      <div id="edEditor" class="hidden"></div>
+      <details class="ovr-history">
+        <summary>Version history — roll back the whole overrides doc (restart to apply)</summary>
+        <div id="ovrVersions"><span class="meta">—</span></div>
+      </details>
+    </section>
+
+    <!-- Server Files: BOX-OWNED file editor (whole-file replace: ban/allow lists) -->
+    <section id="ownfile" class="hidden">
+      <div class="ovr-phead">
+        <div class="ovr-ppath"><span class="crumb">box-owned</span><span class="nm" id="ownPath">—</span></div>
+        <div class="ovr-pact"><button class="btn-sm primary" id="ownSave" type="button">Save file</button></div>
+      </div>
+      <div class="ovr-note"><b style="color:var(--accent)">Whole file.</b> Box-owned — deploys never touch it; every save snapshots the previous version on the box. Takes effect per the game's own rules (bans are read live; the whitelist needs it enabled).</div>
+      <textarea id="ownTa" class="own-ta" spellcheck="false"></textarea>
+    </section>
+
+    <!-- Maintenance page: server + host health, lifecycle, updates, broadcast, players.
+         Write controls are gated to Operator (full-scope) keys; Viewer (observe) keys see
+         everything read-only. The API enforces the same server-side regardless. -->
+    <section id="mainttab" class="hidden">
+      <div class="mnt">
+        <div class="mnt-head">
+          <div><h2>Maintenance</h2><div class="mnt-sub">Server health, lifecycle, and updates</div></div>
+          <div class="mnt-head-right">
+            <span id="mntRole" class="mnt-role" title="Your API key's access level">…</span>
+            <button id="mntRefresh" class="btn-sm" type="button">Refresh</button>
+          </div>
+        </div>
+        <div id="mntViewerNote" class="mnt-viewer-note hidden">Read-only key — you can see everything here, but controls are disabled. Sign in with an Operator key to act.</div>
+
+        <div class="mnt-grid">
+          <!-- Server status -->
+          <section class="mnt-card">
+            <h3><span class="mnt-dot" id="mntDot"></span>Server status</h3>
+            <div class="mnt-body" id="mntStatusBody"><span class="meta">Loading…</span></div>
+          </section>
+
+          <!-- Host load -->
+          <section class="mnt-card">
+            <h3>Host load</h3>
+            <div class="mnt-body" id="mntHostBody"><span class="meta">Loading…</span></div>
+          </section>
+
+          <!-- Updates -->
+          <section class="mnt-card">
+            <h3>Updates</h3>
+            <div class="mnt-body">
+              <div id="mntUpdateInfo"><span class="meta">Loading…</span></div>
+              <div class="mnt-btns">
+                <button id="mntUpdQueue" class="mnt-btn" type="button" disabled>Queue update</button>
+                <button id="mntUpdCancel" class="mnt-btn ghost" type="button" disabled>Cancel</button>
+              </div>
+              <div class="mnt-note" id="mntUpdLogWrap" style="display:none"><div class="mnt-lbl">Last update log</div><pre class="mnt-log" id="mntUpdLog"></pre></div>
+            </div>
+          </section>
+
+          <!-- Server control (lifecycle + map change) -->
+          <section class="mnt-card mnt-ops">
+            <h3>Server control</h3>
+            <div class="mnt-body">
+              <label class="mnt-arm"><input type="checkbox" id="mntArm"> Arm control actions</label>
+              <div class="mnt-btns">
+                <button id="mntStart" class="mnt-btn ok" type="button" disabled>Start</button>
+                <button id="mntRestart" class="mnt-btn warn" type="button" disabled>Restart</button>
+                <button id="mntStop" class="mnt-btn danger" type="button" disabled>Stop</button>
+              </div>
+              <label class="mnt-force"><input type="checkbox" id="mntForce"> Force — act even with players online</label>
+              <div class="mnt-map">
+                <div class="mnt-lbl">Change map (switches mission + restarts)</div>
+                <div class="mnt-map-row">
+                  <select id="mntMapSel" disabled><option value="">Loading…</option></select>
+                  <button id="mntMapGo" class="mnt-btn warn" type="button" disabled>Switch</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Broadcast -->
+          <section class="mnt-card">
+            <h3>Broadcast to players</h3>
+            <div class="mnt-body">
+              <textarea id="mntMsg" class="mnt-msg" rows="2" maxlength="200" placeholder="Message shown in-game to everyone online…"></textarea>
+              <div class="mnt-btns"><button id="mntSend" class="mnt-btn" type="button" disabled>Send message</button></div>
+            </div>
+          </section>
+
+          <!-- Players -->
+          <section class="mnt-card">
+            <h3>Players online</h3>
+            <div class="mnt-body" id="mntPlayersBody"><span class="meta">Loading…</span></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- Map page: browsable terrain map (pre-rendered tile pyramid) + VPP AI spawn
+         bookmarks with terrain-Y deltas. Drag pans, wheel zooms, right-click copies
+         the X Y Z under the crosshair. -->
+    <section id="maptab" class="hidden">
+      <div class="page-head">
+        <span class="ph-title">Map</span>
+        <select id="mapSel" class="map-head-sel"></select>
+        <span class="map-seg" id="mapEditSeg" title="Edit spawn points: drag a marker to move it, click empty map to add, edit the left panel">
+          <button type="button" data-edit="toggle">Edit</button>
+        </span>
+        <span class="spacer"></span>
+        <span class="map-save hidden" id="mapSaveWrap">
+          <button id="mapDiscardBtn" class="ghost" type="button">Discard</button>
+          <button id="mapSaveBtn" class="ghost map-save-go" type="button">Save</button>
+        </span>
+        <button id="mapRefresh" class="ghost" type="button">Refresh</button>
+      </div>
+      <div class="ovr-sum" id="mapSum"><span class="meta">—</span></div>
+      <div class="map-body">
+        <div class="map-stage" id="mapStage">
+          <canvas id="mapCanvas"></canvas>
+          <div class="empty" id="mapEmpty">Loading…</div>
+        </div>
+        <aside class="map-rail" id="mapRail">
+          <div class="mr-tools">
+            <span class="map-seg hidden" id="mapLayerSeg"></span>
+            <span class="map-seg" id="mapGridSeg" title="Grid lines">
+              <button type="button" data-grid="off">Grid off</button>
+              <button type="button" data-grid="subtle">Subtle</button>
+              <button type="button" data-grid="bold">Bold</button>
+            </span>
+          </div>
+          <div class="map-filter hidden" id="mapFilter"></div>
+          <div class="map-filter map-ovf hidden" id="mapLootFilter"></div>
+          <div class="map-filter map-ovf hidden" id="mapSpawnFilter"></div>
+          <div class="map-filter map-ovf hidden" id="mapBuildingsFilter"></div>
+          <div class="map-filter map-ovf hidden" id="mapMarkersFilter"></div>
+          <div class="map-filter map-ovf hidden" id="mapLiveFilter"></div>
+          <div class="mr-help">drag pan · scroll zoom · right-click copies X Y Z</div>
+        </aside>
+        <div class="map-detail hidden" id="mapDetail"></div>
+      </div>
+      <div class="map-bar" id="mapBar">—</div>
+    </section>
+
+    <!-- Logs page: server log browser. Opens on the tail; scrolling up pages back
+         through the file; the filter is a grep -E regex applied server-side, with
+         original line numbers kept so context never gets lost. -->
+    <section id="logstab" class="hidden">
+      <div class="page-head">
+        <span class="ph-title">Logs</span>
+        <input id="logFilter" class="log-filter" spellcheck="false" autocapitalize="off"
+               placeholder="filter — plain text, Enter applies">
+        <button id="logCase" class="ghost log-aa" type="button" title="Match case (off = case-insensitive)">Aa</button>
+        <button id="logRe" class="ghost log-aa" type="button" title="Regex (off = plain text — special characters match literally)">.*</button>
+        <input id="logGoto" class="log-goto" inputmode="numeric" placeholder="go to #">
+        <span class="meta" id="logStatus">—</span>
+        <span class="spacer"></span>
+        <label class="log-follow"><input type="checkbox" id="logFollow"> Follow</label>
+        <button id="logRefresh" class="ghost" type="button">Refresh</button>
+      </div>
+      <div class="log-pane" id="logPane">
+        <div class="empty" id="logEmpty">Pick a log file on the left.</div>
+        <div id="logLines" class="log-lines hidden"></div>
+      </div>
+    </section>
+
+    <!-- API page: vendored Swagger UI -->
+    <section id="apitab" class="hidden">
+      <div class="page-head"><span class="ph-title">API</span><span class="meta">Live explorer — calls are signed with your key and sent through <code>/api</code>.</span></div>
+      <div id="swagger"></div>
+    </section>
+
+    <!-- Mod Docs: read-only viewer for docs bundled inside the @mod folders. Pick one on the left. -->
+    <section id="docstab" class="hidden">
+      <div class="page-head"><span class="ph-title">Mod Docs</span><span class="meta" id="docsHead">Readmes, notices and example configs shipped inside the server's mod folders.</span></div>
+      <div class="doc-view" id="docView"><div class="empty">Pick a doc on the left…</div></div>
+    </section>
+  </main>
+
+  <!-- Server stats bar: live DayZ status from POST /dayz/status, polled. -->
+  <footer id="statsbar" aria-live="polite">
+    <span id="sbStats"><span class="sb-load meta">Loading server stats…</span></span>
+    <span id="sbActions">
+      <span id="sbUpdate" class="hidden">
+        <button type="button" id="sbUpdPill" class="sb-pill" title="Update details"></button>
+        <button type="button" id="sbUpdQueue" class="sb-btn ghost hidden">Queue update</button>
+        <button type="button" id="sbUpdCancel" class="sb-btn ghost hidden">Cancel</button>
+      </span>
+      <label class="sb-arm"><input type="checkbox" id="sbArm"> Arm restart</label>
+      <button type="button" id="sbRestart" class="sb-btn" disabled>Restart</button>
+    </span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="map-tip" id="mapTip"></div>
+<div class="upd-panel hidden" id="updPanel" role="dialog" aria-label="Update status"></div>
+
+<script type="module">
+import { $, el } from './js/dom.js';
+import { toast, setGlobalMsg, escapeHtml, attr, stripBom } from './js/ui.js';
+import { sign, apiPost, rateLimited, enc } from './js/api-client.js';
+import { saveCred, loadCred, clearCred, handle, setOnUnauthorized } from './js/auth.js';
+import { setScope, getScope, isOperator, getActiveMission, setActiveMission } from './js/state.js';
+import { startStats, stopStats, startMaint, stopMaint, loadWhoami, renderUpdate, initMaint } from './js/maintenance.js';
+import { loadLogsTab, startLogFollow, stopLogFollow, initLogs, logsHashFrag, setPendingLog, setLogsShellHooks } from './js/logs.js';
+import { loadMapTab, startPlayers, stopPlayers, initMap, mapHashFrag, setPendingMapView, mapIsDirty, setMapShellHooks, requestMapDraw } from './js/map.js';
+import { loadFiles, showFilesSurface, isDirty, getSelKey, setPendingFile, initEditor, setEditorHooks } from './js/editor.js';
+import { detectLang, highlight } from './js/highlight.js';
+(() => {
+  'use strict';
+
+  // $, el -> js/dom.js ; toast, setGlobalMsg, escapeHtml, attr -> js/ui.js (imported at top).
+
+  // syntax highlighting (detectLang / highlight / hlJson) -> js/highlight.js
+
+  // --- credential cookie: saveCred / loadCred / clearCred live in js/auth.js (imported above) ---
+
+  // --- signing + API call: sign / apiPost / rateLimited / enc live in js/api-client.js
+  //     (imported at the top of this module). handle() stays here — it drives the view. ---
+  // handle(401) -> js/auth.js; the login view is injected via setOnUnauthorized() at boot.
+
+  // --- views ---
+  function showLogin(msg) {
+    stopStats();
+    stopPlayers();
+    stopMaint();
+    setScope(null);       // forget the previous key's access level
+    renderUpdate(null);   // clear the update pill + close its popover
+    el.app.classList.add('hidden');
+    el.login.classList.remove('hidden');
+    el.loginMsg.className = 'msg err';
+    el.loginMsg.textContent = msg || '';
+    el.secret.value = '';
+  }
+  function showViewer() {
+    el.login.classList.add('hidden');
+    el.app.classList.remove('hidden');
+    loadWhoami();               // learn this key's access level (Operator vs Viewer)
+    applyRoute();               // restore whatever view the URL hash points at
+    startStats();
+  }
+  // ---------- deep-link routing ----------
+  // The whole viewer state lives in location.hash so any view is a shareable URL:
+  //   #files (default) · #maint · #api
+  //   #files/<key>                — that file selected + open in the editor
+  //   #docs                       — Docs tab, nothing open
+  //   #docs/<path>                — that mod doc open (path is URI-encoded, may contain '/')
+  //   #map                        — Map tab, camera as last left
+  //   #map/<short>/<cx>,<cz>,<ppm> — that mission centred on world x,z at zoom ppm (px per metre)
+  //   #logs                       — Logs tab, default source (newest file opens)
+  //   #logs/<source>              — that log source, its newest file
+  //   #logs/<source>/<file>       — that source + that exact file open
+  // We only ever RESTORE from an EXTERNAL change (paste, back/forward): our own writes go through
+  // history.replaceState (silent — fires no hashchange), so panning never spams history or loops.
+  // pendingMapView -> js/map.js (setPendingMapView; the map applies it when data lands)
+  let pendingDoc = null;       // doc path to open once the docs list is loaded
+  // pendingFile -> js/editor.js (setPendingFile; the tree selects it once loaded)
+  function safeDecode(s) { try { return decodeURIComponent(s); } catch { return s; } }
+  function parseHash() {
+    const raw = location.hash.replace(/^#/, '');
+    if (!raw) return { tab: 'files' };
+    const slash = raw.indexOf('/');
+    const head = slash === -1 ? raw : raw.slice(0, slash);
+    const rest = slash === -1 ? '' : raw.slice(slash + 1);
+    if (head === 'docs') return { tab: 'docs', docPath: rest ? safeDecode(rest) : null };
+    if (head === 'map') {
+      let short = null, coords = rest;
+      const s2 = rest.indexOf('/');
+      if (s2 !== -1) { short = safeDecode(rest.slice(0, s2)); coords = rest.slice(s2 + 1); }
+      const m = coords.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+      if (m) return { tab: 'map', map: { short, cx: +m[1], cz: +m[2], ppm: +m[3] } };
+      if (!short && rest) short = safeDecode(rest);   // bare #map/<short> — that map, default camera
+      return { tab: 'map', map: short ? { short } : null };
+    }
+    if (head === 'logs') {
+      // #logs · #logs/<source> · #logs/<source>/<file> (file may hold '.', '-', '_')
+      let source = null, file = null;
+      if (rest) {
+        const s2 = rest.indexOf('/');
+        if (s2 === -1) source = safeDecode(rest);
+        else { source = safeDecode(rest.slice(0, s2)); file = safeDecode(rest.slice(s2 + 1)); }
+      }
+      return { tab: 'logs', logs: source ? { source, file } : null };
+    }
+    if (head === 'files') return { tab: 'files', fileKey: rest ? safeDecode(rest) : null };
+    // maint/api are literal; anything else (legacy #configs/#overrides included) lands on files
+    return { tab: (head === 'maint' || head === 'api') ? head : 'files' };
+  }
+  function tabFromHash() { return parseHash().tab; }
+  // Build the hash that describes the CURRENT state, and write it silently.
+  function currentHash() {
+    if (currentTab === 'map') return '#' + mapHashFrag();
+    if (currentTab === 'logs') return '#' + logsHashFrag();
+    if (currentTab === 'docs') return docsSel ? '#docs/' + encodeURIComponent(docsSel) : '#docs';
+    if (currentTab === 'files') return getSelKey() ? '#files/' + encodeURIComponent(getSelKey()) : '#files';
+    return '#' + (currentTab || 'files');
+  }
+  function syncHash() {
+    const h = currentHash();
+    if (location.hash !== h) history.replaceState(null, '', h || '#');
+  }
+  let hashTimer = null;
+  function syncHashSoon() { if (hashTimer) return; hashTimer = setTimeout(() => { hashTimer = null; syncHash(); }, 200); }
+  // Apply a hash route: switch tab, and stash any doc/map target for its loader to consume.
+  function applyRoute() {
+    const r = parseHash();
+    setPendingMapView((r.tab === 'map' && r.map) ? r.map : null);
+    setPendingLog((r.tab === 'logs' && r.logs) ? r.logs : null);
+    pendingDoc = (r.tab === 'docs' && r.docPath) ? r.docPath : null;
+    setPendingFile((r.tab === 'files' && r.fileKey) ? r.fileKey : null);
+    showTab(r.tab);
+  }
+  let currentTab = null;   // active sub-tab, so visibility-resume knows which poller to restart
+  function showTab(name) {
+    currentTab = name;
+    el.mainttab.classList.toggle('hidden', name !== 'maint');
+    el.apitab.classList.toggle('hidden', name !== 'api');
+    el.maptab.classList.toggle('hidden', name !== 'map');
+    el.logstab.classList.toggle('hidden', name !== 'logs');
+    el.docstab.classList.toggle('hidden', name !== 'docs');
+    el.maintNav.classList.toggle('hidden', name !== 'maint');
+    el.filesNav.classList.toggle('hidden', name !== 'files');
+    el.apiNav.classList.toggle('hidden', name !== 'api');
+    el.mapNav.classList.toggle('hidden', name !== 'map');
+    el.logsNav.classList.toggle('hidden', name !== 'logs');
+    el.docsNav.classList.toggle('hidden', name !== 'docs');
+    el.tabMaint.classList.toggle('active', name === 'maint');
+    el.tabFiles.classList.toggle('active', name === 'files');
+    el.tabApi.classList.toggle('active', name === 'api');
+    el.tabMap.classList.toggle('active', name === 'map');
+    el.tabLogs.classList.toggle('active', name === 'logs');
+    el.tabDocs.classList.toggle('active', name === 'docs');
+    if (name !== 'files') { el.editorPage.classList.add('hidden'); el.ownfile.classList.add('hidden'); }
+    if (name === 'maint') startMaint(); else stopMaint();
+    if (name === 'api') initSwagger();
+    if (name === 'map') { loadMapTab(); startPlayers(); } else stopPlayers();
+    if (name === 'logs') loadLogsTab(); else stopLogFollow();
+    if (name === 'docs') loadDocsTab();
+    if (name === 'files') { showFilesSurface(); loadFiles(true); }
+  }
+
+  // Don't poll a hidden/backgrounded browser tab. Pause every timer when the page is hidden;
+  // on return, restart the always-on footer poll plus whichever sub-tab poller is active — the
+  // start* helpers each fetch immediately, so coming back refreshes the numbers on the spot.
+  function pauseAllPolling() { stopStats(); stopMaint(); stopPlayers(); stopLogFollow(); }
+  function resumeAllPolling() {
+    if (el.app.classList.contains('hidden')) return;   // signed out — nothing to poll
+    startStats();                                        // footer status, always on while visible
+    if (currentTab === 'maint') startMaint();
+    else if (currentTab === 'map') startPlayers();
+    else if (currentTab === 'logs') startLogFollow();
+  }
+
+  // ===================== Mod Docs tab =====================
+  // Read-only browser for docs bundled INSIDE the @mod folders (docs/list + docs/get) —
+  // readmes, notices, example configs. Markdown renders to HTML; text/json/xml show raw.
+  let docsData = null;      // [{mod, path, name}] after first fetch
+  let docsSel = null;       // selected doc path
+  let docsLoadSeq = 0;
+
+  // A deep link (#docs/<path>) stashes its target in pendingDoc; open it once the list is in.
+  // With nothing pending, reflect whatever's already open in the URL (symmetry with the map tab).
+  function consumePendingDoc() {
+    if (pendingDoc) { const p = pendingDoc; pendingDoc = null; openDoc(p); return; }
+    syncHash();
+  }
+  async function loadDocsTab(force) {
+    const cred = loadCred(); if (!cred) return;
+    if (docsData && !force) { renderDocsNav(); consumePendingDoc(); return; }
+    const seq = ++docsLoadSeq;
+    el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">Loading…</span>';
+    try {
+      const r = await apiPost('/dayz/docs/list', cred);
+      if (seq !== docsLoadSeq) return;
+      docsData = (r.docs || []).slice().sort((a, b) => a.mod.localeCompare(b.mod) || a.name.localeCompare(b.name));
+    } catch (err) {
+      if (handle(err)) return;
+      el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">' +
+        (err.status === 404 ? 'The API does not expose mod docs — redeploy it with the updated Docs config.' : 'Could not load docs: ' + escapeHtml(err.message)) + '</span>';
+      return;
+    }
+    renderDocsNav();
+    consumePendingDoc();
+  }
+
+  function renderDocsNav() {
+    if (!docsData || !docsData.length) {
+      el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">No mod docs found.</span>';
+      return;
+    }
+    const byMod = new Map();
+    for (const d of docsData) { if (!byMod.has(d.mod)) byMod.set(d.mod, []); byMod.get(d.mod).push(d); }
+    const openState = new Map();
+    el.docsNav.querySelectorAll('details.side-grp[data-g]').forEach((x) => openState.set(x.dataset.g, x.open));
+    let html = '';
+    for (const [mod, list] of byMod) {
+      const open = openState.has(mod) ? openState.get(mod) : list.some((d) => d.path === docsSel);
+      const rows = list.map((d) =>
+        '<div class="side-item doc-item' + (d.path === docsSel ? ' active' : '') + '" data-path="' + attr(d.path) + '" title="' + attr(d.path) + '">' +
+        '<span class="fn">' + escapeHtml(d.name) + '</span></div>').join('');
+      html += '<details class="side-grp"' + (open ? ' open' : '') + ' data-g="' + attr(mod) + '"><summary>' +
+        escapeHtml(mod.replace(/^@/, '')) + '<span class="side-count">' + list.length + '</span></summary>' + rows + '</details>';
+    }
+    el.docsNav.innerHTML = html;
+  }
+
+  async function openDoc(path) {
+    docsSel = path;
+    renderDocsNav();
+    syncHash();                    // reflect the open doc in the URL (#docs/<path>) — shareable
+    el.docView.innerHTML = '<div class="empty">Loading…</div>';
+    const cred = loadCred(); if (!cred) return;
+    try {
+      const r = await apiPost('/dayz/docs/get?name=' + encodeURIComponent(path), cred);
+      if (docsSel !== path) return;                 // user switched docs mid-fetch
+      el.docView.innerHTML = docRenderHtml(path, stripBom(r.content || ''));
+      el.docView.scrollTop = 0;
+    } catch (err) {
+      if (handle(err)) return;
+      el.docView.innerHTML = '<div class="empty">' + escapeHtml(err.status === 413 ? 'This doc is too large to display.' : err.message) + '</div>';
+    }
+  }
+
+  // .md -> rendered HTML; .json/.xml -> highlighted <pre>; everything else -> monospace <pre>.
+  function docRenderHtml(path, text) {
+    const crumb = '<div class="doc-crumb"><span class="mono">' + escapeHtml(path) + '</span></div>';
+    if (path.toLowerCase().endsWith('.md')) return crumb + '<article class="doc-md">' + renderMarkdown(text) + '</article>';
+    return crumb + '<div class="doc-raw"><pre>' + highlight(text, detectLang(path)) + '</pre></div>';
+  }
+
+  // Tiny, self-contained Markdown -> HTML. Escapes first (no raw HTML passes through), then
+  // applies a safe subset: headings, fenced/inline code, bold/italic, http links, lists, hr.
+  function renderMarkdown(src) {
+    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const inline = (raw) => {
+      let s = esc(raw);
+      const codes = [];
+      s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+      s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
+        /^https?:\/\//i.test(u) ? '<a href="' + u.replace(/"/g, '%22') + '" target="_blank" rel="noopener noreferrer">' + t + '</a>' : t);
+      return s.replace(/\u0000(\d+)\u0000/g, (m, n) => '<code>' + codes[+n] + '</code>');
+    };
+    const lines = src.replace(/\r\n?/g, '\n').split('\n');
+    let out = '', i = 0;
+    const isBlock = (l) => /^(#{1,6}\s|```|\s*[-*+]\s|\s*\d+[.)]\s)/.test(l);
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^```/.test(line)) { const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; } i++; out += '<pre class="doc-code">' + buf.join('\n') + '</pre>'; continue; }
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) { const n = h[1].length; out += '<h' + n + '>' + inline(h[2]) + '</h' + n + '>'; i++; continue; }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { out += '<hr>'; i++; continue; }
+      if (/^\s*[-*+]\s+/.test(line)) { out += '<ul>'; while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { out += '<li>' + inline(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>'; i++; } out += '</ul>'; continue; }
+      if (/^\s*\d+[.)]\s+/.test(line)) { out += '<ol>'; while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { out += '<li>' + inline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>'; i++; } out += '</ol>'; continue; }
+      if (/^\s*$/.test(line)) { i++; continue; }
+      const para = [line]; i++;
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && !isBlock(lines[i])) { para.push(lines[i]); i++; }
+      out += '<p>' + para.map(inline).join('<br>') + '</p>';
+    }
+    return out;
+  }
+
+  // Server status cluster (stats bar + update pill + Maintenance tab + scope) -> js/maintenance.js
+
+  // ===================== theme toggle =====================
+  // The early head script set data-theme before paint; this drives the manual switch and
+  // persists it. No stored value = follow the OS (see the head script + matchMedia listener).
+  function currentTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
+  function updateThemeToggle() {
+    const b = el.themeToggle; if (!b) return;
+    const dark = currentTheme() === 'dark';
+    b.textContent = dark ? '☀' : '☾';
+    b.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    b.setAttribute('aria-label', b.title);
+  }
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('cfgview-theme', t); } catch { /* private mode — session-only */ }
+    updateThemeToggle();
+    requestMapDraw();   // the map paints from CSS vars — repaint under the new theme
+  }
+  function toggleTheme() { applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
+
+  // Server Files tab (tree + Fields<->File override editor + box-owned editor) -> js/editor.js
+
+  // Map tab (terrain canvas + overlays + spawn editor) -> js/map.js (wired by initMap()).
+
+  // Logs tab (server log browser) -> js/logs.js (imported at top; wired by initLogs()).
+
+  // ===================== API page (vendored Swagger UI) =====================
+  let swaggerReady = false;
+  function initSwagger() {
+    if (swaggerReady) return;
+    swaggerReady = true;
+    const css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = 'vendor/swagger-ui/swagger-ui.css';
+    document.head.appendChild(css);
+    const s = document.createElement('script');
+    s.src = 'vendor/swagger-ui/swagger-ui-bundle.js';
+    s.onload = () => {
+      window.SwaggerUIBundle({
+        url: '/api/openapi.json', domNode: el.swagger,
+        presets: [window.SwaggerUIBundle.presets.apis], layout: 'BaseLayout',
+        deepLinking: false, tryItOutEnabled: true,
+        requestInterceptor: async (req) => {
+          if (req.loadSpec) return req;
+          try {
+            const u = new URL(req.url, location.origin);
+            let p = u.pathname;
+            if (p === '/api' || p.startsWith('/api/')) p = p.slice(4) || '/';
+            req.url = location.origin + '/api' + p + u.search;
+          } catch { /* already relative */ }
+          const cred = loadCred();
+          if (cred) {
+            const body = req.body == null ? '' : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+            req.headers['X-Key-Id'] = cred.id;
+            req.headers['X-Signature-256'] = await sign(cred.secret, enc.encode(body));
+          }
+          return req;
+        },
+      });
+    };
+    s.onerror = () => { el.swagger.innerHTML = '<p class="meta" style="padding:22px">Could not load the API explorer bundle.</p>'; };
+    document.body.appendChild(s);
+  }
+
+  // ===================== wire up =====================
+  function start() {
+    showViewer();               // showTab('files') triggers the initial loadFiles
+  }
+
+  el.loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = el.keyId.value.trim();
+    const secret = el.secret.value.trim();
+    if (!id || !secret) { showLogin('Both the Key ID and secret are required.'); return; }
+    const cred = { id, secret };
+    el.connect.disabled = true;
+    el.loginMsg.className = 'msg';
+    el.loginMsg.textContent = 'Checking…';
+    try {
+      await apiPost('/dayz/configs/list', cred);
+      saveCred(cred);
+      start();
+    } catch (err) {
+      if (err.status === 401) showLogin('Those credentials were rejected.');
+      else { el.loginMsg.className = 'msg err'; el.loginMsg.textContent = 'Error: ' + err.message; }
+    } finally { el.connect.disabled = false; }
+  });
+
+  el.signout.addEventListener('click', () => { clearCred(); showLogin('Signed out.'); });
+  el.themeToggle.addEventListener('click', toggleTheme);
+  initMaint();  // stats-bar + update + Maintenance controls wired in js/maintenance.js
+  el.tabMaint.addEventListener('click', () => { location.hash = 'maint'; });
+  el.tabFiles.addEventListener('click', () => { location.hash = 'files'; });
+  el.tabApi.addEventListener('click', () => { location.hash = 'api'; });
+  el.tabMap.addEventListener('click', () => { location.hash = 'map'; });
+  el.tabLogs.addEventListener('click', () => { location.hash = 'logs'; });
+  el.tabDocs.addEventListener('click', () => { location.hash = 'docs'; });
+  el.docsNav.addEventListener('click', (e) => { const r = e.target.closest('.doc-item'); if (r) openDoc(r.dataset.path); });
+
+
+  initLogs();  // Logs tab event listeners are wired in js/logs.js
+
+  initMap();   // Map tab: canvas camera + overlay/edit controls wired in js/map.js
+  window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) applyRoute(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAllPolling(); else resumeAllPolling(); });
+  // Unsaved-changes guard: reloading or closing the tab drops in-memory override OR spawn edits.
+  window.addEventListener('beforeunload', (e) => { if (isDirty() || mapIsDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+  initEditor();  // Server Files tree + editor controls wired in js/editor.js
+
+  // Boot
+  setOnUnauthorized(showLogin);   // wire the shared 401 handler (auth.js) to the login view
+  setMapShellHooks({ syncHash, syncHashSoon, updateThemeToggle });   // map -> shell routing/theme callbacks
+  setLogsShellHooks({ syncHash, syncHashSoon });                     // logs -> shell routing (reflect the open log in the URL)
+  setEditorHooks({ syncHash });   // editor -> shell routing callback
+  updateThemeToggle();   // match the toggle icon to the theme the head script resolved
+  if (!window.crypto || !crypto.subtle) {
+    showLogin('This browser has no Web Crypto (needs HTTPS) — cannot sign requests.');
+  } else {
+    const cred = loadCred();
+    if (cred) start(); else showLogin();
+  }
+})();
+</script>

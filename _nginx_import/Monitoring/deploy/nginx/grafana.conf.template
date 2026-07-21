@@ -1,0 +1,64 @@
+# Grafana — nginx reverse proxy. Rendered by ../../Provision-Tls.ps1 -Service
+# Monitoring. Do NOT hand-edit the deployed copy — change this template and
+# re-run provisioning. Grafana listens on loopback only (__GRAFANA_UPSTREAM__);
+# this vhost is the ONLY way in. Grafana's own login guards the app — the proxy
+# adds TLS, not auth.
+#
+# NOT default_server — it answers only its exact name (__SERVER_NAMES__), so
+# every other subdomain still falls through to the static site's 404 catch-all.
+
+# Port 80: ACME challenge + redirect to HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __SERVER_NAMES__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_WEBROOT__;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# Port 443: Grafana.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name __SERVER_NAMES__;
+
+    ssl_certificate     /etc/letsencrypt/live/__CERT_NAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__CERT_NAME__/privkey.pem;
+
+    # Mozilla "intermediate" TLS baseline (matches the other vhosts).
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    client_max_body_size 5M;
+
+    # Grafana Live (dashboard streaming) rides a WebSocket.
+    location /api/live/ {
+        proxy_pass http://__GRAFANA_UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://__GRAFANA_UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

@@ -1,0 +1,16 @@
+meta {
+  name: players
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/dayz/players
+  body: none
+  auth: none
+}
+
+docs {
+  Online player count via BattlEye RCon. `players` is the parsed count, `raw` is
+  BattlEye's full reply including the per-player table.
+}

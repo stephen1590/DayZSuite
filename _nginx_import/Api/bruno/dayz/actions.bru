@@ -1,0 +1,15 @@
+meta {
+  name: actions
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/dayz/actions
+  body: none
+  auth: none
+}
+
+docs {
+  Lists every action the API can trigger, with its destructive flag. No auth.
+}

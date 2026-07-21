@@ -1,0 +1,16 @@
+meta {
+  name: sysload
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/sysload
+  body: none
+  auth: none
+}
+
+docs {
+  Host overview: cpu % (250ms sample), load averages, memory (MemAvailable),
+  swap, root disk, uptime. Read-only, no privilege on the box.
+}

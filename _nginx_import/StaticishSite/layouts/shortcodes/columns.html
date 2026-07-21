@@ -1,0 +1,2 @@
+{{- $class := .Get "class" -}}
+<div class="sc-columns{{ with $class }} {{ . }}{{ end }}">{{ .Inner }}</div>

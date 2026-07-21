@@ -1,0 +1,27 @@
+.block {
+    padding: 0.85rem 1.1rem;
+    border-left: 4px solid var(--tertiary);
+    background: var(--entry);
+    margin: 1.5rem 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.block.warning {
+    border-color: var(--block-warning);
+    background: color-mix(in srgb, var(--block-warning) 10%, var(--entry));
+}
+
+.block.notice {
+    border-color: var(--block-notice);
+    background: color-mix(in srgb, var(--block-notice) 10%, var(--entry));
+}
+
+.block.important {
+    border-color: var(--block-important);
+    background: color-mix(in srgb, var(--block-important) 10%, var(--entry));
+}
+
+.block.tip {
+    border-color: var(--block-tip);
+    background: color-mix(in srgb, var(--block-tip) 10%, var(--entry));
+}

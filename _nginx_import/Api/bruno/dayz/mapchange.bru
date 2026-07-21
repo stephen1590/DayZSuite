@@ -1,0 +1,26 @@
+meta {
+  name: mapchange
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/dayz/mapchange
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "mission": "dayzOffline.chernarusplus",
+    "force": false
+  }
+}
+
+docs {
+  DESTRUCTIVE. Switches the active mission (writes map.env) and restarts.
+  Installed missions: dayzOffline.chernarusplus, dayzOffline.enoch,
+  dayzOffline.sakhal. Unknown mission = 400 (validated against mpmissions/ on
+  the box). mission is read from the SIGNED body only - a query param here is
+  deliberately ignored.
+}

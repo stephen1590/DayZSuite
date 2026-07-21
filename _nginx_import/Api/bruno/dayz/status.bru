@@ -1,0 +1,15 @@
+meta {
+  name: status
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/dayz/status
+  body: none
+  auth: none
+}
+
+docs {
+  Is the dayz-server systemd unit active? Read-only.
+}
