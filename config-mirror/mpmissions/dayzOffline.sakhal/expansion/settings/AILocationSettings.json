@@ -1,0 +1,373 @@
+{
+  "m_Version": 4,
+  "RoamingLocations": [
+    {
+      "Name": "S_Hermit_Bayakovo",
+      "Position": [
+        14144.4931640625,
+        48.20833206176758,
+        9575.7333984375
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hermit_Orlovo",
+      "Position": [
+        10325.9033203125,
+        34.05924987792969,
+        13122.787109375
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hermit_Remote1",
+      "Position": [
+        14347.2060546875,
+        53.92081832885742,
+        10578.044921875
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hermit_Shumnoye",
+      "Position": [
+        14069.8076171875,
+        35.227054595947266,
+        8898.8251953125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hermit_Vostok",
+      "Position": [
+        13853.30859375,
+        52.80986404418945,
+        8605.3779296875
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Aniva2",
+      "Position": [
+        12666.068359375,
+        16.479999542236328,
+        7467.6259765625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_AnivaIndustrial",
+      "Position": [
+        13079.880859375,
+        3.509999990463257,
+        7677.4931640625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Bolotnoye",
+      "Position": [
+        5100.95556640625,
+        3.202461004257202,
+        8652.2900390625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Podgornoye",
+      "Position": [
+        10923.060546875,
+        23.050634384155273,
+        13147.5087890625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Rudnog_Fire",
+      "Position": [
+        13696.4423828125,
+        2.549999952316284,
+        11779.705078125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Rugnog_Fire2",
+      "Position": [
+        13714.8671875,
+        2.549999952316284,
+        11745.2236328125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_SpawnSurprise",
+      "Position": [
+        14739.2587890625,
+        32.28303146362305,
+        10674.30859375
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Tikhoye",
+      "Position": [
+        6184.6982421875,
+        37.643184661865234,
+        8635.5556640625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Vostok",
+      "Position": [
+        13936.9013671875,
+        6.366137981414795,
+        8362.2900390625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Vysokoye",
+      "Position": [
+        11069.6376953125,
+        107.58499145507812,
+        7995.8359375
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Zhupanovo",
+      "Position": [
+        5738.48291015625,
+        5.240117073059082,
+        12590.580078125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Hold_Zvezdny_nikel",
+      "Position": [
+        11939.689453125,
+        148.7978515625,
+        10332.6943359375
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Holdout_Severomorsk1",
+      "Position": [
+        9539.7353515625,
+        2.400989055633545,
+        13538.7666015625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Patrol_Sovetskoye",
+      "Position": [
+        6282.70068359375,
+        2.309999942779541,
+        12779.994140625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Aniva1",
+      "Position": [
+        12891.3818359375,
+        2.0138020515441895,
+        7333.95556640625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Bayakovo1",
+      "Position": [
+        14569.7587890625,
+        6.471958160400391,
+        9748.9853515625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Dudino",
+      "Position": [
+        6132.10693359375,
+        3.199167013168335,
+        7281.9150390625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Evai",
+      "Position": [
+        8111.1318359375,
+        10.462023735046387,
+        13382.322265625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Nogovo_Downtown",
+      "Position": [
+        7877.1708984375,
+        6.179999828338623,
+        7734.18994140625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_RudnogorskGas",
+      "Position": [
+        13913.0556640625,
+        2.549999952316284,
+        11776.55078125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_RudnogPolice",
+      "Position": [
+        13254.240234375,
+        2.549999952316284,
+        12059.8837890625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_RudnoiPolice",
+      "Position": [
+        13333.724609375,
+        2.549999952316284,
+        12127.8203125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Rybnoye",
+      "Position": [
+        12453.49609375,
+        4.796207904815674,
+        12707.435546875
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Severomorks",
+      "Position": [
+        9841.2470703125,
+        2.4452319145202637,
+        13564.3515625
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Severomorks1",
+      "Position": [
+        9512.728515625,
+        11.518674850463867,
+        13387.1171875
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Scav_Tumanovo",
+      "Position": [
+        8398.33984375,
+        4.464200019836426,
+        13709.939453125
+      ],
+      "Radius": 180.0,
+      "Type": "Local",
+      "Enabled": 1
+    },
+    {
+      "Name": "S_Testing",
+      "Position": [
+        13560.098263257574,
+        2.712738332153961,
+        5472.4031527676525
+      ],
+      "Radius": 20.0,
+      "Type": "Local",
+      "Enabled": 1
+    }
+  ],
+  "ExcludedRoamingBuildings": [
+    "Land_Boat_",
+    "Land_CementWorks_Hall2_Grey",
+    "Land_Factory_Small",
+    "Land_House_1W09",
+    "Land_House_2W03",
+    "Land_HouseBlock_1F4",
+    "Land_Boathouse",
+    "Land_Mine_Building",
+    "Land_Shed_W2",
+    "Land_Tenement_Big",
+    "Land_Misc_Toilet_Mobile",
+    "Land_Ship_Medium2",
+    "Land_Train_Wagon_Box"
+  ],
+  "NoGoAreas": []
+}
