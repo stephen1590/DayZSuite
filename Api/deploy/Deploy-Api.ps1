@@ -135,6 +135,18 @@ foreach ($c in @($allConfigs | Where-Object { $_.writable -and -not $_.path })) 
 $writeEntries = @($fileEntries | Where-Object { $_.writable })
 $writeMap = ($writeEntries | ForEach-Object { "$($_.name)`t$($_.path)" }) -join "`n"
 
+# Generated-artifact READ-ONLY mask -> GENERATED (one ServerDir-relative glob per line). These are
+# prestart COMPILER outputs (config-registry.json "generated"): the web editor renders any match
+# read-only (no edit/save) and override-write REFUSES a patch targeting one, so an auto-generated
+# value can never be hand-edited into a silent loss. '*' = the mission wildcard; no leading '/' or
+# '..'. Absent = feature off.
+$generatedList = @($registry.generated)
+foreach ($g in $generatedList) {
+    if ("$g" -match '^\s*/' -or "$g" -match '\.\.') { throw "Api Configs: generated path must be ServerDir-relative with no '..': '$g'." }
+    if ("$g" -notmatch '^[A-Za-z0-9_.*/-]+$') { throw "Api Configs: generated path has invalid chars (allowed A-Z a-z 0-9 . _ - / *): '$g'." }
+}
+$generated = (@($generatedList | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) -join "`n")
+
 # Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
 # Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
 $docs = $cfg.Docs
@@ -244,6 +256,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__CONFIG_DIRS__' = $configDirs
         '__IGNORE_EXT__'  = $ignoreExt
         '__WRITE_MAP__'   = $writeMap
+        '__GENERATED__'   = $generated
         '__LOG_NOISE__'   = $logNoiseSq
         '__DOCS_ROOTS__'    = $docsRoots
         '__DOCS_EXT__'      = $docsExt

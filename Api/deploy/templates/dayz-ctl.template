@@ -14,6 +14,7 @@ CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist 
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
+GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; override-write refuses to target them
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
 DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
@@ -25,7 +26,9 @@ die() { echo "dayz-ctl: $*" >&2; exit 1; }
 
 OVERRIDES="$SERVER_DIR/config-overrides.json"
 OVR_VERSIONS="$SERVER_DIR/.overrides-versions"
-SPAWNS="$SERVER_DIR/profiles/AI_Bandits/spawn-points.json"   # definitive AI-bandit spawn store (prestart Build-AIBandits reads it)
+# The SHARED spawn store: one neutral file feeding BOTH AIB and Expansion (Build-AIBandits,
+# Build-AILocations, Build-AIPatrols all read it). Neutral location, not under any one mod's folder.
+SPAWNS="$SERVER_DIR/profiles/AI_Shared/map-points.json"
 SPAWN_VERSIONS="$SERVER_DIR/.spawn-versions"
 
 # Snapshot the current config-overrides.json into the versions dir (keep the 10 newest),
@@ -40,12 +43,12 @@ snapshot_overrides() {
   [ -n "$_own" ] && chown -R "$_own" "$OVR_VERSIONS" 2>/dev/null || true
 }
 
-# Same pattern for spawn-points.json (keep the 10 newest). A save is reversible from these.
+# Same pattern for the map-points store (keep the 10 newest). A save is reversible from these.
 snapshot_spawns() {
   [ -f "$SPAWNS" ] || return 0
   mkdir -p "$SPAWN_VERSIONS"
-  cp -p "$SPAWNS" "$SPAWN_VERSIONS/spawn-points.$(date -u +%Y%m%dT%H%M%S%NZ).json"
-  find "$SPAWN_VERSIONS" -maxdepth 1 -name 'spawn-points.*.json' | sort -r | tail -n +11 \
+  cp -p "$SPAWNS" "$SPAWN_VERSIONS/map-points.$(date -u +%Y%m%dT%H%M%S%NZ).json"
+  find "$SPAWN_VERSIONS" -maxdepth 1 -name 'map-points.*.json' | sort -r | tail -n +11 \
     | while IFS= read -r _old; do rm -f "$_old"; done
   _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
   [ -n "$_own" ] && chown -R "$_own" "$SPAWN_VERSIONS" 2>/dev/null || true
@@ -178,6 +181,39 @@ emit_override_targets() {
     esac
   done
   return 0
+}
+
+# --- Generated-artifact guard -----------------------------------------------------------------
+# A prestart COMPILER writes these (config-registry.json "generated"); they are read-only outputs,
+# never edit inputs. GENERATED holds one ServerDir-relative glob per line ('*' = the mission
+# wildcard). A case-glob '*' spans '/' too, which is exactly what we want for the mission segment.
+_is_generated() {
+  # $1 = a concrete ServerDir-relative path. exit 0 = generated (locked), 1 = not.
+  [ -n "$GENERATED" ] || return 1
+  _rel_ig="$1"; _oldifs_ig="$IFS"; IFS=$'\n'
+  for _g in $GENERATED; do
+    [ -n "$_g" ] || continue
+    case "$_rel_ig" in $_g) IFS="$_oldifs_ig"; return 0 ;; esac
+  done
+  IFS="$_oldifs_ig"; return 1
+}
+# Read an override document on stdin; emit the generated relpath(s) it TARGETS, one per line, sorted
+# unique. An F target is its own relpath; an M target resolves to mpmissions/<mission>/<filerel>
+# (mission 'common' -> mpmissions/common/..., which the '*' wildcard still matches, so a common-layer
+# patch on a generated file is caught too). Empty output = the document touches no generated file.
+_override_generated_hits() {
+  # `if...fi` (not `_is_generated && printf`): under `set -euo pipefail` a while-loop whose last
+  # body command returns non-zero (the common case - most targets are NOT generated) makes the loop,
+  # and via pipefail the whole pipeline, exit non-zero, which would abort override-write in a `$(...)`.
+  # The if-statement always returns 0, so a clean doc yields empty output and exit 0.
+  _extract_targets | while IFS=$'\t' read -r _k _a _b; do
+    case "$_k" in
+      F) _rel="$_a" ;;
+      M) _rel="mpmissions/$_a/$_b" ;;
+      *) continue ;;
+    esac
+    if _is_generated "$_rel"; then printf '%s\n' "$_rel"; fi
+  done | LC_ALL=C sort -u
 }
 
 # Emit the full set of retrievable configs, one file per line, TAB-separated:
@@ -532,6 +568,13 @@ case "$verb" in
     emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4"\t"$3}' | head -n 3000 || true
     ;;
 
+  config-generated)
+    # Emit the read-only COMPILER-OUTPUT globs (rendered GENERATED), one ServerDir-relative glob
+    # per line. The web editor marks any file matching one of these read-only (no edit/no save);
+    # override-write refuses to target one. Pure enumeration of the rendered mask - no caller input.
+    if [ -n "$GENERATED" ]; then printf '%s\n' "$GENERATED"; fi
+    ;;
+
   config)
     # config <name> — print ONE allowlisted config file. The NAME must EXACTLY match
     # one emit_allowed produced (an explicit file, or a real file under an allowlisted
@@ -717,6 +760,18 @@ case "$verb" in
     fi
     sz="$(printf '%s' "$arg" | wc -c)"
     [ "$sz" -le 2097152 ] || die "override-write: too large ($sz bytes)"
+    # Generated-file guard: a prestart compiler OWNS these outputs (config-registry.json
+    # "generated"), so an override targeting one would be silently clobbered at the next boot.
+    # Refuse the whole write with a DISTINCT exit (6) so the editor shows a clear "this file is
+    # generated - read-only" message instead of accepting a patch that will vanish. Server-side on
+    # purpose: protects against every writer, not just the web editor.
+    if [ -n "$GENERATED" ]; then
+      _ghits="$(printf '%s' "$arg" | _override_generated_hits || true)"
+      if [ -n "$_ghits" ]; then
+        echo "dayz-ctl: refusing override on generated file(s): $(printf '%s' "$_ghits" | tr '\n' ' ')- compiled at boot from map-points + the frozen base; edit the source, not the output" >&2
+        exit 6
+      fi
+    fi
     # Optimistic concurrency + flag parse (order-independent). The caller may pass base=<sha256>
     # (the version it loaded via override-read); if the file changed since, another admin wrote
     # first — refuse with a DISTINCT exit so the editor says "reload" instead of silently
@@ -766,12 +821,12 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     ;;
 
   spawn-write)
-    # spawn-write <json> — replace profiles/AI_Bandits/spawn-points.json with the JSON document
-    # in $2 (the definitive AI-bandit spawn store; the ConfigViewer Map editor computed it).
-    # PRIVILEGED write only. Validates it is JSON (jq or python3), snapshots the current file
-    # (keep 10), writes ATOMICALLY into the AI_Bandits dir, restores the server-dir owner. Target
-    # is fixed — no caller path input. Takes effect at the next restart (prestart Build-AIBandits
-    # recomposes DynamicAIB.json from it).
+    # spawn-write <json> — replace the SHARED map-points store (profiles/AI_Shared/map-points.json)
+    # with the JSON document in $2 (the single spawn source for BOTH AIB and Expansion; the
+    # ConfigViewer Map editor computed it). PRIVILEGED write only. Validates it is JSON (jq or
+    # python3), snapshots the current file (keep 10), writes ATOMICALLY into the AI_Shared dir,
+    # restores the server-dir owner. Target is fixed — no caller path input. Takes effect at the
+    # next restart (prestart Build-AIBandits/AIPatrols recompose from it).
     # '-' = read the document from stdin (argv is capped at ~128KB per string; 5000 spawn
     # points clear that easily). Same pattern as override-write.
     if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
@@ -786,7 +841,7 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     sz="$(printf '%s' "$arg" | wc -c)"
     [ "$sz" -le 2097152 ] || die "spawn-write: too large ($sz bytes)"
     _dir="$(dirname "$SPAWNS")"
-    [ -d "$_dir" ] || die "spawn-write: AI_Bandits dir not present ($_dir) — deploy the DayZ server first"
+    [ -d "$_dir" ] || die "spawn-write: shared store dir not present ($_dir) — deploy the DayZ server first"
     snapshot_spawns
     _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
     tmp="$(mktemp "$_dir/.spawn-write.XXXXXX")"
@@ -898,6 +953,6 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write update-arm update-disarm update-status mission-list)"
     ;;
 esac

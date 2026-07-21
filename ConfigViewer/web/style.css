@@ -323,14 +323,14 @@
   /* Map body: the stage flexes to fill; toggles + filters live in a fixed rail on the right. */
   .map-body { display: flex; gap: 12px; align-items: flex-start; margin: 12px 22px 0; }
   .map-body .map-stage { margin: 0; flex: 1 1 auto; min-width: 0; }
-  .map-rail { flex: 0 0 226px; height: min(72vh, 900px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .map-rail { flex: 0 0 226px; height: min(85vh, 1000px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
   .mr-tools { display: flex; flex-wrap: wrap; gap: 8px; }
   .map-rail .map-filter { padding: 0; border-bottom: none; background: none; align-content: flex-start; gap: 5px; }
   .map-rail .map-filter .mf-label { flex-basis: 100%; margin: 0 0 1px; }
   .mr-help { margin-top: auto; padding-top: 4px; font-size: 11px; line-height: 1.45; color: var(--faint); }
   @media (max-width: 760px) { .map-body { flex-direction: column; } .map-body .map-stage { width: 100%; height: 56vh; } .map-rail { flex-basis: auto; width: 100%; height: auto; max-height: 320px; } }
   /* The stage is a pan/zoom canvas viewport (terrain tiles + grid + bookmarks). */
-  .map-stage { position: relative; margin: 12px 22px 0; height: min(72vh, 900px); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel2); }
+  .map-stage { position: relative; margin: 12px 22px 0; height: min(85vh, 1000px); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel2); }
   #mapCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
   .map-stage .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: color-mix(in srgb, var(--panel2) 82%, transparent); }
   .map-bar { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 0 22px; padding: 8px 4px 2px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
@@ -364,16 +364,29 @@
   .mf-chip.mf-dot.active { background: var(--dot); border-color: var(--dot); color: var(--dot-fg, #fff); }
   .mf-chip.mf-dot.active .mf-swatch { display: none; }
   .map-tip { position: fixed; z-index: 40; pointer-events: none; background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font-size: 12px; line-height: 1.45; box-shadow: var(--shadow); max-width: 300px; display: none; }
-  .map-detail { margin: 8px 22px 24px; border: 1px solid var(--border); border-radius: 10px; padding: 11px 16px; display: flex; gap: 16px 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; }
-  .map-detail .k2 { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin-right: 6px; }
-  .map-detail.editing { align-items: flex-end; gap: 10px 14px; }
-  .map-detail .me-f { display: inline-flex; flex-direction: column; gap: 3px; }
-  .map-detail .me-f .k2 { margin-right: 0; }
-  .map-detail .me-in { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 13px; padding: 5px 8px; }
-  .map-detail .me-in.me-num { width: 92px; font-variant-numeric: tabular-nums; }
-  .map-detail .me-wide .me-in { min-width: 190px; }
-  .map-detail .me-btn { padding: 5px 11px; align-self: flex-end; }
+  /* Point detail = a right sidebar inside .map-body; the map (.map-stage flex:1) shrinks when it opens. */
+  .map-detail { order: -1; flex: 0 0 320px; align-self: stretch; max-height: min(85vh, 1000px); overflow-y: auto; margin: 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 11px; align-items: stretch; font-size: 13px; }
+  .map-detail.hidden { display: none; }
+  .map-detail .k2 { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .map-detail:not(.editing) > span { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .map-detail .me-f { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+  .map-detail .me-in { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 13px; padding: 6px 8px; width: 100%; box-sizing: border-box; }
+  .map-detail .me-in.me-num { font-variant-numeric: tabular-nums; }
+  .map-detail .me-wide .me-in { min-width: 0; }
+  .map-detail .me-btn { padding: 6px 11px; }
   .map-detail .me-del { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+  /* Per-point patrol tuning: collapsible section, fields stack down the sidebar (blank = inherit). */
+  .map-detail .me-adv { margin-top: 2px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .map-detail .me-adv[open] { display: flex; flex-direction: column; gap: 9px; }
+  .map-detail .me-adv > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; list-style: none; user-select: none; }
+  .map-detail .me-adv > summary::-webkit-details-marker { display: none; }
+  .map-detail .me-adv > summary::before { content: "▸  "; color: var(--faint); }
+  .map-detail .me-adv[open] > summary::before { content: "▾  "; }
+  /* Waypoint list for the selected point (shift-click the map to add, drag dots to move). */
+  .map-detail .me-wps { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .map-detail .me-wp { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+  .map-detail .me-wp-del { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 12px; line-height: 1; padding: 0 4px; }
+  .map-detail .me-wp-hint { color: var(--faint); font-size: 10px; }
   .map-save { display: inline-flex; gap: 6px; align-items: center; }
   .map-save-go:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
   .map-save button:disabled { opacity: .5; cursor: default; }

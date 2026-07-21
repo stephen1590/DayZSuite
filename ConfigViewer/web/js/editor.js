@@ -29,6 +29,7 @@ let overridesDoc = {};
 // activeMission -> js/state.js (shared: editor resolves 'common' against it, map defaults to it)
 let configItems = [];     // /dayz/configs/list — now carries each file's relpath
 let boxFiles = [];        // /dayz/configs/writable [{name, path}]
+let roRe = [];            // /dayz/configs/readonly — compiled globs of generated (read-only) files
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
@@ -128,6 +129,16 @@ function makeRow(relpath, name, label, group) {
     kind: kindOf(relpath || label),
   };
 }
+// Surfaces the Map tab (map.js) owns as a live spatial store - editable ONLY there, never as a
+// config-editor override. An override on the store would fight the Map tab's spawn-write at boot,
+// so the config editor shows these READ-ONLY. Name matches map.js's `configs/get?name=Map-points`.
+const MAP_STORE_SURFACES = new Set(['Map-points']);
+// GENERATED (compiler-output) files: a prestart builder OWNS these (config-registry.json
+// "generated", surfaced by /dayz/configs/readonly), so an override on one is clobbered at boot.
+// Shown READ-ONLY here - no edit, no save; change the SOURCE (map-points, common templates, the
+// frozen base), never the output. A glob's '*' = the mission wildcard and spans '/'.
+function globToRe(g) { return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'); }
+function isGenerated(rel) { return !!rel && roRe.some((re) => re.test(rel)); }
 function buildRows(items, writable, doc, mission) {
   const list = [];
   const byRel = new Map();
@@ -140,7 +151,8 @@ function buildRows(items, writable, doc, mission) {
     if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
     const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
     const w = wByKey.get(c.name) || wByKey.get(rel) || null;
-    row.access = w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
+    row.access = MAP_STORE_SURFACES.has(c.name) ? 'lock'      // Map-tab-owned store: RO in config view
+      : w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
     if (w) row.writableName = w.name;
     byRel.set(rel, row); list.push(row);
   }
@@ -184,6 +196,10 @@ function buildRows(items, writable, doc, mission) {
       }
     }
   }
+  // Final sweep: any row that resolves to a GENERATED (compiler-output) file is read-only,
+  // however it was created (curated listing, writable, or override-synth). This is the ONE place
+  // the generated rule is enforced in the UI, so every code path above inherits it.
+  for (const r of list) { if (isGenerated(r.relpath)) { r.access = 'lock'; r.generated = true; } }
   return list;
 }
 function activeMissionRel(mission, fileKey) { return mission ? 'mpmissions/' + mission + '/' + fileKey : null; }
@@ -281,13 +297,15 @@ export async function loadFiles(preserve) {
   const cred = loadCred();
   if (!cred) return;
   try {
-    const [cfgR, ovrR, boxR] = await Promise.all([
+    const [cfgR, ovrR, boxR, roR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
       apiPost('/dayz/configs/overrides', cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
+      apiPost('/dayz/configs/readonly', cred).catch(() => ({ files: [] })),   // generated (read-only) globs; [] on an older API
     ]);
     configItems = cfgR.configs || [];
     boxFiles = boxR.files || [];
+    roRe = (roR.files || []).map(globToRe);
     // On a plain tab re-entry (preserve) keep unsaved edits — only reload the doc from
     // the server on the initial load, after a save, or after a rollback.
     if (!(preserve && isDirty())) {
@@ -361,7 +379,9 @@ function editorChrome(row) {
   const layerSel = (row.scope === 'mission' && !locked)
     ? '<span class="lay-wrap">New overrides:<select id="ovrLayerSel" class="lay-sel"><option value="mission"' + (row.mission ? '' : ' disabled') + '>this mission only</option><option value="common"' + (row.mission ? '' : ' selected') + '>all missions</option></select></span>'
     : '';
-  const summary = locked
+  const summary = row.generated
+    ? '<span class="stat"><span class="dot b"></span>generated file — built at boot from map-points + the frozen base; read-only here</span>'
+    : locked
     ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
     : '<span class="stat d"><span class="dot d"></span><b>' + nOver + '</b> ' + (row.kind === 'xml' ? 'XPath override' + (nOver === 1 ? '' : 's') : 'overridden') + '</span>';
   return '<div class="ovr-phead">' +

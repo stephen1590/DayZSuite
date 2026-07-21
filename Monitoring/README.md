@@ -53,6 +53,28 @@ and on dashboard panels, but notify nowhere. To get pinged off-box, add a
 `contactPoints:`/`policies:` block to the alerting template (e.g. a Discord
 webhook) and redeploy.
 
+## Server FPS (VPP webhook)
+
+DayZ server FPS isn't in the API's pull path (nothing on the box exposes it) -
+it's PUSHED by VPPAdminTools. VPP's WebHooksManager sends a periodic
+"server status" post (`Server FPS: N`, uptime, players) via a plain HTTP POST to
+any URL - Discord's payload *shape*, not a Discord-only destination. Pointed at
+the API's existing VPP ingress (`/dayz/sources/vpp/<token>`), the API parses the
+FPS (`routes/sources.ts` -> `vpp-stats.ts`) and exposes it in `/metrics` as
+`dayz_server_fps`, plus `dayz_server_status_age_seconds` (feed freshness - the
+FPS value is dropped from `/metrics` once the feed is stale, >180s, so a frozen
+number can't read as live).
+
+To enable it, add a webhook in VPP's in-game admin menu (WebHooks):
+
+- URL: `https://api.<BaseDomain>/dayz/sources/vpp/<VPP_TOKEN>` (the token is in
+  `/etc/api/secrets.env` on the box as `VPP_TOKEN`)
+- Enable **Server Status**, interval **1 minute**, **simplified messages ON**
+  (puts FPS in the payload `content`; the parser also handles embed mode)
+
+It activates on the next server start (VPP loads `WebHooks.json` at boot). The
+"Server FPS" panels on the DayZ dashboard populate once the first post arrives.
+
 ## Deploy
 
 Two steps, both report-only until you pass the apply flag:

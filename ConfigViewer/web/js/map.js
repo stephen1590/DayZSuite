@@ -80,8 +80,8 @@ export async function loadMapTab(force) {
     mapStageMsg('Loading spawn points…');
     try {
       const [spawnsR, classesR, hmsR] = await Promise.all([
-        apiPost('/dayz/configs/get?name=Spawn-points', cred),
-        apiPost('/dayz/configs/get?name=Aib-classes', cred),
+        apiPost('/dayz/configs/get?name=Map-points', cred),
+        apiPost('/dayz/configs/get?name=AI-Classes', cred),
         apiPost('/dayz/terrain/heightmaps', cred).catch(() => ({ maps: [] })),  // older API -> no deltas, map still plots
       ]);
       if (seq !== mapLoadSeq) return;
@@ -97,7 +97,7 @@ export async function loadMapTab(force) {
     } catch (err) {
       if (handle(err)) return;
       mapStageMsg(err.status === 404
-        ? 'The API does not expose Spawn-points — redeploy it with the updated Configs allowlist.'
+        ? 'The API does not expose Map-points — redeploy it with the updated Configs allowlist.'
         : 'Could not load spawn points: ' + err.message);
       return;
     }
@@ -157,11 +157,61 @@ function mapLettersFor(mission) {
   const letters = (mapData.classes && mapData.classes.maps) || {};
   return Object.keys(letters).filter((k) => letters[k] === mission);
 }
-// Serialise an in-memory point back to the stored spawn-points.json shape.
+// Valid Expansion AI factions — MIRROR of the API validator in Api/app/src/actions.ts
+// (keep both in sync). Source: DayZ-Expansion-Scripts wiki, "How to create AI Patrols".
+const AI_FACTIONS = ['West', 'East', 'Raiders', 'Mercenaries', 'Civilian', 'Passive', 'Guards', 'InvincibleGuards', 'Shamans', 'Observers', 'InvincibleObservers', 'YeetBrigade', 'InvincibleYeetBrigade', 'Brawlers', 'RANDOM'];
+// The doc-level default any point falls back to; a point's own faction overrides it.
+function docDefaultFaction() { return (mapData && mapData.spawns && mapData.spawns.defaultFaction) || 'Raiders'; }
+function effFaction(p) { return p.faction || docDefaultFaction(); }
+
+// Expansion roaming-location Types (from the maps' CfgWorlds; 'Local' is the safe default).
+const LOCATION_TYPES = ['Local', 'Village', 'City', 'Capital', 'Hill', 'Camp', 'Ruin'];
+// Which spawn systems a point feeds (own `spawns`, else the doc's defaultSpawns, else both).
+function docDefaultSpawns() { return (mapData && mapData.spawns && mapData.spawns.defaultSpawns) || ['aib', 'expansion']; }
+function effSpawns(p) { return p.spawns || docDefaultSpawns(); }
+
+// Per-point ExpansionAI patrol tuning. Each key, when set in a point's `patrol` object, overrides
+// the safe template default in the builder; blank = inherit. THIS list is the UI half of a 3-way
+// contract — MIRROR of $PATROL_OVERRIDABLE (DayZ-Server/Build-AIPatrols.ps1) and PATROL_KEYS
+// (Api/app/src/actions.ts). Add a knob = add it to all three. t: num | int | bool | str.
+// def = the builder's template default, shown as the input placeholder so a blank field tells you
+// what it currently resolves to (blank still means "inherit", it does not write an override).
+const PATROL_FIELDS = [
+  { k: 'numberOfAIMax', label: 'Num AI max', t: 'int', def: '= count' },
+  { k: 'chance', label: 'Spawn chance', t: 'num', def: '1' },
+  { k: 'loadBalancingCategory', label: 'Load-balancing', t: 'str', def: 'Survivor' },
+  { k: 'minDistRadius', label: 'Min dist', t: 'num', def: '0' },
+  { k: 'maxDistRadius', label: 'Max dist', t: 'num', def: '-1' },
+  { k: 'despawnRadius', label: 'Despawn dist', t: 'num', def: '-1' },
+  { k: 'useRandomWaypointAsStartPoint', label: 'Random start WP', t: 'bool', def: '0' },
+  { k: 'canBeLooted', label: 'Can be looted', t: 'bool', def: '1' },
+  { k: 'accuracyMin', label: 'Accuracy min', t: 'num', def: '-1' },
+  { k: 'accuracyMax', label: 'Accuracy max', t: 'num', def: '-1' },
+  { k: 'speed', label: 'Speed', t: 'str', def: 'JOG' },
+  { k: 'underThreatSpeed', label: 'Threat speed', t: 'str', def: 'SPRINT' },
+  { k: 'defaultStance', label: 'Stance', t: 'str', def: 'STANDING' },
+  { k: 'formation', label: 'Formation', t: 'str', def: '(none)' },
+  { k: 'formationScale', label: 'Formation scale', t: 'num', def: '1.5' },
+  { k: 'threatDistanceLimit', label: 'Threat dist limit', t: 'num', def: '-1' },
+  { k: 'respawnTime', label: 'Respawn time', t: 'num', def: '-2' },
+  { k: 'despawnTime', label: 'Despawn time', t: 'num', def: '-1' },
+  { k: 'damageMultiplier', label: 'Damage x', t: 'num', def: '-1' },
+  { k: 'damageReceivedMultiplier', label: 'Dmg received x', t: 'num', def: '-1' },
+  { k: 'headshotResistance', label: 'Headshot resist', t: 'num', def: '0' },
+  { k: 'lootDropOnDeath', label: 'Loot drop', t: 'str', def: '(none)' },
+];
+
+// Serialise an in-memory point back to the stored map-points.json shape.
 function mapToStored(p) {
   const o = { name: p.name, map: p.map };
   if (p.cat) o.category = p.cat;
   if (p.size) o.size = p.size;
+  if (p.faction) o.faction = p.faction;      // omitted => inherits defaultFaction
+  if (p.spawns) o.spawns = p.spawns;         // omitted => inherits defaultSpawns
+  if (p.type) o.type = p.type;               // omitted => builder uses base Type / 'Local'
+  if (p.radius != null) o.radius = p.radius; // omitted => builder uses base average radius
+  if (p.patrol && Object.keys(p.patrol).length) o.patrol = p.patrol; // per-point patrol tuning overrides
+  if (p.waypoints && p.waypoints.length) o.waypoints = p.waypoints;   // extra roam-path waypoints (after the spawn)
   o.x = p.x; o.y = p.y; o.z = p.z;
   return o;
 }
@@ -186,7 +236,7 @@ function setMapMission(mission) {
   const mine = mapLettersFor(mission);
   mapPts = mapData.spawns.points
     .filter((e) => mine.includes(e.map))
-    .map((e) => ({ name: e.name, map: e.map, cat: e.category || null, size: e.size || null, x: e.x, y: e.y, z: e.z }));
+    .map((e) => ({ name: e.name, map: e.map, cat: e.category || null, size: e.size || null, faction: e.faction || null, spawns: e.spawns || null, type: e.type || null, radius: (e.radius != null ? e.radius : null), patrol: e.patrol || null, waypoints: e.waypoints || null, x: e.x, y: e.y, z: e.z }));
   initMapFilter();
   mapHm = mapData.hms.find((h) => h.map === mapShort(mission)) || null;
   // Without a shipped heightmap there's no worldSize either — scale to the data.
@@ -365,7 +415,7 @@ async function saveSpawns() {
     if (seen.has(p.name)) { toast('Duplicate point name: ' + p.name, 'err'); return; }
     seen.add(p.name);
   }
-  const doc = { version: mapData.spawns.version || 1, points: mapData.spawns.points };
+  const doc = { version: mapData.spawns.version || 1, defaultFaction: docDefaultFaction(), points: mapData.spawns.points };
   try {
     el.mapSaveBtn.disabled = true;
     const r = await apiPost('/dayz/configs/set-spawns', cred, { document: doc });
@@ -720,7 +770,7 @@ function renderLiveFilter() {
   const css = (v, fb) => (getComputedStyle(document.documentElement).getPropertyValue(v) || fb).trim();
   chipBar(el.mapLiveFilter, 'Live', LIVE_KINDS, mapLiveSel, 'data-live',
     (n) => (n === 'Players' ? css('--info', '#2f6fd0') : css('--map-bad', '#c33327')),
-    (n) => (n === 'Players' ? mapPlayers.length : (mapMission === getActiveMission() ? mapBandits.positions.length : 0)));
+    (n) => (mapMission !== getActiveMission() ? 0 : (n === 'Players' ? mapPlayers.length : mapBandits.positions.length)));
 }
 
 // Building footprints: small dark squares, culled to the viewport. 5-12k points,
@@ -879,8 +929,30 @@ function mapColors() {
   const v = (name) => cs.getPropertyValue(name).trim();
   return { mok: v('--map-ok'), mwarn: v('--map-warn'), mbad: v('--map-bad'), mnull: v('--faint'), ring: v('--accent'), edge: v('--card') };
 }
+// The selected point's roam path: spawn -> wp1 -> wp2 …, a dashed line + numbered dots. Shown only
+// for the selected point (click a marker to reveal); draggable/addable/deletable in edit mode.
+function drawSelectedWaypoints(ctx) {
+  if (mapSelPt < 0) return;
+  const p = mapPts[mapSelPt];
+  if (!p || !p.waypoints || !p.waypoints.length) return;
+  const C = mapColors();
+  const path = [[p.x, p.z]].concat(p.waypoints.map((w) => [w.x, w.z]));
+  ctx.save();
+  ctx.beginPath();
+  path.forEach((c, i) => { const [sx, sy] = mapToScreen(c[0], c[1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy); });
+  ctx.strokeStyle = C.ring; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = '9px ui-monospace, SFMono-Regular, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  p.waypoints.forEach((w, i) => {
+    const [sx, sy] = mapToScreen(w.x, w.z);
+    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = C.ring; ctx.fill(); ctx.strokeStyle = C.edge; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.fillStyle = C.edge; ctx.fillText(String(i + 1), sx, sy);
+  });
+  ctx.restore();
+}
 function drawMapMarkers(ctx) {
   if (!mapPts.length) return;
+  drawSelectedWaypoints(ctx);
   const { w, h } = mapVp();
   const C = mapColors();
   mapPts.forEach((p, i) => {
@@ -913,6 +985,19 @@ function mapHitTest(sx, sy) {
   });
   return best;
 }
+// Hit-test the SELECTED point's waypoint dots (only shown/grabbable when a point is selected).
+function mapHitWaypoint(sx, sy) {
+  if (mapSelPt < 0) return -1;
+  const p = mapPts[mapSelPt];
+  if (!p || !p.waypoints) return -1;
+  let best = -1, bd = 16 * 16;
+  p.waypoints.forEach((w, i) => {
+    const [px, py] = mapToScreen(w.x, w.z);
+    const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+    if (d2 < bd) { bd = d2; best = i; }
+  });
+  return best;
+}
 
 // ---------- crosshair + readout ----------
 function drawMapCrosshair(ctx, w, h) {
@@ -930,6 +1015,7 @@ function drawMapCrosshair(ctx, w, h) {
 
 // ---------- live player overlay (anonymized {x,z}, polled on the Map tab) ----------
 function drawMapPlayers(ctx) {
+  if (mapMission !== getActiveMission()) return;   // live players belong to the running server's map only
   if (!mapLiveSel.has('Players')) return;
   if (!mapPlayers.length || !mapView) return;
   const fill = (getComputedStyle(document.documentElement).getPropertyValue('--info') || '#2f6fd0').trim();
@@ -1013,7 +1099,7 @@ export function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersT
 function updateMapBar() {
   const scale = mapView ? (1 / mapView.ppm) : 0;
   const scaleTxt = scale >= 1 ? scale.toFixed(1) + ' m/px' : (1 / scale).toFixed(1) + ' px/m';
-  const players = !mapLiveSel.has('Players') ? '' : mapPlayers.length
+  const players = (mapMission !== getActiveMission() || !mapLiveSel.has('Players')) ? '' : mapPlayers.length
     ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
       + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
     : '';
@@ -1147,6 +1233,9 @@ function renderMapDetail() {
   el.mapDetail.innerHTML =
     '<span><span class="k2">Name</span><b class="mono">' + escapeHtml(p.name) + '</b></span>' +
     '<span><span class="k2">Role</span>' + escapeHtml(role) + (p.size ? ' · size ' + escapeHtml(p.size) : '') + '</span>' +
+    '<span><span class="k2">Faction</span>' + escapeHtml(effFaction(p)) + (p.faction ? '' : ' <span class="k2">(default)</span>') + '</span>' +
+    '<span><span class="k2">Systems</span>' + escapeHtml(effSpawns(p).slice().sort().join(' + ') || 'none') + (p.spawns ? '' : ' <span class="k2">(default)</span>') + '</span>' +
+    '<span><span class="k2">Roam</span>' + escapeHtml((p.type || 'Local') + ' · r' + (p.radius != null ? p.radius : 'default')) + '</span>' +
     '<span><span class="k2">X / Z</span><span class="mono">' + p.x.toFixed(1) + ' / ' + p.z.toFixed(1) + '</span></span>' +
     '<span><span class="k2">Y</span><span class="mono">' + p.y.toFixed(2) + '</span></span>' +
     '<span><span class="k2">Terrain Y</span><span class="mono">' + (p.ty === undefined ? '—' : p.ty.toFixed(2)) + '</span></span>' +
@@ -1163,14 +1252,45 @@ function mapEditFormHtml(p, cats) {
     escapeHtml(k === '(base)' ? 'Base (holdout)' : k + ' → ' + (cats[k] || '?')) + '</option>').join('');
   const sizeSel = sizeOpts.map((k) => '<option value="' + attr(k) + '"' + (k === curSize ? ' selected' : '') + '>' +
     escapeHtml(k === '(default)' ? 'Default' : k + ' (' + sizes[k] + ')') + '</option>').join('');
+  const curFac = p.faction || '(default)';
+  const facSel = ['(default)'].concat(AI_FACTIONS).map((k) => '<option value="' + attr(k) + '"' + (k === curFac ? ' selected' : '') + '>' +
+    escapeHtml(k === '(default)' ? 'Default (' + docDefaultFaction() + ')' : k) + '</option>').join('');
+  const spVal = p.spawns ? p.spawns.slice().sort().join('+') : '(default)';
+  const sysSel = [['(default)', 'Default (' + docDefaultSpawns().slice().sort().join('+') + ')'], ['aib', 'AIB only'], ['expansion', 'Expansion only'], ['aib+expansion', 'Both'], ['', 'None']]
+    .map(([v, lbl]) => '<option value="' + attr(v) + '"' + (v === spVal ? ' selected' : '') + '>' + escapeHtml(lbl) + '</option>').join('');
+  const typeCur = p.type || '(default)';
+  const typeSel = ['(default)'].concat(LOCATION_TYPES).map((k) => '<option value="' + attr(k) + '"' + (k === typeCur ? ' selected' : '') + '>' +
+    escapeHtml(k === '(default)' ? 'Default (Local)' : k) + '</option>').join('');
   const num = (id, v) => '<label class="me-f"><span class="k2">' + id.slice(2) + '</span>' +
     '<input class="me-in me-num" id="me' + id.slice(2) + '" type="number" step="0.1" value="' + v.toFixed(2) + '"></label>';
+  const pVal = (k) => (p.patrol && p.patrol[k] != null) ? p.patrol[k] : '';
+  const advRows = PATROL_FIELDS.map((f) => {
+    if (f.t === 'bool') {
+      const cur = pVal(f.k) === '' ? '' : (pVal(f.k) ? '1' : '0');
+      return '<label class="me-f"><span class="k2">' + f.label + '</span><select class="me-in" id="mePatrol_' + f.k + '">' +
+        [['', 'Default (' + (f.def === '1' ? 'Yes' : 'No') + ')'], ['1', 'Yes'], ['0', 'No']].map((o) => '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+        '</select></label>';
+    }
+    const isNum = (f.t === 'num' || f.t === 'int');
+    return '<label class="me-f"><span class="k2">' + f.label + '</span><input class="me-in' + (isNum ? ' me-num' : '') + '" id="mePatrol_' + f.k + '"' +
+      (isNum ? ' type="number" step="' + (f.t === 'int' ? '1' : '0.01') + '"' : ' type="text"') +
+      ' value="' + attr(pVal(f.k)) + '" placeholder="' + attr(f.def || 'default') + '"></label>';
+  }).join('');
+  const advanced = '<details class="me-adv"><summary class="me-adv-sum">Patrol tuning (advanced) — blank inherits</summary>' + advRows + '</details>';
+  const wps = p.waypoints || [];
+  const wpSection = '<div class="me-wps"><span class="k2">Waypoints (' + wps.length + ')</span>' +
+    wps.map((w, i) => '<div class="me-wp"><span class="mono">' + (i + 1) + '. ' + w.x.toFixed(0) + ' / ' + w.z.toFixed(0) + '</span><button type="button" class="me-wp-del" data-wp="' + i + '" title="Delete waypoint">✕</button></div>').join('') +
+    '<span class="me-wp-hint">Shift-click the map to add · drag dots to move</span></div>';
   return '<label class="me-f me-wide"><span class="k2">Name</span><input class="me-in" id="meName" value="' + attr(p.name) + '"></label>' +
     '<label class="me-f"><span class="k2">Class</span><select class="me-in" id="meCat">' + catSel + '</select></label>' +
     '<label class="me-f"><span class="k2">Size</span><select class="me-in" id="meSize">' + sizeSel + '</select></label>' +
+    '<label class="me-f"><span class="k2">Faction</span><select class="me-in" id="meFaction">' + facSel + '</select></label>' +
+    '<label class="me-f"><span class="k2">Systems</span><select class="me-in" id="meSystems">' + sysSel + '</select></label>' +
+    '<label class="me-f"><span class="k2">Type</span><select class="me-in" id="meType">' + typeSel + '</select></label>' +
+    '<label class="me-f"><span class="k2">Radius</span><input class="me-in me-num" id="meRadius" type="number" step="10" value="' + attr(p.radius != null ? p.radius : '') + '" placeholder="default"></label>' +
     num('meX', p.x) + num('meZ', p.z) + num('meY', p.y) +
     '<button class="ghost me-btn" id="meSnap" type="button" title="Set Y to the terrain height at this X/Z">Snap Y</button>' +
-    '<button class="ghost me-btn me-del" id="meDel" type="button">Delete</button>';
+    '<button class="ghost me-btn me-del" id="meDel" type="button">Delete</button>' + wpSection + advanced;
 }
 
 function markSpawnDirty() { mapSpawnDirty = true; updateMapEditUi(); }
@@ -1181,7 +1301,7 @@ function addSpawnAt(wx, wz) {
   const taken = new Set(mapPts.map((p) => p.name).concat((mapData.spawns.points || []).map((p) => p.name)));
   let i = 1, name; do { name = letter + '_New' + i++; } while (taken.has(name));
   const gy = mapLocalY(wx, wz);
-  const p = { name, map: letter, cat: null, size: null, x: wx, z: wz,
+  const p = { name, map: letter, cat: null, size: null, faction: null, spawns: null, type: null, radius: null, waypoints: null, x: wx, z: wz,
     y: gy == null ? 0 : gy, ty: gy == null ? undefined : gy, delta: gy == null ? undefined : 0 };
   mapPts.push(p);
   mapCatFilter.add(mapCatKey(p));          // keep the new point visible under the current filter
@@ -1194,6 +1314,23 @@ function deleteSelSpawn() {
   if (mapSelPt < 0) return;
   mapPts.splice(mapSelPt, 1);
   mapSelPt = -1;
+  markSpawnDirty();
+  renderMap();
+}
+
+// Append a roam-path waypoint to a point (Y snaps to terrain); shift-click on the map calls this.
+function addWaypointTo(idx, wx, wz) {
+  const p = mapPts[idx]; if (!p) return;
+  if (!p.waypoints) p.waypoints = [];
+  const gy = mapLocalY(wx, wz);
+  p.waypoints.push({ x: wx, z: wz, y: gy == null ? 0 : gy });
+  markSpawnDirty();
+  renderMap();
+}
+function deleteWaypoint(idx, wi) {
+  const p = mapPts[idx]; if (!p || !p.waypoints) return;
+  p.waypoints.splice(wi, 1);
+  if (!p.waypoints.length) delete p.waypoints;
   markSpawnDirty();
   renderMap();
 }
@@ -1215,9 +1352,24 @@ function onMapEditInput(e) {
   if (id === 'meName') p.name = v;
   else if (id === 'meCat') { p.cat = v === '(base)' ? null : v; mapCatFilter.add(mapCatKey(p)); }
   else if (id === 'meSize') p.size = v === '(default)' ? null : v;
+  else if (id === 'meFaction') p.faction = v === '(default)' ? null : v;
+  else if (id === 'meSystems') p.spawns = v === '(default)' ? null : (v === '' ? [] : v.split('+'));
+  else if (id === 'meType') p.type = v === '(default)' ? null : v;
+  else if (id === 'meRadius') p.radius = (v === '' ? null : (parseFloat(v) || 0));
   else if (id === 'meX') p.x = parseFloat(v) || 0;
   else if (id === 'meZ') p.z = parseFloat(v) || 0;
   else if (id === 'meY') p.y = parseFloat(v) || 0;
+  else if (id.indexOf('mePatrol_') === 0) {
+    const pk = id.slice(9), pf = PATROL_FIELDS.find((x) => x.k === pk);
+    if (!pf) return;
+    if (!p.patrol) p.patrol = {};
+    if (v === '') delete p.patrol[pk];
+    else if (pf.t === 'bool') p.patrol[pk] = (v === '1') ? 1 : 0;
+    else if (pf.t === 'int') p.patrol[pk] = parseInt(v, 10) || 0;
+    else if (pf.t === 'num') p.patrol[pk] = parseFloat(v) || 0;
+    else p.patrol[pk] = v;
+    if (!Object.keys(p.patrol).length) delete p.patrol;
+  }
   else return;
   markSpawnDirty();
   requestMapDraw();
@@ -1285,9 +1437,11 @@ export function initMap() {
       touches.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       if (touches.size === 2) { drag = null; moving = null; pinch = { d0: dist(), ppm0: mapView.ppm }; mapTakeControl(); }
       else if (touches.size === 1) {
-        // Edit mode: grabbing a marker moves it; empty space still pans (and a click adds).
-        const hit = mapEdit ? mapHitTest(e.offsetX, e.offsetY) : -1;
-        if (hit > -1) { moving = { id: e.pointerId, idx: hit }; mapSelPt = hit; el.mapTip.style.display = 'none'; renderMap(); }
+        // Edit mode: grab a waypoint of the selected point, or a marker, to move it; empty space pans (a click adds).
+        const wp = (mapEdit && mapSelPt > -1) ? mapHitWaypoint(e.offsetX, e.offsetY) : -1;
+        const hit = (mapEdit && wp < 0) ? mapHitTest(e.offsetX, e.offsetY) : -1;
+        if (wp > -1) { moving = { id: e.pointerId, idx: mapSelPt, wp: wp }; el.mapTip.style.display = 'none'; }
+        else if (hit > -1) { moving = { id: e.pointerId, idx: hit, wp: -1 }; mapSelPt = hit; el.mapTip.style.display = 'none'; renderMap(); }
         else { mapTakeControl(); drag = { id: e.pointerId, sx: e.offsetX, sy: e.offsetY, cx0: mapView.cx, cz0: mapView.cz, moved: false }; }
       }
     });
@@ -1303,15 +1457,20 @@ export function initMap() {
         shellHooks.syncHashSoon();
         return;
       }
-      if (moving && e.pointerId === moving.id) {          // drag a marker to a new X/Z (edit mode)
+      if (moving && e.pointerId === moving.id) {          // drag a marker or a waypoint to a new X/Z (edit mode)
         const w = mapToWorld(e.offsetX, e.offsetY);
-        const p = mapPts[moving.idx];
-        p.x = w.x; p.z = w.z;
         const gy = mapLocalY(w.x, w.z);
-        if (gy != null) { p.y = gy; p.ty = gy; p.delta = 0; }   // snap to ground; Y is editable in the panel
+        if (moving.wp > -1) {                             // a waypoint of the selected point
+          const wp = mapPts[moving.idx].waypoints[moving.wp];
+          wp.x = w.x; wp.z = w.z; if (gy != null) wp.y = gy;
+        } else {                                          // the spawn marker itself
+          const p = mapPts[moving.idx];
+          p.x = w.x; p.z = w.z;
+          if (gy != null) { p.y = gy; p.ty = gy; p.delta = 0; }   // snap to ground; Y is editable in the panel
+        }
         mapCursor = w;
         markSpawnDirty();
-        renderMapDetail();                                // live-update the X/Z/Y fields
+        renderMapDetail();                                // live-update the X/Z/Y fields + waypoint list
         requestMapDraw();
         return;
       }
@@ -1343,7 +1502,11 @@ export function initMap() {
         if (!drag.moved && e.type === 'pointerup') {
           const i = mapHitTest(e.offsetX, e.offsetY);
           if (i > -1) selectMapPt(i);
-          else if (mapEdit) { const w = mapToWorld(e.offsetX, e.offsetY); addSpawnAt(w.x, w.z); }  // click empty map = add a point
+          else if (mapEdit) {
+            const w = mapToWorld(e.offsetX, e.offsetY);
+            if (e.shiftKey && mapSelPt > -1) addWaypointTo(mapSelPt, w.x, w.z);  // shift+click empty = append a waypoint to the selected point
+            else addSpawnAt(w.x, w.z);                                            // click empty = add a new point
+          }
         }
         drag = null;
       }
@@ -1417,5 +1580,6 @@ export function initMap() {
   el.mapDetail.addEventListener('click', (e) => {
     if (e.target.id === 'meDel') deleteSelSpawn();
     else if (e.target.id === 'meSnap') snapSelY();
+    else if (e.target.classList.contains('me-wp-del')) deleteWaypoint(mapSelPt, +e.target.dataset.wp);
   });
 }

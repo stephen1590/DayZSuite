@@ -8,8 +8,12 @@
 // (players), so collection is cached briefly: concurrent scrapers share one in-flight
 // collection, and Prometheus can shorten its interval without multiplying bridge calls.
 import type { DayzBridge } from './dayz.js';
+import { getServerStatus } from './vpp-stats.js';
 
 const CACHE_TTL_MS = 10_000;
+// Server FPS is PUSHED by VPP on a timer (default 60s); drop it from /metrics once the
+// feed goes quiet so a stale value can't masquerade as live. 3x the default interval.
+const FPS_STALE_MS = 180_000;
 
 interface Sample {
   labels?: Record<string, string>;
@@ -80,6 +84,18 @@ async function collect(dayz: DayzBridge): Promise<string> {
         type: 'gauge',
         samples: pinged.map((p) => ({ labels: { slot: String(p.num), player: p.name }, value: p.ping as number })),
       });
+    }
+  }
+
+  // Server FPS — pushed by VPP's server-status webhook, not collected here. Always
+  // report its age (so a dead feed is visible), but only report the FPS value while the
+  // feed is fresh — a frozen number would otherwise read as live long after VPP stopped.
+  const status = getServerStatus();
+  if (status) {
+    const ageMs = Date.now() - status.receivedAtMs;
+    one('dayz_server_status_age_seconds', 'Seconds since the last VPP server-status webhook (freshness of dayz_server_fps).', 'gauge', Math.max(0, Math.round(ageMs / 1000)));
+    if (ageMs < FPS_STALE_MS) {
+      one('dayz_server_fps', 'DayZ server FPS (g_Game.GetServerFPS()), pushed by VPPAdminTools WebHooks.', 'gauge', status.fps);
     }
   }
 

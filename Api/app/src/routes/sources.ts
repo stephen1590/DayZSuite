@@ -17,6 +17,7 @@ import type { AppConfig } from '../config.js';
 import type { Action } from '../actions.js';
 import type { Audit } from '../audit.js';
 import { verifyToken } from '../auth.js';
+import { setServerFps } from '../vpp-stats.js';
 
 interface Deps {
   cfg: AppConfig;
@@ -24,9 +25,14 @@ interface Deps {
   audit: Audit;
 }
 
+interface DiscordField {
+  name?: string;
+  value?: string;
+}
 interface DiscordEmbed {
   title?: string;
   description?: string;
+  fields?: DiscordField[];
 }
 interface DiscordPayload {
   content?: string;
@@ -36,10 +42,18 @@ interface DiscordPayload {
 function flattenText(body: DiscordPayload): string {
   const parts = [body.content ?? ''];
   if (Array.isArray(body.embeds)) {
-    for (const e of body.embeds) parts.push(e?.title ?? '', e?.description ?? '');
+    // VPP's ServerStatusMessage puts "Server FPS: N" in `content` (simplified mode) OR
+    // in an embed field value (embed mode) — flatten both so the parse works either way.
+    for (const e of body.embeds) {
+      parts.push(e?.title ?? '', e?.description ?? '');
+      if (Array.isArray(e?.fields)) for (const f of e.fields) parts.push(f?.name ?? '', f?.value ?? '');
+    }
   }
   return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
+
+// VPP renders "Server FPS: **42**" (markdown bold) or "Server FPS: 42" (embed field).
+const SERVER_FPS_RE = /Server FPS:\s*\*{0,2}\s*([0-9]+(?:\.[0-9]+)?)/i;
 
 export function registerSources(app: FastifyInstance, deps: Deps): void {
   const { cfg, actions, audit } = deps;
@@ -57,6 +71,10 @@ export function registerSources(app: FastifyInstance, deps: Deps): void {
     const body = (req.body ?? {}) as DiscordPayload;
     const text = flattenText(body);
     audit('vpp:event', 'vpp', ctx, { text: text.slice(0, 300) });
+
+    // Capture the periodic server-status post's FPS for /metrics (metrics.ts reads it).
+    const fpsMatch = SERVER_FPS_RE.exec(text);
+    if (fpsMatch) setServerFps(parseFloat(fpsMatch[1]));
 
     // Opt-in rules: fire an allowlisted action when the event text matches.
     for (const rule of cfg.vpp.rules) {

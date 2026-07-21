@@ -733,6 +733,22 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    'configs/readonly': {
+      destructive: false,
+      readOnly: true,
+      describe: 'list the generated (compiler-output) config globs the web editor must render read-only; override-write refuses to target any of them',
+      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } } } },
+      async run() {
+        const r = await dayz.ctl('config-generated');
+        if (r.code !== 0) throw fail(502, `config-generated failed: ${(r.stderr || r.stdout).trim()}`);
+        const files = r.stdout
+          .split('\n')
+          .map((l) => l.replace(/\r$/, '').trim())
+          .filter(Boolean);
+        return { files };
+      },
+    },
+
     'configs/set-file': {
       destructive: false,
       readOnly: false,
@@ -797,6 +813,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         // exact bare literals the admin typed — never a rounded double.
         const r = await dayz.ctlStdin('override-write', bigStringify(doc, 4), ...extra);
         if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
+        if (r.code === 6) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // patch targets a generated (read-only) file
         if (r.code !== 0) {
           const msg = (r.stderr || r.stdout).trim();
           if (msg.includes('shrink-guard:')) throw fail(409, msg.replace(/^dayz-ctl:\s*/, ''));
@@ -811,10 +828,10 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/set-spawns': {
       destructive: false,
       readOnly: false,
-      describe: 'replace spawn-points.json (the definitive AI-bandit spawn store) with a new document (snapshots first; restart to apply)',
+      describe: 'replace the shared map-points store (profiles/AI_Shared/map-points.json — the single spawn source for BOTH AIB and Expansion) with a new document (snapshots first; restart to apply)',
       schema: {
         body: { type: 'object', required: ['document'], properties: { document: { type: 'object',
-          description: 'the full spawn-points.json document: { version, points: [{ name, map, category?, size?, x, y, z }] }' } } },
+          description: 'the full map-points.json document: { version, defaultFaction?, points: [{ name, map, category?, size?, faction?, x, y, z }] }. faction/defaultFaction are Expansion AI factions; a point falls back to defaultFaction when it sets none' } } },
         response: { type: 'object', properties: { message: { type: 'string' }, points: { type: 'integer' } } },
       },
       async run(params) {
@@ -825,6 +842,23 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const pts = (doc as { points?: unknown }).points;
         if (!Array.isArray(pts)) throw fail(400, '"document.points" must be an array');
         if (pts.length > 5000) throw fail(400, `too many points (${pts.length}; max 5000)`);
+        // Valid Expansion AI factions — MIRROR of the web dropdown in ConfigViewer/web/js/map.js
+        // (keep both in sync). Source: DayZ-Expansion-Scripts wiki, "How to create AI Patrols".
+        const AI_FACTIONS = new Set(['West', 'East', 'Raiders', 'Mercenaries', 'Civilian', 'Passive', 'Guards', 'InvincibleGuards', 'Shamans', 'Observers', 'InvincibleObservers', 'YeetBrigade', 'InvincibleYeetBrigade', 'Brawlers', 'RANDOM']);
+        // Per-point patrol tuning overrides — MIRROR of $PATROL_OVERRIDABLE (DayZ-Server/Build-AIPatrols.ps1)
+        // and PATROL_FIELDS (ConfigViewer/web/js/map.js). Keep all three in sync.
+        const PATROL_KEYS: Record<string, 'num' | 'int' | 'bool' | 'str'> = {
+          numberOfAIMax: 'int', chance: 'num', loadBalancingCategory: 'str', minDistRadius: 'num',
+          maxDistRadius: 'num', despawnRadius: 'num', useRandomWaypointAsStartPoint: 'bool', canBeLooted: 'bool',
+          accuracyMin: 'num', accuracyMax: 'num', speed: 'str', underThreatSpeed: 'str', defaultStance: 'str',
+          formation: 'str', formationScale: 'num', threatDistanceLimit: 'num', respawnTime: 'num',
+          despawnTime: 'num', damageMultiplier: 'num', damageReceivedMultiplier: 'num', headshotResistance: 'num',
+          lootDropOnDeath: 'str',
+        };
+        const df = (doc as { defaultFaction?: unknown }).defaultFaction;
+        if (df !== undefined && df !== null && (typeof df !== 'string' || !AI_FACTIONS.has(df))) {
+          throw fail(400, `"document.defaultFaction" must be one of: ${[...AI_FACTIONS].join(', ')}`);
+        }
         const names = new Set<string>();
         pts.forEach((raw, i) => {
           if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw fail(400, `points[${i}] must be an object`);
@@ -836,6 +870,32 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           }
           if (p.category !== undefined && p.category !== null && typeof p.category !== 'string') throw fail(400, `points[${i}].category must be a string`);
           if (p.size !== undefined && p.size !== null && typeof p.size !== 'string') throw fail(400, `points[${i}].size must be a string`);
+          if (p.faction !== undefined && p.faction !== null && (typeof p.faction !== 'string' || !AI_FACTIONS.has(p.faction))) {
+            throw fail(400, `points[${i}].faction must be one of: ${[...AI_FACTIONS].join(', ')}`);
+          }
+          const patrol = (p as { patrol?: unknown }).patrol;
+          if (patrol !== undefined && patrol !== null) {
+            if (typeof patrol !== 'object' || Array.isArray(patrol)) throw fail(400, `points[${i}].patrol must be an object`);
+            for (const [pk, pval] of Object.entries(patrol as Record<string, unknown>)) {
+              const ty = PATROL_KEYS[pk];
+              if (!ty) throw fail(400, `points[${i}].patrol has unknown field "${pk}"`);
+              if (ty === 'str' && typeof pval !== 'string') throw fail(400, `points[${i}].patrol.${pk} must be a string`);
+              if ((ty === 'num' || ty === 'int') && (typeof pval !== 'number' || !Number.isFinite(pval))) throw fail(400, `points[${i}].patrol.${pk} must be a number`);
+              if (ty === 'bool' && pval !== 0 && pval !== 1 && typeof pval !== 'boolean') throw fail(400, `points[${i}].patrol.${pk} must be 0 or 1`);
+            }
+          }
+          const wps = (p as { waypoints?: unknown }).waypoints;
+          if (wps !== undefined && wps !== null) {
+            if (!Array.isArray(wps)) throw fail(400, `points[${i}].waypoints must be an array`);
+            if (wps.length > 50) throw fail(400, `points[${i}].waypoints has too many entries (${wps.length}; max 50)`);
+            wps.forEach((w, j) => {
+              if (w === null || typeof w !== 'object' || Array.isArray(w)) throw fail(400, `points[${i}].waypoints[${j}] must be an object`);
+              for (const c of ['x', 'y', 'z'] as const) {
+                const cv = (w as Record<string, unknown>)[c];
+                if (typeof cv !== 'number' || !Number.isFinite(cv)) throw fail(400, `points[${i}].waypoints[${j}].${c} must be a finite number`);
+              }
+            });
+          }
           // The builder upserts by name — a duplicate would silently collapse two points into one.
           if (names.has(p.name)) throw fail(400, `duplicate point name: ${p.name}`);
           names.add(p.name);

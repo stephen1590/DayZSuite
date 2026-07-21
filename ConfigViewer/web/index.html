@@ -222,6 +222,9 @@
       <div class="page-head">
         <span class="ph-title">Map</span>
         <select id="mapSel" class="map-head-sel"></select>
+        <span class="map-seg" id="mapEditSeg" title="Edit spawn points: drag a marker to move it, click empty map to add, edit the left panel">
+          <button type="button" data-edit="toggle">Edit</button>
+        </span>
         <span class="spacer"></span>
         <span class="map-save hidden" id="mapSaveWrap">
           <button id="mapDiscardBtn" class="ghost" type="button">Discard</button>
@@ -243,9 +246,6 @@
               <button type="button" data-grid="subtle">Subtle</button>
               <button type="button" data-grid="bold">Bold</button>
             </span>
-            <span class="map-seg" id="mapEditSeg" title="Edit spawn points: drag a marker to move it, click empty map to add, edit fields below">
-              <button type="button" data-edit="toggle">Edit</button>
-            </span>
           </div>
           <div class="map-filter hidden" id="mapFilter"></div>
           <div class="map-filter map-ovf hidden" id="mapLootFilter"></div>
@@ -255,9 +255,9 @@
           <div class="map-filter map-ovf hidden" id="mapLiveFilter"></div>
           <div class="mr-help">drag pan · scroll zoom · right-click copies X Y Z</div>
         </aside>
+        <div class="map-detail hidden" id="mapDetail"></div>
       </div>
       <div class="map-bar" id="mapBar">—</div>
-      <div class="map-detail hidden" id="mapDetail"></div>
     </section>
 
     <!-- Logs page: server log browser. Opens on the tail; scrolling up pages back
