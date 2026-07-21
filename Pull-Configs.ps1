@@ -21,6 +21,11 @@
     mirrors (each sync snapshots into backups/ first, keep 10). Run it after web-editing
     sessions worth keeping, then COMMIT the mirrors — git history is the long-term backup.
 
+    PROD-ONLY BY DESIGN: the mirrors are the committed history of what runs on PROD, so
+    every sync here resolves deployer.prod.env (staging is never pulled back — see
+    ../STAGING-PLAN.md deviation table). There is deliberately no -Env switch on the
+    pull family.
+
     Exits non-zero if any sync fails or blocks (e.g. the box-ownership guard on hand-edited
     mirrors — see Sync-ConfigOverrides.ps1).
 .EXAMPLE

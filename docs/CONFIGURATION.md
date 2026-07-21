@@ -25,13 +25,18 @@ that lives on the server also has to somehow tell other machines how to reach th
 server — the two roles don't fit in one file, and a global machine dotfile doesn't fit
 either (it's config for *this repo checkout*, not your whole machine).
 
-Instead, it's a second local file: `deployer.env`, copied from `deployer.env.example`,
-gitignored, and — like `host.env` — never rsynced to the server (both are explicitly
-excluded from the deploy payload):
+Instead, it's a second local file — ONE PER ENVIRONMENT: `deployer.prod.env` (the VPS)
+and `deployer.staging.env` (the local QEMU VM, `DEPLOY_REMOTE_HOST=staging-vm`), both
+copied from `deployer.env.example`, gitignored, and — like `host.env` — never rsynced
+to the server (all are explicitly excluded from the deploy payload). `-Env` picks the
+file: bare runs default to STAGING, `-Env prod` is explicit (../../STAGING-PLAN.md).
+The mirror-pull tools (`Sync-*`, `Pull-*`) always read `deployer.prod.env` — the repo
+mirrors track prod only, staging is never pulled back. Bare `deployer.env` is still
+accepted as a legacy name for prod.
 
 ```bash
-cp deployer.env.example deployer.env
-$EDITOR deployer.env
+cp deployer.env.example deployer.prod.env
+$EDITOR deployer.prod.env
 ```
 
 ```ini
@@ -42,7 +47,7 @@ DEPLOY_REMOTE_HOST=your-host
 `DEPLOY_REMOTE_USER` defaults to `ubuntu` if omitted. Both accept an
 [SSH config](https://man.openbsd.org/ssh_config) `Host` alias as the value, if you'd
 rather manage the actual hostname/identity file there. Either can also be overridden
-per-invocation with `-RemoteHost`/`-RemoteUser`, which always win over `deployer.env`.
+per-invocation with `-RemoteHost`/`-RemoteUser`, which always win over the deployer files.
 Running with `-Local` (i.e. directly on the server) needs neither — there's nothing to
 reach.
 
@@ -101,7 +106,7 @@ Every file is in exactly one class, and the class decides the direction it moves
   baselines. The box writes these (web editor, prestart's capture); the deploy copies
   one to the box **only when it's missing there** (fresh box / disaster recovery —
   reported `BoxOwned` otherwise) and pulls them back into committed repo **mirrors**.
-- **Host-local (never moves):** `host.env`, `deployer.env`, `map.env`, battleye configs.
+- **Host-local (never moves):** `host.env`, `deployer.*.env`, `map.env`, battleye configs.
 
 To change a config value: **use the web editor (ConfigViewer) and restart.** It writes
 the box's live document; the next deploy's pull mirrors it into the repo for backup. To

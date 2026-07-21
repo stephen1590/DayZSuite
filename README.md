@@ -25,7 +25,8 @@ field-level config-override system that survives mod/game updates.
 - **Rolling save backups + daily log archiving**, both with automatic retention.
 - **Secrets stay out of the repo** — everything the server itself needs (passwords, Steam
   account) lives in a local, gitignored `host.env` on that host. Which host to deploy *to*
-  is separate, dev-machine-local config (`deployer.env`) — the two are never conflated.
+  is separate, dev-machine-local config (`deployer.prod.env` / `deployer.staging.env`,
+  picked by `-Env`; bare runs default to staging) — the two are never conflated.
 
 ## Prerequisites
 
@@ -44,9 +45,10 @@ cd <this-repo>
 cp host.env.example host.env
 $EDITOR host.env   # set DEPLOY_STEAM_ACCOUNT and the two passwords
 
-cp deployer.env.example deployer.env
-$EDITOR deployer.env   # set DEPLOY_REMOTE_HOST — which box to deploy TO. Dev-machine-local,
-                        # gitignored, never host.env content (see docs/CONFIGURATION.md)
+cp deployer.env.example deployer.prod.env       # the VPS; deployer.staging.env = the local VM
+$EDITOR deployer.prod.env  # set DEPLOY_REMOTE_HOST — which box to deploy TO. Dev-machine-local,
+                           # gitignored, never host.env content (see docs/CONFIGURATION.md).
+                           # -Env picks the file; bare runs default to STAGING, prod is explicit.
 
 ./Deploy-DayZServer.ps1          # dry-run: reports drift, changes nothing
 ./Deploy-DayZServer.ps1 -Fix     # deploys: renders + installs files, starts the service
@@ -66,7 +68,7 @@ needs a one-time interactive login first.
 | `Confirm-LiveConfigs.ps1` | Post-deploy check. Confirms the running server matches — every override applied (zero-MISS), composed artifacts valid, unit active. |
 | `Deploy-DayZServer.ps1` | Read-only by default; reports drift. `-Fix` renders per-host templates from `host.env` and installs everything, with a player-online guard before any restart. |
 | `host.env` / `host.env.example` | Secrets and settings for the server this file lives on (passwords, Steam account). `host.env` is gitignored — copy the example and fill it in. |
-| `deployer.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`). Gitignored, never rsynced to the server. |
+| `deployer.prod.env` / `deployer.staging.env` / `deployer.env.example` | Dev-machine-local config for whoever is deploying — which host to reach (`DEPLOY_REMOTE_HOST`), one file per environment, picked by `-Env` (default staging). Gitignored, never rsynced to the server. |
 | `Pull-DayZServer.ps1` | Pulls server saves/config down to a local machine over rsync/ssh — an off-box backup, or to work against real data locally. |
 | `Pull-Configs.ps1` | One command to pull the box's entire config state into the repo mirrors (overrides, spawn points, frozen defaults). `-Execute` also COMMITS the pulled state (pathspec-limited) — git history is the config backup. `Deploy-DayZServer.ps1 -Fix` does the same pull+commit automatically. |
 | `Sync-SpawnPoints.ps1` | Pulls the live `profiles/AI_Shared/map-points.json` (the SHARED spawn store feeding both BanditAI and ExpansionAI, edited in the ConfigViewer Map tab) off the box into the repo mirror. |

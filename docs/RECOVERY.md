@@ -9,11 +9,12 @@ onto any box that lacks them. No config is hand-restored file by file.
 ```bash
 # 0. New box reachable over ssh, deploy user with passwordless sudo (docs/SETUP.md)
 cp host.env.example host.env && $EDITOR host.env        # passwords + Steam account
-$EDITOR deployer.env                                     # point at the new host
+$EDITOR deployer.prod.env                                # point at the new host
 
-./Deploy-DayZServer.ps1          # report first - expect Missing everywhere
-./Deploy-DayZServer.ps1 -Fix     # ships code, seeds all config mirrors, downloads mods, starts
-./Confirm-LiveConfigs.ps1           # prove it: zero-MISS, valid artifacts, unit active
+# -Env prod is REQUIRED here: bare runs default to the staging VM (STAGING-PLAN.md)
+./Deploy-DayZServer.ps1 -Env prod        # report first - expect Missing everywhere
+./Deploy-DayZServer.ps1 -Env prod -Fix   # ships code, seeds all config mirrors, downloads mods, starts
+./Confirm-LiveConfigs.ps1 -Env prod      # prove it: zero-MISS, valid artifacts, unit active
 ```
 
 That is the whole config restore. The seeded `config-overrides.json` mirror carries every

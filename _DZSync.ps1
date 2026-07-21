@@ -31,19 +31,26 @@ $DZ_HEAVY_EXCLUDES = @(
 
 # RemoteHost/RemoteUser are dev-machine-local (which box to reach) — never host.env content,
 # see Deploy-DayZServer.ps1's deployer.env for the same idea. Fills in whichever of the two
-# the CALLER didn't pass explicitly, from deployer.env beside the script. A no-op if both were
-# already given, or if deployer.env doesn't have that key — Assert-DZHost below catches
+# the CALLER didn't pass explicitly, from deployer.<env>.env beside the script. A no-op if
+# both were already given, or if the file doesn't have that key — Assert-DZHost below catches
 # anything still unset (in practice, just a missing host; RemoteUser has its own "ubuntu"
 # param default so it's never actually blank).
+#
+# $Env defaults to PROD here on purpose: every consumer of this resolver is a mirror/backup
+# tool (Sync-*, Pull-*) and those are prod-only — staging state must never be pulled into
+# the repo mirrors (STAGING-PLAN.md deviation table). Confirm-LiveConfigs is the one caller
+# that passes its own -Env through.
 function Resolve-DZDeployerEnv {
     param(
         [string]$ScriptRoot,
         [ref]$RemoteHost,
         [ref]$RemoteUser,
-        [hashtable]$BoundParameters
+        [hashtable]$BoundParameters,
+        [ValidateSet('staging','prod')][string]$Env = 'prod'
     )
     if ($BoundParameters.ContainsKey('RemoteHost') -and $BoundParameters.ContainsKey('RemoteUser')) { return }
-    $deployerEnv = Join-Path $ScriptRoot "deployer.env"
+    $deployerEnv = Join-Path $ScriptRoot "deployer.$Env.env"
+    if (-not (Test-Path $deployerEnv) -and $Env -eq 'prod') { $deployerEnv = Join-Path $ScriptRoot "deployer.env" }   # legacy prod name
     if (-not (Test-Path $deployerEnv)) { return }
     foreach ($line in Get-Content $deployerEnv) {
         if (-not $BoundParameters.ContainsKey('RemoteHost') -and $line -match '^\s*DEPLOY_REMOTE_HOST\s*=\s*(.+?)\s*$') { $RemoteHost.Value = $Matches[1] }
@@ -56,7 +63,7 @@ function Assert-DZHost {
     param([hashtable]$Fields)   # name -> value
     foreach ($k in $Fields.Keys) {
         if (-not $Fields[$k]) {
-            Write-Error "Set -$k — host info not configured. Copy deployer.env.example to deployer.env and set DEPLOY_REMOTE_HOST there, or pass -$k on the command line."
+            Write-Error "Set -$k — host info not configured. Copy deployer.env.example to deployer.prod.env (staging: deployer.staging.env) and set DEPLOY_REMOTE_HOST there, or pass -$k on the command line."
             exit 2
         }
     }

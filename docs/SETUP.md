@@ -70,9 +70,11 @@ $EDITOR ~/servers/dayz-server/host.env   # DEPLOY_USER/GROUP/HOME, DEPLOY_STEAM_
 ## 5. Deploy (from your dev machine)
 
 Deploy needs to know which host to reach — that's *your* machine's config, not the
-server's: `cp deployer.env.example deployer.env` next to the script and set
-`DEPLOY_REMOTE_HOST` — see
+server's: `cp deployer.env.example deployer.prod.env` (or `deployer.staging.env` for
+the local staging VM) next to the script and set `DEPLOY_REMOTE_HOST` — see
 [CONFIGURATION.md](CONFIGURATION.md#deploy_remote_host--deploy_remote_user).
+Every deploy command below targets STAGING by default; add `-Env prod` to reach the
+VPS (../STAGING-PLAN.md).
 
 ```bash
 ./Deploy-DayZServer.ps1          # drift report — on a fresh box everything shows Missing

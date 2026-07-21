@@ -37,9 +37,10 @@
 
     Full output goes to a timestamped transcript in ./logs plus a CSV summary; -NoLog disables both.
 .EXAMPLE
-    ./Deploy-DayZServer.ps1                   # THE deploy (default = remote): drift report on the VPS
-    ./Deploy-DayZServer.ps1 -Fix              # THE deploy: apply on the VPS (+restart, arm timer)
-    ./Deploy-DayZServer.ps1 -Local            # on-box apply (used by the ssh leg on the VPS itself)
+    ./Deploy-DayZServer.ps1                   # drift report on STAGING (default env = staging)
+    ./Deploy-DayZServer.ps1 -Fix              # apply on STAGING (mirror pulls + auto-commit skipped there)
+    ./Deploy-DayZServer.ps1 -Env prod -Fix    # THE prod deploy: requires clean main; pulls mirrors + commits
+    ./Deploy-DayZServer.ps1 -Local            # on-box apply (used by the ssh leg on the box itself)
 #>
 [CmdletBinding()]
 param(
@@ -49,11 +50,13 @@ param(
     [switch]$Force,                                         # deploy even with players online / unverifiable count
     [switch]$SkipConfigTest,                                # bypass the offline pre-deploy config gate (emergency only)
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',                               # which box: staging is the DEFAULT, prod must be explicit (STAGING-PLAN.md). Picks deployer.<env>.env; ignored under -Local
     [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
     [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
     [string]$RemoteDir    = "servers/dayz-server/deploy-stage",  # transient payload staging INSIDE the server dir (home-relative for ssh/rsync) — wiped and re-shipped every deploy, so the box has exactly ONE DayZ location and this subfolder is just the delivery truck: templates land here, get rendered with host.env's secrets, pass the player guard, then are PLACED into the server dir / systemd. Never a second copy of the repo (~/dayz-tooling retired 2026-07-16).
     [string]$HostEnv     = (Join-Path $PSScriptRoot "host.env"),
-    [string]$DeployerEnv = (Join-Path $PSScriptRoot "deployer.env"),
+    [string]$DeployerEnv = '',                              # default: deployer.<Env>.env (legacy deployer.env accepted for prod only)
     [string]$DeployUser,
     [string]$DeployGroup,
     [string]$DeployHome,
@@ -61,9 +64,18 @@ param(
     [string]$UnitPath   = "/etc/systemd/system/dayz-server.service"
 )
 
-# deployer.env is dev-machine-local config (which box to reach) — the opposite of host.env
-# (which describes the server itself) and never rsynced there (see the --exclude below).
-# Read it early, only filling params not already given explicitly on the command line.
+# deployer.<env>.env is dev-machine-local config (which box to reach) — the opposite of
+# host.env (which describes the server itself) and never rsynced there (see the --exclude
+# below). One file per environment (deployer.staging.env / deployer.prod.env) so the -Env
+# selector, not an edit, picks the target; bare deployer.env is accepted for PROD only as
+# the legacy name. Read early, only filling params not given explicitly on the command line.
+if (-not $DeployerEnv) {
+    $DeployerEnv = Join-Path $PSScriptRoot "deployer.$Env.env"
+    if (-not (Test-Path $DeployerEnv) -and $Env -eq 'prod') {
+        $legacy = Join-Path $PSScriptRoot "deployer.env"
+        if (Test-Path $legacy) { $DeployerEnv = $legacy; Write-Host "using legacy deployer.env for prod - rename it deployer.prod.env" }
+    }
+}
 if ((-not $PSBoundParameters.ContainsKey('RemoteHost') -or -not $PSBoundParameters.ContainsKey('RemoteUser')) -and (Test-Path $DeployerEnv)) {
     foreach ($line in Get-Content $DeployerEnv) {
         if (-not $PSBoundParameters.ContainsKey('RemoteHost') -and $line -match '^\s*DEPLOY_REMOTE_HOST\s*=\s*(.+?)\s*$') { $RemoteHost = $Matches[1] }
@@ -79,11 +91,30 @@ if ((-not $PSBoundParameters.ContainsKey('RemoteHost') -or -not $PSBoundParamete
 # first run seeds host.env from the example.
 if (-not $Local) {
     if (-not $RemoteHost) {
-        Write-Error "DEPLOY_REMOTE_HOST is not set. Copy deployer.env.example to deployer.env (dev-machine-local, gitignored — never host.env, that's server config) and set it, or pass -RemoteHost explicitly. -Local skips this if you're running directly on the server."
+        Write-Error "DEPLOY_REMOTE_HOST is not set for env '$Env'. Copy deployer.env.example to deployer.$Env.env (dev-machine-local, gitignored — never host.env, that's server config) and set it, or pass -RemoteHost explicitly. -Local skips this if you're running directly on the server."
         exit 2
     }
     $RemoteTarget = "${RemoteUser}@${RemoteHost}"
     $sshOpt = "ssh -o ConnectTimeout=10"
+    Write-Host "=== env: $Env -> $RemoteTarget ===`n" -ForegroundColor Cyan
+
+    # PROD DEPLOY GUARD (STAGING-PLAN.md phase 1): prod only ever runs a REVIEWED commit —
+    # a -Fix to prod refuses a dirty tree or a non-main branch. Staging deploys the working
+    # tree freely (that's what it's for). Checked before anything touches the network.
+    if ($Env -eq 'prod' -and $Fix) {
+        $branch = git -C $PSScriptRoot symbolic-ref --short HEAD 2>$null
+        $dirty  = git -C $PSScriptRoot status --porcelain
+        if ($branch -ne 'main') { Write-Error "prod deploy refused: branch is '$branch', not main. Merge to main first, or rehearse on staging (bare run = -Env staging)."; exit 5 }
+        if ($dirty)             { Write-Error "prod deploy refused: working tree is dirty. Commit or stash first - prod runs reviewed commits only. Uncommitted:`n$($dirty -join "`n")"; exit 5 }
+    }
+
+    # MIRROR PULLS + AUTO-COMMIT ARE PROD-ONLY (STAGING-PLAN.md deviation table): the repo
+    # mirror is the committed history of what runs on PROD. Pulling a staging box here would
+    # auto-commit staging config into that history — so under any other env the three pulls
+    # and the backup commit below are skipped entirely; staging is never pulled back.
+    if ($Env -ne 'prod') {
+        Write-Host "--- mirror pulls skipped (prod-only; env=$Env) ---`n"
+    }
 
     # Spawn points: the live box is authoritative for AI-bandit spawn locations (the web Map
     # editor writes map-points.json at runtime via the API). Pull it DOWN into the repo
@@ -91,7 +122,7 @@ if (-not $Local) {
     # box that has none. Report-only unless -Fix; the sync validates JSON and snapshots the
     # mirror before overwriting.
     $spawnSync = Join-Path $PSScriptRoot "Sync-SpawnPoints.ps1"
-    if (Test-Path $spawnSync) {
+    if ($Env -eq 'prod' -and (Test-Path $spawnSync)) {
         Write-Host "--- spawn points (pull-before-push: box authoritative) ---"
         if ($Fix) { & $spawnSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $spawnSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
@@ -104,7 +135,7 @@ if (-not $Local) {
     # snapshots the mirror before overwriting. The deploy below only ever SEEDS this file to a
     # box that doesn't have one — it never overwrites a live document.
     $ovrSync = Join-Path $PSScriptRoot "Sync-ConfigOverrides.ps1"
-    if (Test-Path $ovrSync) {
+    if ($Env -eq 'prod' -and (Test-Path $ovrSync)) {
         Write-Host "--- config overrides (pull: box authoritative, repo = mirror/seed) ---"
         if ($Fix) { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
@@ -119,7 +150,7 @@ if (-not $Local) {
     # Same pull: the mirror follows the box (new captures and re-captures come down); the -Local
     # step below only ever seeds a baseline the box LACKS back from the mirror.
     $defSync = Join-Path $PSScriptRoot "Sync-ConfigDefaults.ps1"
-    if (Test-Path $defSync) {
+    if ($Env -eq 'prod' -and (Test-Path $defSync)) {
         Write-Host "--- config defaults (pull: box authoritative, repo = mirror/seed) ---"
         if ($Fix) { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
         else      { & $defSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
@@ -144,12 +175,13 @@ if (-not $Local) {
         }
     }
 
-    # Committed config history: each -Fix deploy commits the just-pulled box config state,
-    # so `git log -- config-overrides.json` is the browsable history of what actually ran
-    # on the box ("backup the configs to the repo; commit the history on sync" — user
+    # Committed config history: each PROD -Fix deploy commits the just-pulled box config
+    # state, so `git log -- config-overrides.json` is the browsable history of what actually
+    # ran on the box ("backup the configs to the repo; commit the history on sync" — user
     # directive 2026-07-16). Pathspec-limited on purpose: only the pulled mirrors are ever
-    # committed here, never unrelated working-tree changes.
-    if ($Fix) {
+    # committed here, never unrelated working-tree changes. Prod-only, same reason as the
+    # pulls above: staging state must never enter the prod mirror history.
+    if ($Fix -and $Env -eq 'prod') {
         $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults')
         git -C $PSScriptRoot add -- $mirrorPaths 2>$null
         if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {

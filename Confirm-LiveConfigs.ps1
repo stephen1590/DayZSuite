@@ -24,12 +24,16 @@
     Run it after a deploy, after a restart that applied web edits, or ad-hoc. Exits 0 when
     every check passes, 1 otherwise (CI-friendly). CSV log in logs/ unless -NoLog.
 .EXAMPLE
-    ./Confirm-LiveConfigs.ps1             # full local + live validation
+    ./Confirm-LiveConfigs.ps1             # full local + live validation on STAGING (default env)
+.EXAMPLE
+    ./Confirm-LiveConfigs.ps1 -Env prod   # same, against the prod box
 .EXAMPLE
     ./Confirm-LiveConfigs.ps1 -LocalOnly  # just the repo mirrors/seeds (no ssh)
 #>
 [CmdletBinding()]
 param(
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',   # same selector as Deploy-DayZServer: bare = staging, prod explicit
     [string]$RemoteHost,
     [string]$RemoteUser = "ubuntu",
     [string]$RemotePath = "/home/ubuntu/servers/dayz-server",
@@ -75,11 +79,11 @@ if (-not (Test-Path $registryPath)) {
 
 # --- LIVE: what the box actually built ------------------------------------------------------
 if (-not $LocalOnly) {
-    Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
+    Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters -Env $Env
     Assert-DZHost @{ RemoteHost = $RemoteHost; RemoteUser = $RemoteUser; RemotePath = $RemotePath }
     $target = "${RemoteUser}@${RemoteHost}"
 
-    Write-Host "`nLive box ($target)" -ForegroundColor Cyan
+    Write-Host "`nLive box (env: $Env -> $target)" -ForegroundColor Cyan
     $unit = (Get-Stdout { ssh -o ConnectTimeout=10 $target "systemctl is-active dayz-server" } | Out-String).Trim()
     if ($unit -eq 'active') { Show-Pass "dayz-server unit is active" }
     else { Show-Fail "dayz-server unit is '$unit' (expected active)" }
