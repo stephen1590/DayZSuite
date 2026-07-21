@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Stage-and-ship deploy for the API service (Fastify/Node). TLS/nginx is handled
-  SEPARATELY by ../../Provision-Tls.ps1 -Service Api (the NginxService root).
+  SEPARATELY by ../../Provision-Tls.ps1 -Service Api (the repo root).
 
 .DESCRIPTION
   Flow: render -> stage -> ship -> run.
@@ -42,9 +42,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Shared code utils live at Dev/common (four levels up: deploy -> Api ->
-# NginxService -> UbuntuHost -> Dev).
+# GameServices -> UbuntuHost -> Dev).
 . (Join-Path $PSScriptRoot '../../../../common/Utils.ps1')
-# Deploy-config loader lives at the NginxService root (../.. from this deploy/).
+# Deploy-config loader lives at the repo root (../.. from this deploy/).
 . (Join-Path $PSScriptRoot '../../Load-DeployConfig.ps1')
 
 # --- Load the service deploy config (the ONLY source of tunable values) ----
@@ -78,19 +78,19 @@ $logNoiseSq = $logNoise.Replace("'", "'\''")
 #                      box at read time)       -> CONFIG_DIRS "group<TAB>reldir"
 # Validate here; dayz-ctl re-checks every read. Absent = feature off.
 #
-# SOURCE = the SINGLE config registry in the DayZ-Server repo (config is a DayZ-Server
+# SOURCE = the SINGLE config registry in DayZ-Server (config is a DayZ-Server
 # dependency; the API references it by SIBLING PATH at deploy time — read here on the dev
 # machine, rendered into the box's dayz-ctl; nothing extra lands on the box). Default path
-# assumes the standard checkout (DayZ-Server beside NginxService under UbuntuHost); override
-# with "ConfigRegistry" in deploy.config.json. Rows map to the two shapes above:
+# assumes the standard layout (DayZ-Server/ beside the other services at the repo root);
+# override with "ConfigRegistry" in deploy.config.json. Rows map to the two shapes above:
 #   box (single file), web != 'none'  -> { name, path=box, writable }
 #   dir (folder)                       -> { group, dir, subfolders }
 # web:'none' rows are deploy-seeded-but-not-web-exposed (e.g. per-map StaticAIB) — skipped.
 $registryPath = if ($cfg.ConfigRegistry) {
     if ([IO.Path]::IsPathRooted($cfg.ConfigRegistry)) { $cfg.ConfigRegistry } else { Join-Path $PSScriptRoot $cfg.ConfigRegistry }
-} else { Join-Path $PSScriptRoot '../../../DayZ-Server/config-registry.json' }
+} else { Join-Path $PSScriptRoot '../../DayZ-Server/config-registry.json' }
 if (-not (Test-Path $registryPath)) {
-    throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in the DayZ-Server repo (config-registry.json). Check that repo out beside NginxService, or set 'ConfigRegistry' in deploy.config.json."
+    throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in DayZ-Server/config-registry.json at the repo root, or set 'ConfigRegistry' in deploy.config.json."
 }
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {

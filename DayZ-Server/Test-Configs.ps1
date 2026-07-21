@@ -47,7 +47,7 @@ param(
     [switch]$NoLog
 )
 
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")
 
 $script:pass = 0; $script:fail = 0
 function Show-Pass([string]$m) { $script:pass++; Write-Host "  [PASS] $m" -ForegroundColor Green }

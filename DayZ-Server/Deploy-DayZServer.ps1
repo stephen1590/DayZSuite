@@ -243,7 +243,7 @@ if (-not $Local) {
     $rsyncExit = $LASTEXITCODE
     Remove-Item $listFile -Force
     if ($rsyncExit) { Write-Error "payload rsync failed (exit $rsyncExit)"; exit 1 }
-    $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../common")).Path
+    $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "common/ rsync failed (exit $LASTEXITCODE)"; exit 1 }
     # host.env lives in the server dir on the box (survives the staging wipe; rescued out of
@@ -255,10 +255,11 @@ if (-not $Local) {
 }
 
 # Find common/Utils.ps1 without assuming the dev-machine layout: dev box has it at
-# ../../common; a flat copy on another host can put it at ./common or ../common.
-$utils = "../../common/Utils.ps1", "../common/Utils.ps1", "./common/Utils.ps1" |
+# ../../../common (Dev/common, three up from DayZ-Server inside GameServices); a flat
+# copy on another host can put it at ./common or ../common.
+$utils = "../../../common/Utils.ps1", "../common/Utils.ps1", "./common/Utils.ps1" |
     ForEach-Object { Join-Path $PSScriptRoot $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried ../../common, ../common, ./common)" }
+if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried ../../../common, ../common, ./common)" }
 . $utils
 
 # --- Per-host values: built-in defaults (the VPS) <- host.env <- explicit -Deploy* params ---

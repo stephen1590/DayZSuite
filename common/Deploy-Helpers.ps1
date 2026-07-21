@@ -1,6 +1,6 @@
 #requires -Version 7
 <#
-  Shared SHIP+RUN helpers for the NginxService deploy scripts — the P1 deploy-layer
+  Shared SHIP+RUN helpers for this repo's deploy scripts — the P1 deploy-layer
   extraction from MAINTENANCE-PLAN.md ("Extract Invoke-RemoteDeploy + New-SshArgs...
   replaces the ~25-line SHIP+RUN block duplicated in all four Deploy-*.ps1").
 

@@ -1,7 +1,8 @@
-# NginxService — one repo for the shared nginx/TLS engine + all nested services.
-# Per-subproject .gitignore files also exist (StaticishSite/, Api/app/);
-# this root file is the single place for host-level secrets and cross-cutting
-# generated output. Committable *.example.ps1 siblings stay tracked.
+# GameServices — root ignores for the web-service half of the repo (the shared
+# nginx/TLS engine + the services behind it). DayZ-Server/ keeps its own
+# .gitignore. Per-subproject .gitignore files also exist (StaticishSite/,
+# Api/app/); this root file is the single place for host-level secrets and
+# cross-cutting generated output. Committable *.example siblings stay tracked.
 
 # ── Secrets / machine-specific (never commit; ship a *.example.env/.json instead) ──
 # Per-env host configs (host.config.prod.env / host.config.staging.env; legacy bare
@@ -10,7 +11,6 @@
 /host.config.*.env
 !/host.config.example.env
 **/deploy/deploy.config.json
-**/deploy/deploy.config.cytonicmushroom.json
 **/secrets.env
 # Bruno collection credentials (Api/bruno/.env — .env.example stays tracked)
 **/.env

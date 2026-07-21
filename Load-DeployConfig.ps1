@@ -1,6 +1,6 @@
 #requires -Version 7
 <#
-  Shared deploy-config loader for the NginxService repo.
+  Shared deploy-config loader for the web services in this repo.
 
   Dot-source it, then call Import-DeployConfig. It replaces the old
   "execute a deploy.config.ps1 hashtable" pattern with declarative data:
@@ -15,12 +15,12 @@
   place and cannot drift. The returned hashtable has exactly the keys the deploy
   scripts already expect (Server, SshUser, SiteName, Hostnames, TemplateVars, ...).
 
-  host.config.env always lives at the NginxService root, i.e. two levels above a
-  service's deploy/ dir (deploy -> <service> -> NginxService), so nested callers
+  host.config.<env>.env always lives at the repo root, i.e. two levels above a
+  service's deploy/ dir (deploy -> <service> -> repo root), so nested callers
   only pass their own deploy dir.
 
   A service that lives OUTSIDE this repo breaks that two-levels-up assumption,
-  so it passes -HostConfigDir pointing at the NginxService root explicitly.
+  so it passes -HostConfigDir pointing at this repo's root explicitly.
   Everything downstream - the per-env filename, the legacy host.config.env
   fallback - keys off that ONE directory either way.
 #>
@@ -73,11 +73,11 @@ function Import-DeployConfig {
         [Parameter(Mandatory)][string]$ServiceDeployDir,  # the <service>/deploy folder
         [ValidateSet('staging','prod')]
         [string]$Env = 'staging',                          # which box: staging is the DEFAULT, prod must be explicit (../STAGING-PLAN.md). Picks host.config.<env>.env
-        [string]$HostConfigDir,                            # NginxService root; default = two levels above the deploy dir (nested services)
+        [string]$HostConfigDir,                            # repo root; default = two levels above the deploy dir (nested services)
         [string]$HostConfigPath                            # override the whole path; default = <HostConfigDir>/host.config.<env>.env
     )
     $ServiceDeployDir = (Resolve-Path $ServiceDeployDir).Path
-    # Nested service (StaticishSite/, Api/, ...): the NginxService root is two levels up.
+    # Nested service (StaticishSite/, Api/, ...): the repo root is two levels up.
     # Out-of-repo service: it passes -HostConfigDir instead.
     if (-not $HostConfigDir) { $HostConfigDir = Join-Path $ServiceDeployDir '../..' }
     if (-not (Test-Path $HostConfigDir)) { throw "Host config dir not found: $HostConfigDir" }

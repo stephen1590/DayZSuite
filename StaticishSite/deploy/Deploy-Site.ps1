@@ -40,7 +40,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $SiteRoot = Split-Path -Parent $PSScriptRoot          # StaticishSite/
 . (Join-Path $PSScriptRoot '../../../../common/Utils.ps1')
-# Deploy-config loader lives at the NginxService root (../.. from this deploy/).
+# Deploy-config loader lives at the repo root (../.. from this deploy/).
 . (Join-Path $PSScriptRoot '../../Load-DeployConfig.ps1')
 
 # --- Load config file (params override it) -------------------------------

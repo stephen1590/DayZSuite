@@ -9,10 +9,10 @@ follow. Generic/host endpoints (`/healthz`, `/sysload`) and key management
 module + a namespace entry, not a rewrite. (Formerly "Webhooks" on `hooks.<domain>` -
 renamed 2026-07-13; the `hooks.` name and the DayZ-only framing are both retired.)
 
-It is served *behind nginx*, so it lives **inside `NginxService/`** as a sibling of
-the others behind nginx. Its *effects*, however, land on the **DayZ server, which lives outside**
-`NginxService/` (DayZ is UDP, not proxied). That crossing is real and deliberate - it
-is made explicit here, not hidden (see [The one deliberate coupling](#the-one-deliberate-coupling)).
+It is served *behind nginx*, a sibling of the other web services at the repo root.
+Its *effects*, however, land on the **DayZ server** in `../DayZ-Server/` (DayZ is
+UDP, not proxied). That crossing is real and deliberate - it is made explicit
+here, not hidden (see [The one deliberate coupling](#the-one-deliberate-coupling)).
 
 ```text
 Api/
@@ -287,7 +287,7 @@ curl -sS https://api.<domain>/dayz/server-info
 
 ## The one deliberate coupling
 
-The service lives inside `NginxService/` but drives DayZ, which lives outside it. That is
+The service is a web service but drives DayZ, a different subsystem of this repo. That is
 one-directional and declared: `deploy.config.json → Dayz` names the unit + server dir, and
 the service reaches DayZ **only** through `dayz-ctl` - never into DayZ's deploy internals.
 Nothing in the DayZ project depends on this service; it can be removed with no effect on

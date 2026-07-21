@@ -42,7 +42,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")
 
 $script:pass = 0; $script:fail = 0
 function Show-Pass([string]$msg) { $script:pass++; Write-Host "  [PASS] $msg" -ForegroundColor Green }

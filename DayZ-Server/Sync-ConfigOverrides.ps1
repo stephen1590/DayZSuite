@@ -54,7 +54,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")
 
 $MarkerPath = Join-Path $BackupDir "last-synced.sha256"
 

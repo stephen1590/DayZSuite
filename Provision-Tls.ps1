@@ -79,7 +79,7 @@ if ($Env -eq 'staging' -and -not $SkipTls) {
 
 $ErrorActionPreference = 'Stop'
 # Shared code utils live at Dev/common (one level ABOVE UbuntuHost). This engine
-# lives at UbuntuHost/NginxService; ../../common resolves to Dev/common.
+# lives at UbuntuHost/GameServices; ../../common resolves to Dev/common.
 . (Join-Path $PSScriptRoot '../../common/Utils.ps1')
 # Deploy-config loader: host.config.env + <service>/deploy.config.json, merged.
 . (Join-Path $PSScriptRoot 'Load-DeployConfig.ps1')
@@ -108,7 +108,7 @@ if ($ConfigPath) {
 if (-not (Test-Path (Join-Path $serviceDeployDir 'deploy.config.json'))) {
     throw "No deploy config for '$Service' at $serviceDeployDir/deploy.config.json (copy deploy.config.example.json, or pass -ConfigPath)."
 }
-# This script sits AT the NginxService root, so it always knows where host.config.<env>.env
+# This script sits AT the repo root, so it always knows where host.config.<env>.env
 # is - pass it explicitly so an out-of-repo service resolves it too.
 $cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env -HostConfigDir $PSScriptRoot
 

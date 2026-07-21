@@ -74,10 +74,10 @@
   "RateLimit": { "Max": 120, "WindowMs": 60000 },
 
   // Config retrieval + write allowlist: NOT defined here. It is the single
-  // config-registry.json in the DayZ-Server repo, read by Deploy-Api at deploy time
-  // (config is a DayZ-Server dependency). Add/change config surfaces there. Default
-  // path assumes DayZ-Server is checked out beside NginxService; override if not:
-  //   "ConfigRegistry": "../../../DayZ-Server/config-registry.json",
+  // DayZ-Server/config-registry.json at the repo root, read by Deploy-Api at deploy
+  // time (config is a DayZ-Server dependency). Add/change config surfaces there.
+  // Default path assumes the standard repo layout; override if not:
+  //   "ConfigRegistry": "../../DayZ-Server/config-registry.json",
 
   // Global ignore-filetype for FOLDER listings: files with these extensions are
   // never shown in the picker (single "path" entries above are always shown).

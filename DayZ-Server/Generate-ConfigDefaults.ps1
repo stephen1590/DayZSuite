@@ -84,7 +84,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")
 
 # ---- repo paths ----------------------------------------------------------------------
 $deployDir   = Join-Path $PSScriptRoot "deploy"

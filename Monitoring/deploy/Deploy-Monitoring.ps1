@@ -37,7 +37,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Shared code utils live at Dev/common (deploy -> Monitoring -> NginxService ->
+# Shared code utils live at Dev/common (deploy -> Monitoring -> GameServices ->
 # UbuntuHost -> Dev); deploy-config loader + SHIP/RUN helpers at the repo root/common.
 . (Join-Path $PSScriptRoot '../../../../common/Utils.ps1')
 . (Join-Path $PSScriptRoot '../../Load-DeployConfig.ps1')

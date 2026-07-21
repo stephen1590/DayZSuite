@@ -156,7 +156,7 @@ Recovery: see [RECOVERY.md](RECOVERY.md).
 Every config surface is declared once, in `config-registry.json`, and four consumers read
 that one file. Add or change a config there and nothing else needs editing:
 
-- **the web allowlist** — `NginxService/Api`'s `Deploy-Api.ps1` reads the registry by
+- **the web allowlist** — `Api/`'s `Deploy-Api.ps1` reads the registry by
   sibling reference at deploy time (config is a DayZ-Server dependency; the API references
   it, so the list lives with the server it describes). Rows with `web` != `none` become the
   read/write allowlist baked into `dayz-ctl`.

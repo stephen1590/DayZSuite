@@ -83,7 +83,7 @@ if ($failed.Count) {
 # them and no pull captured them, so they lived ONLY on prod - a fresh box and every staging VM
 # had none of it, and enoch silently lost 17 patrols for five days with no diff to notice it.
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")   # Get-Stdout - strips ErrorRecords from 2>&1
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")   # Get-Stdout - strips ErrorRecords from 2>&1
 Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
 $target    = "${RemoteUser}@${RemoteHost}"
 $mirrorDir = Join-Path $PSScriptRoot "config-mirror"

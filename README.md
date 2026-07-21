@@ -1,49 +1,45 @@
-# NginxService - the box's web edge
+# GameServices - everything on the box with a DayZ dependency
 
-Everything on **servermander.ovh** served *behind nginx* lives in this folder.
-nginx + TLS is a **shared requirement** - that makes this the root. Services
-that depend on it nest inside. The folder tree *is* the dependency graph:
+ONE repo for **servermander.ovh**: the DayZ game server, the nginx + TLS layer,
+every service behind it, the staging VM tooling, and the planning docs. If it is
+DayZ-related or a DayZ dependency, it lives here. The only exception on the box
+is CryptPad - no DayZ relationship, so it is an independent sibling repo at
+`../CryptPad/` that reaches into this one for shared infrastructure.
 
 ```text
-NginxService/                 ← the shared nginx + Let's Encrypt layer
-├── host.config.env           ONE source of truth: Server / SshUser / BaseDomain / AdminEmail (flat KEY=VALUE)
-├── host.config.example.env
-├── Load-DeployConfig.ps1     loads host.config.env + a service's deploy.config.json (merged, ${refs} resolved)
+GameServices/
+├── DayZ-Server/              the game server: deploy code + config mirror (UDP, NOT behind nginx)
+├── StaticishSite/            Hugo site at the apex  cytonicmushroom.ddns.net
+├── Api/                      command/observability API at  api.  (drives the DayZ server via sudo dayz-ctl)
+├── ConfigViewer/             DayZ web UI at  configs.
+├── Monitoring/               Prometheus + node_exporter + Grafana at  grafana.
+├── staging/                  local QEMU staging VM tooling (New-StagingVm.ps1, staging.env)
+│
+├── host.config.<env>.env     ONE source of truth: Server / SshUser / BaseDomain / AdminEmail (flat KEY=VALUE)
+├── Load-DeployConfig.ps1     loads host.config.<env>.env + a service's deploy.config.json (merged, ${refs} resolved)
 ├── Provision-Tls.ps1         shared engine: installs nginx+certbot, issues a per-service cert,
 │                             installs that service's vhost
 ├── templates/                token-rendered inputs to the engine
-│   ├── nginx-bootstrap.conf.template   port-80 ACME-only vhost (pre-certificate)
-│   └── provision.env.template          the ONLY bridge of values into the bash step
-├── remote/
-│   └── provision-tls.sh      STATIC bash that runs ON the box (no values baked in)
-│
-├── StaticishSite/            ← nested: it is served by nginx
-│   └── deploy/ …             Hugo site at the apex  cytonicmushroom.ddns.net
-└── Api/                      ← nested: it is served by nginx
-    └── deploy/ …             command/observability API at  api.  (drives the DayZ server)
+├── remote/provision-tls.sh   STATIC bash that runs ON the box (no values baked in)
+├── common/Deploy-Helpers.ps1 shared SHIP+RUN helpers
+└── CLAUDE.md  STAGING-PLAN.md  MAINTENANCE-PLAN.md  CONFIG-ARCHITECTURE.md
 ```
 
-> The **Api** service is served *here* but its actions land on the **DayZ
-> server, which lives outside** this folder. That crossing is one-directional and
+> The **Api** is served behind nginx but its actions land on **DayZ-Server** -
+> now a sibling folder in this same repo. That crossing is one-directional and
 > declared in its config - see [Api/README.md](Api/README.md).
 
-> **Rule:** nesting means "served by nginx AND part of the DayZ stack". Nesting
-> is not required to use the engine: `Provision-Tls.ps1` also resolves `-Service`
-> one directory up, so a sibling repo behind this layer provisions its edge from
+> `Provision-Tls.ps1` resolves `-Service` in this repo first, then one directory
+> up - that second path is how the sibling CryptPad repo provisions its edge from
 > here without copying anything. One engine, one `host.config.<env>.env`.
-> Cross-repo contracts live in `../CLAUDE.md` - not in this file.
-> **DayZ-Server** is not behind nginx at all - it is UDP, not proxied, and keeps
-> its own `host.env` at `../DayZ-Server/`.
 
-Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, one
-level **above** this repo. This folder is a single git repo rooted **here**
-(branch `main`). DayZ-Server is deliberately *not* in it.
-
-Every deploy script dot-sources that shared util from outside the repo. The repo
-assumes it stays in place at `Dev/UbuntuHost/NginxService/` with `Dev/common/`
-alongside. That holds in practice - these scripts only ever run from the dev
-machine. They rsync/ssh to the box. The box never clones this repo, so the path
-always resolves. A standalone clone *elsewhere* would need `Utils.ps1` copied in.
+Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, two
+levels **above** this repo. Every deploy script dot-sources that shared util from
+outside the repo; the repo assumes it stays at `Dev/UbuntuHost/GameServices/`
+with `Dev/common/` two levels up. That holds in practice - these scripts only
+ever run from the dev machine. They rsync/ssh to the box. The box never clones
+this repo, so the path always resolves. A standalone clone *elsewhere* would
+need `Utils.ps1` copied in.
 
 ---
 
@@ -161,4 +157,4 @@ cannot be split.
 > subdomains no service claims) lives *inside StaticishSite's vhost* right now.
 > That makes every other service's fallback routing depend on StaticishSite - it
 > shouldn't. The proper home is a host-level catch-all owned by this
-> `NginxService/` layer, belonging to no service. Not yet lifted.
+> nginx layer (this repo's root templates), belonging to no service. Not yet lifted.

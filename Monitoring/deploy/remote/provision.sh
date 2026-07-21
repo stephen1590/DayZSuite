@@ -31,11 +31,11 @@ echo "== configure prometheus + node_exporter =="
 # Ubuntu's packaging reads daemon flags from ARGS in /etc/default/<unit>.
 # Loopback listen + retention are OUR config: written whole on every run.
 sudo tee /etc/default/prometheus >/dev/null <<EOF
-# Managed by NginxService/Monitoring — do not hand-edit; redeploy instead.
+# Managed by GameServices/Monitoring — do not hand-edit; redeploy instead.
 ARGS="--web.listen-address=${PROMETHEUS_LISTEN} --storage.tsdb.retention.time=${RETENTION_TIME}"
 EOF
 sudo tee /etc/default/prometheus-node-exporter >/dev/null <<EOF
-# Managed by NginxService/Monitoring — do not hand-edit; redeploy instead.
+# Managed by GameServices/Monitoring — do not hand-edit; redeploy instead.
 ARGS="--web.listen-address=${NODE_EXPORTER_LISTEN}"
 EOF
 sudo install -m 0644 prometheus.yml /etc/prometheus/prometheus.yml
@@ -51,7 +51,7 @@ GRAFANA_ADDR=${GRAFANA_LISTEN%:*}
 GRAFANA_PORT=${GRAFANA_LISTEN##*:}
 sudo mkdir -p /etc/systemd/system/grafana-server.service.d
 sudo tee /etc/systemd/system/grafana-server.service.d/override.conf >/dev/null <<EOF
-# Managed by NginxService/Monitoring — do not hand-edit; redeploy instead.
+# Managed by GameServices/Monitoring — do not hand-edit; redeploy instead.
 [Service]
 Environment=GF_SERVER_HTTP_ADDR=${GRAFANA_ADDR}
 Environment=GF_SERVER_HTTP_PORT=${GRAFANA_PORT}

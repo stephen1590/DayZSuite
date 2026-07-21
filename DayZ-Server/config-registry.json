@@ -2,7 +2,7 @@
   "_readme": [
     "THE single registry of server config surfaces. One row per file/folder. Four consumers",
     "read THIS file so a config is declared in exactly one place:",
-    "  - NginxService/Api Deploy-Api.ps1  -> the web read/write allowlist (rows with web != 'none')",
+    "  - Api/deploy/Deploy-Api.ps1        -> the web read/write allowlist (rows with web != 'none')",
     "  - Deploy-DayZServer.ps1            -> seed-if-missing on a fresh box (rows with a 'seed')",
     "  - Sync-*/Pull-Configs.ps1          -> which box files are mirrored back (the 'mirror' tag)",
     "  - Confirm-LiveConfigs.ps1             -> which files to parse-check (the 'check' tag)",

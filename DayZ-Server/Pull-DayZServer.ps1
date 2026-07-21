@@ -41,7 +41,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
-. (Join-Path $PSScriptRoot "../../common/Utils.ps1")
+. (Join-Path $PSScriptRoot "../../../common/Utils.ps1")
 
 Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
 Assert-DZHost @{ RemoteHost = $RemoteHost; RemoteUser = $RemoteUser; RemotePath = $RemotePath }
