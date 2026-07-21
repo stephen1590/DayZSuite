@@ -73,6 +73,13 @@ would do. Add the apply flag to actually touch the box.
 | CryptPad      | payload (app build)    | `CryptPad/deploy/Deploy-CryptPad.ps1`        | `-Apply`   |
 | Api           | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service Api`           | `-Apply`   |
 | Api           | payload (app build)    | `Api/deploy/Deploy-Api.ps1`                  | `-Apply`   |
+| ConfigViewer  | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service ConfigViewer`  | `-Apply`   |
+| ConfigViewer  | payload (web assets)   | `ConfigViewer/deploy/Deploy-ConfigViewer.ps1`| `-Push`    |
+
+**Edge before payload, always.** `Provision-Tls.ps1` is what installs nginx and creates the
+service's webroot (`mkdir` + `chown` to the ssh user). Push a payload to a box that was never
+provisioned and rsync fails with **exit 11** — it cannot create `/var/www/<service>` as a
+non-root user. Between services the order is free; within one service it is not.
 
 The services share **nothing** but the nginx daemon itself:
 
@@ -83,7 +90,7 @@ The services share **nothing** but the nginx daemon itself:
 
 Update any one at any time without touching the others.
 
-### First-time go-live (order does not matter)
+### First-time go-live (services in any order; edge before payload within each)
 
 ```powershell
 # 1. Static site (also sets up the host base on first run)

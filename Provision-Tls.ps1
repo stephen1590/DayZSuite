@@ -102,7 +102,9 @@ foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
 
-$SshPort     = if ($cfg.SshPort) { [int]$cfg.SshPort } else { 22 }
+# Unset => omit -p so ~/.ssh/config governs; an explicit -p overrides a Host alias's Port
+# and would reach the wrong box (see common/Deploy-Helpers.ps1's New-SshArgs).
+$SshPort     = if ($cfg.SshPort) { [int]$cfg.SshPort } else { $null }
 $acmeWebroot = '/var/www/acme'
 $certName    = $Hostnames[0]
 $serverNames = ($Hostnames -join ' ')
@@ -150,7 +152,7 @@ Copy-Item (Join-Path $PSScriptRoot 'remote/provision-tls.sh') (Join-Path $stageD
 
 # --- Report ----------------------------------------------------------------
 $target = "$($cfg.SshUser)@$($cfg.Server)"
-Write-Host "Service: $Service   Target: $target (port $SshPort)" -ForegroundColor Cyan
+Write-Host "Service: $Service   Target: $target (port $(if ($SshPort) { $SshPort } else { 'per ssh_config' }))" -ForegroundColor Cyan
 Write-Host "Host(s): $serverNames"
 if ($cfg.Webroot) { Write-Host "Webroot: $($cfg.Webroot)   ACME: $acmeWebroot" } else { Write-Host "ACME   : $acmeWebroot" }
 Write-Host "Staged : $stageDir" -ForegroundColor Cyan
@@ -158,7 +160,7 @@ Get-ChildItem $stageDir | ForEach-Object { Write-Host ("         {0,-24} {1,8:n0
 
 # --- SHIP + RUN (or stop after staging) --------------------------------------
 $remoteStage = ".deploy/$($cfg.SiteName)/tls"   # relative to the SSH user's home
-$sshArgs = @('-p', "$SshPort"); if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
+$sshArgs = @(); if ($SshPort) { $sshArgs += @('-p', "$SshPort") }; if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
 $logDir = Join-Path (Split-Path -Parent $serviceDeployDir) 'logs'
 
 if (-not $Apply) {

@@ -22,6 +22,25 @@ API. Use an **`observe`** (read-only) scope:
 POST /keys/create   { "id": "config-viewer", "scope": "observe" }   # wizard key only
 ```
 
+### First login on a fresh box
+
+There is no default account, and **the wizard secret cannot be typed into the login form** —
+the viewer always sends `X-Key-Id`, and an id that isn't in the key store is rejected outright
+(it deliberately never falls back to the wizard secret). So the first credential must be minted
+out-of-band. Run this ON the box, where the wizard secret lives:
+
+```bash
+SECRET=$(sudo awk -F= '/^HMAC_SECRET=/{print $2}' /etc/api/secrets.env)
+BODY='{"id":"config-viewer","scope":"observe"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)
+curl -s -X POST http://127.0.0.1:3100/keys/create \
+  -H 'Content-Type: application/json' -H "X-Signature-256: sha256=$SIG" -d "$BODY"
+```
+
+The response contains the `id` and `secret` — **the secret is shown once**. Paste those two
+values into the viewer's login form. Mint one key per person (`observe` scope) so any of them
+can be revoked individually with `POST /keys/revoke`.
+
 Credentials are stored in a cookie on the user's device (`Secure`,
 `SameSite=Strict`) and destroyed the first time the API rejects them (401).
 

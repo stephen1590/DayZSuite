@@ -13,9 +13,15 @@
 #>
 
 # ssh argument list from the merged deploy config (SshPort/SshKey are optional keys).
+# NO SshPort => emit NO -p, so ~/.ssh/config decides. This is load-bearing: an explicit
+# -p on the command line OVERRIDES a Host alias's Port, so a hardcoded default of 22
+# silently sends a deploy meant for `staging-vm` (alias: 127.0.0.1 port 2222) to
+# 127.0.0.1:22 — the dev machine's own sshd. Only set SshPort for a box reached by real
+# hostname; alias-reached boxes leave it unset (../STAGING-PLAN.md).
 function New-SshArgs([hashtable]$Cfg) {
-    $list = @('-p', "$(if ($Cfg.SshPort) { [int]$Cfg.SshPort } else { 22 })")
-    if ($Cfg.SshKey) { $list += @('-i', $Cfg.SshKey) }
+    $list = @()
+    if ($Cfg.SshPort) { $list += @('-p', "$([int]$Cfg.SshPort)") }
+    if ($Cfg.SshKey)  { $list += @('-i', $Cfg.SshKey) }
     return ,$list
 }
 

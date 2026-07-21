@@ -74,7 +74,9 @@ foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
 
-$SshPort = if ($cfg.SshPort) { [int]$cfg.SshPort } else { 22 }
+# Unset => omit -p so ~/.ssh/config governs; an explicit -p overrides a Host alias's Port
+# and would reach the wrong box (see common/Deploy-Helpers.ps1's New-SshArgs).
+$SshPort = if ($cfg.SshPort) { [int]$cfg.SshPort } else { $null }
 
 # --- Derived values ---------------------------------------------------------
 $mainOrigin          = "https://$($Hostnames[0])"
@@ -141,7 +143,7 @@ Copy-Item (Join-Path $PSScriptRoot 'remote/deploy.sh') (Join-Path $stageDir 'dep
 
 # --- Report -----------------------------------------------------------------
 $target = "$($cfg.SshUser)@$($cfg.Server)"
-Write-Host "Target : $target (port $SshPort)   Ref: $($cfg.Ref)   Node: $($cfg.NodeMajor).x" -ForegroundColor Cyan
+Write-Host "Target : $target (port $(if ($SshPort) { $SshPort } else { 'per ssh_config' }))   Ref: $($cfg.Ref)   Node: $($cfg.NodeMajor).x" -ForegroundColor Cyan
 Write-Host "Origins: main=$mainOrigin  sandbox=$sandboxOrigin"
 Write-Host "Admin  : $($AdminKeys.Count) key(s)   Quota: $($cfg.DefaultStorageGb) GB/user   Upload: $($cfg.MaxUploadMb) MB"
 Write-Host "Signups: $(if ($restrictReg) { 'invite-only (seeds RESTRICT_REGISTRATION decree)' } else { 'open registration' })"
@@ -153,7 +155,7 @@ Get-ChildItem $stageDir | ForEach-Object { Write-Host ("         {0,-20} {1,8:n0
 
 # --- SHIP + RUN (or stop after staging) --------------------------------------
 $remoteStage = ".deploy/$($cfg.SiteName)/app"   # relative to the SSH user's home
-$sshArgs = @('-p', "$SshPort"); if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
+$sshArgs = @(); if ($SshPort) { $sshArgs += @('-p', "$SshPort") }; if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
 $logDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'logs'
 
 if (-not $Apply) {

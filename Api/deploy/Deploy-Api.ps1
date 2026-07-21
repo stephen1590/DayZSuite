@@ -196,7 +196,9 @@ if ($cfg.Dayz.LogSources) {
 foreach ($tool in 'rsync', 'ssh') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH." }
 }
-$SshPort = if ($cfg.SshPort) { [int]$cfg.SshPort } else { 22 }
+# Unset => omit -p so ~/.ssh/config governs; an explicit -p overrides a Host alias's Port
+# and would reach the wrong box (see common/Deploy-Helpers.ps1's New-SshArgs).
+$SshPort = if ($cfg.SshPort) { [int]$cfg.SshPort } else { $null }
 $appSrc  = Join-Path $PSScriptRoot '../app'
 if (-not (Test-Path (Join-Path $appSrc 'package.json'))) { throw "App source not found at $appSrc" }
 
@@ -281,7 +283,7 @@ Copy-Item (Join-Path $appSrc 'src') $stageDir -Recurse
 
 # --- Report -----------------------------------------------------------------
 $target = "$($cfg.SshUser)@$($cfg.Server)"
-Write-Host "Target : $target (port $SshPort)   Node: $($cfg.NodeMajor).x   App: $($cfg.AppDir)" -ForegroundColor Cyan
+Write-Host "Target : $target (port $(if ($SshPort) { $SshPort } else { 'per ssh_config' }))   Node: $($cfg.NodeMajor).x   App: $($cfg.AppDir)" -ForegroundColor Cyan
 Write-Host "Public : https://$($cfg.Hostnames[0])   ->  127.0.0.1:$($cfg.Port)"
 Write-Host "DayZ   : unit '$($cfg.Dayz.Unit)'  dir $($cfg.Dayz.ServerDir)"
 Write-Host "Configs: $(@($fileEntries).Count) file(s)$(if (@($fileEntries).Count) { ' (' + ((@($fileEntries) | ForEach-Object { $_.name }) -join ', ') + ')' }) + $(@($dirEntries).Count) folder(s)$(if (@($dirEntries).Count) { ' (' + ((@($dirEntries) | ForEach-Object { $_.dir }) -join ', ') + ')' })"
@@ -291,7 +293,7 @@ Get-ChildItem $stageDir | ForEach-Object { Write-Host ("         {0,-20} {1,8:n0
 
 # --- SHIP + RUN (or stop after staging) --------------------------------------
 $remoteStage = ".deploy/$($cfg.SiteName)/app"   # relative to the SSH user's home
-$sshArgs = @('-p', "$SshPort"); if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
+$sshArgs = @(); if ($SshPort) { $sshArgs += @('-p', "$SshPort") }; if ($cfg.SshKey) { $sshArgs += @('-i', $cfg.SshKey) }
 $logDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'logs'
 
 if (-not $Apply) {

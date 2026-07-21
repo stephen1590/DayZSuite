@@ -35,7 +35,7 @@ param(
     [string]$Server,                     # e.g. myhost.example.com
     [string]$SshUser,                    # e.g. deploy
     [string]$RemotePath,                 # e.g. /var/www/config-viewer
-    [int]$SshPort = 22,
+    [int]$SshPort = 0,                   # 0/unset = emit no -p, so ~/.ssh/config decides (an explicit -p overrides a Host alias's Port)
     [string]$SshKey,                     # path to private key (optional)
     [switch]$NoLog
 )
@@ -54,7 +54,7 @@ if (Test-Path $configJson) {
     if (-not $SshUser)    { $SshUser    = $cfg.SshUser }
     if (-not $RemotePath) { $RemotePath = $cfg.RemotePath }
     if (-not $SshKey -and $cfg.SshKey) { $SshKey = $cfg.SshKey }
-    if ($cfg.SshPort -and $SshPort -eq 22) { $SshPort = [int]$cfg.SshPort }
+    if ($cfg.SshPort -and -not $SshPort) { $SshPort = [int]$cfg.SshPort }
 }
 
 foreach ($req in @{ Server = $Server; SshUser = $SshUser; RemotePath = $RemotePath }.GetEnumerator()) {
@@ -94,7 +94,8 @@ if (-not (Test-Path (Join-Path $suiDir 'swagger-ui-bundle.js'))) {
 }
 # --- Deploy (rsync over ssh) ---------------------------------------------
 # Trailing slash on source => copy the CONTENTS of web/, not the dir itself.
-$sshParts = @("ssh -p $SshPort")
+$sshParts = @('ssh')
+if ($SshPort) { $sshParts += "-p $SshPort" }
 if ($SshKey) { $sshParts += "-i `"$SshKey`"" }
 $sshCmd = $sshParts -join ' '
 
