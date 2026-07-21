@@ -11,6 +11,25 @@ describes the server itself (passwords, Steam account) and stays on that host.
 
 ## 1. Dependencies
 
+**PowerShell (`pwsh`) is a hard dependency of the deploy pipeline itself** — the deploy's
+on-box leg is `pwsh ./Deploy-DayZServer.ps1 -Local`, and prestart rebuilds every config
+artifact with pwsh on EVERY boot. Without it the first deploy dies at
+`pwsh: command not found`. PowerShell is MIT-licensed; Microsoft's apt repo is the
+first-party package source (version-agnostic via `lsb_release`):
+
+```bash
+wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+sudo dpkg -i packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
+sudo apt update && sudo apt install -y powershell
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'   # prove it
+```
+
+`rsync` must exist on the box too — the deploy delivers its payload over rsync:
+
+```bash
+sudo apt install -y rsync
+```
+
 steamcmd is a 32-bit binary:
 
 ```bash
@@ -161,7 +180,10 @@ Edit `DAYZ_MISSION=` in `~/servers/dayz-server/map.env`, then
 `sudo systemctl restart dayz-server`. Character saves follow the server across a map
 switch (positions are raw per-map coordinates, so teleport players to sane spots after
 their first login on the new map); world state — bases, vehicles — stays per-map.
-`map.env` and `.last-map` are runtime state, not part of the deploy payload.
+`map.env` and `.last-map` are runtime state, not part of the deploy payload — `map.env`
+is SEEDED from the deployed `map.env.example` when missing (fresh box), and `prestart.sh`
+re-creates it the same way if it's ever deleted. `map.env.example` is the one home of the
+default mission; edits to `map.env` on the box are never overwritten by a deploy.
 
 ## Troubleshooting
 

@@ -18,9 +18,17 @@
     "seed     - repo-root-relative source copied to the box ONLY when missing (fresh box / disaster",
     "           recovery); null = box-generated, never seeded from the repo. CODE files (mods.conf,",
     "           scripts, units) are shipped by Deploy-DayZServer's own $items, NOT seeded here.",
-    "mirror   - which pull backs the box copy up: 'overrides' | 'spawns' | 'defaults' | null.",
+    "mirror   - which pull backs the box copy up: 'overrides' | 'spawns' | 'defaults' | 'live' | null.",
     "           'defaults' = the file's frozen <stem>.defaults<ext> baseline is glob-pulled by",
     "           Sync-ConfigDefaults (the file itself is rebuilt from default+patches each boot).",
+    "           'live' (FOLDER rows, 2026-07-21) = the LIVE files themselves are pulled into",
+    "           config-mirror/ by Pull-Configs and seeded back seed-if-missing by the deploy.",
+    "           For box-born content that no seed and no other pull covers - mission",
+    "           expansion/settings being the case that exposed the gap: a fresh box (and every",
+    "           staging VM) had NO copy of the live mission config at all, so staging could not",
+    "           reproduce prod and nothing noticed when a mission file lost 17 patrols.",
+    "           Add 'mirror':'live' (+ optional 'mirrorGlob', default *.json) to a folder row",
+    "           and it is pulled, versioned and seeded - no new script, no code change.",
     "web      - how the UI exposes it: patch (override editor) | file (whole-file) | store (Map",
     "           editor) | view (read-only) | browse (folder) | none (not shown; e.g. seed-only).",
     "writable - whole-file write verb (box-owned operational lists only: bans/whitelist).",
@@ -31,7 +39,13 @@
     "  READ-ONLY (no edit, no save) and override-write REFUSES a patch that targets one - so a value",
     "  that is auto-generated can never be hand-edited into a silent loss. Edit the SOURCE (map-points",
     "  via the Map tab, the common templates, the frozen base), never the output. Add a compiler",
-    "  output = add one line here."
+    "  output = add one line here.",
+    "",
+    "  DRAFTS (2026-07-21): a builder that has no business owning a hand-authored file writes a",
+    "  <name>.draft.json beside it instead. The DRAFT is the generated file (listed here, read-only);",
+    "  the live file it drafts is NOT generated and stays fully editable. Expansion AIPatrolSettings",
+    "  .json / AILocationSettings.json work this way - Build-AIPatrols/Build-AILocations compose the",
+    "  draft every boot so you can see what map-points WOULD produce, and never touch the live file."
   ],
   "surfaces": [
     { "name": "overrides", "box": "config-overrides.json", "scope": "shared", "seed": "config-overrides.json", "mirror": "overrides", "web": "patch", "check": "json" },
@@ -53,14 +67,14 @@
     { "group": "Expansion Traders", "dir": "profiles/ExpansionMod/Traders", "scope": "shared", "web": "browse" },
     { "group": "Expansion Loadouts", "dir": "profiles/ExpansionMod/Loadouts", "scope": "shared", "web": "browse" },
     { "group": "Expansion Market", "dir": "profiles/ExpansionMod/Market", "scope": "shared", "web": "browse" },
-    { "group": "Map; Chernarus Settings", "dir": "mpmissions/dayzOffline.chernarusplus", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.chernarusplus", "web": "browse" },
-    { "group": "Map; Enoch Settings", "dir": "mpmissions/dayzOffline.enoch", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.enoch", "web": "browse" },
-    { "group": "Map; Sakhal Settings", "dir": "mpmissions/dayzOffline.sakhal", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.sakhal", "web": "browse" }
+    { "group": "Map; Chernarus Settings", "dir": "mpmissions/dayzOffline.chernarusplus", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.chernarusplus", "web": "browse", "mirror": "live", "mirrorGlob": "*.json" },
+    { "group": "Map; Enoch Settings", "dir": "mpmissions/dayzOffline.enoch", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.enoch", "web": "browse", "mirror": "live", "mirrorGlob": "*.json" },
+    { "group": "Map; Sakhal Settings", "dir": "mpmissions/dayzOffline.sakhal", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.sakhal", "web": "browse", "mirror": "live", "mirrorGlob": "*.json" }
   ],
   "generated": [
     "profiles/AI_Bandits/DynamicAIB.json",
     "profiles/AI_Bandits/StaticAIB.json",
-    "mpmissions/*/expansion/settings/AIPatrolSettings.json",
-    "mpmissions/*/expansion/settings/AILocationSettings.json"
+    "mpmissions/*/expansion/settings/AIPatrols.draft.json",
+    "mpmissions/*/expansion/settings/AILocations.draft.json"
   ]
 }

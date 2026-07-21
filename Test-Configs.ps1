@@ -197,13 +197,19 @@ foreach ($m in $missions) {
         catch { Show-Fail "$rel for $m - invalid JSON: $($_.Exception.Message)" }
     }
 
-    # Expansion AI patrols: compose AIPatrolSettings.json (frozen base + 'expansion' map-points);
-    # assert it parses. The SAME engine the box runs at prestart - proves the generated file offline
-    # before any restart. Only asserts on missions that actually produce the file (a mission with no
-    # frozen base and no 'expansion' points leaves it untouched by design - not a failure).
+    # Expansion AI patrols: compose the AIPatrols DRAFT (frozen base + 'expansion' map-points) and
+    # assert it parses. The SAME engine the box runs at prestart - proves the draft offline before any
+    # restart. Only asserts on missions that actually produce it (no frozen base and no 'expansion'
+    # points writes no draft by design - not a failure). The LIVE AIPatrolSettings.json is hand-
+    # authored and must be unchanged by this: asserted below.
+    $patLive    = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
+    $patLiveWas = if (Test-Path $patLive) { (Get-FileHash -LiteralPath $patLive -Algorithm SHA256).Hash } else { $null }
     try { $null = & (Join-Path $PSScriptRoot "Build-AIPatrols.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
     catch { Show-Fail "Build-AIPatrols threw for ${m}: $($_.Exception.Message)" }
-    $patRel = "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
+    $patLiveNow = if (Test-Path $patLive) { (Get-FileHash -LiteralPath $patLive -Algorithm SHA256).Hash } else { $null }
+    if ($patLiveWas -ne $patLiveNow) { Show-Fail "Build-AIPatrols MODIFIED the live AIPatrolSettings.json for $m - it must only write the draft" }
+    else { Show-Pass "Build-AIPatrols left the live AIPatrolSettings.json untouched for $m" }
+    $patRel = "mpmissions/$m/expansion/settings/AIPatrols.draft.json"
     $patP   = Join-Path $StagingDir $patRel
     if (Test-Path $patP) {
         try {
@@ -216,13 +222,16 @@ foreach ($m in $missions) {
         } catch { Show-Fail "$patRel for $m - invalid JSON: $($_.Exception.Message)" }
     }
 
-    # Expansion AI locations: compose AILocationSettings.json (frozen base + 'expansion' map-points);
-    # assert it parses. The SAME engine the box runs at prestart - the twin of Build-AIPatrols, proven
-    # offline before any restart. Only asserts on missions that actually produce the file (zero
-    # 'expansion' points leaves it untouched by design - not a failure).
+    # Expansion AI locations: compose the AILocations DRAFT (frozen base + 'expansion' map-points) and
+    # assert it parses - twin of Build-AIPatrols, same live-file-untouched assertion.
+    $locLive    = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AILocationSettings.json"
+    $locLiveWas = if (Test-Path $locLive) { (Get-FileHash -LiteralPath $locLive -Algorithm SHA256).Hash } else { $null }
     try { $null = & (Join-Path $PSScriptRoot "Build-AILocations.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
     catch { Show-Fail "Build-AILocations threw for ${m}: $($_.Exception.Message)" }
-    $locRel = "mpmissions/$m/expansion/settings/AILocationSettings.json"
+    $locLiveNow = if (Test-Path $locLive) { (Get-FileHash -LiteralPath $locLive -Algorithm SHA256).Hash } else { $null }
+    if ($locLiveWas -ne $locLiveNow) { Show-Fail "Build-AILocations MODIFIED the live AILocationSettings.json for $m - it must only write the draft" }
+    else { Show-Pass "Build-AILocations left the live AILocationSettings.json untouched for $m" }
+    $locRel = "mpmissions/$m/expansion/settings/AILocations.draft.json"
     $locP   = Join-Path $StagingDir $locRel
     if (Test-Path $locP) {
         try {

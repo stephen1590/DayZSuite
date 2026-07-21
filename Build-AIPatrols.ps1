@@ -1,10 +1,13 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Compose a mission's Expansion AIPatrolSettings.json from map-points.json - the file that
-    ACTUALLY spawns Expansion AI (Faction + Loadout + NumberOfAI + Waypoints per patrol). The
-    Expansion twin of Build-AIBandits: a prestart compiler, run per map, driven by the SAME
-    map-points store, with an INDEPENDENT on/off switch. Additive - it never touches BanditAI.
+    Compose a DRAFT of a mission's Expansion AIPatrolSettings from map-points.json, written to
+    AIPatrols.draft.json beside the live file. Run per map at prestart, driven by the map-points
+    store, with an INDEPENDENT on/off switch. Additive - it never touches BanditAI.
+
+    DRAFT-ONLY since 2026-07-21. It does NOT write AIPatrolSettings.json. That file is hand-
+    authored and box-owned (unlocked in the web editor); this builder only shows what WOULD be
+    there if map-points drove it. Nothing here can overwrite authored patrols.
 .DESCRIPTION
     THE MODEL (mirrors Build-AIBandits / Build-AILocations):
       - map-points.json (profiles/AI_Bandits/, box/web-edited via the Map tab) is the single point
@@ -106,7 +109,7 @@ $mine = if ($enabled) { @($doc.points | Where-Object { $letters -contains $_.map
 if (-not $enabled) {
     Show-Info "AIPatrols[$Mission]: ExpansionAI map-point spawns DISABLED (control.enabled = 0) - emitting frozen base only; authored patrols untouched$(if (-not $Fix) { ' (report-only)' })."
 } elseif (-not $mine.Count) {
-    Show-Info "AIPatrols[$Mission]: no 'expansion'-toggled points for this mission - leaving AIPatrolSettings untouched."
+    Show-Info "AIPatrols[$Mission]: no 'expansion'-toggled points for this mission - no draft written."
     exit 0
 }
 
@@ -119,6 +122,11 @@ if (-not $enabled) {
 #      like Apply-ConfigOverrides reversible defaults) - never wipe what someone authored;
 #   3. else compose fresh with only our patrols.
 $livePath   = Join-Path $ServerDir "mpmissions/$Mission/expansion/settings/AIPatrolSettings.json"
+# DRAFT is the ONLY thing this builder writes (2026-07-21). The live file is hand-authored and
+# box-owned - we read it as a base candidate and never write it. The draft answers "what WOULD be
+# live if map-points drove this file", so adjacent work can keep going without the builder taking
+# ownership back. It is the registry-'generated' (read-only) file now; the live one is unlocked.
+$draftPath  = Join-Path $ServerDir "mpmissions/$Mission/expansion/settings/AIPatrols.draft.json"
 $frozenPath = Join-Path $ServerDir "config-defaults/mpmissions/$Mission/expansion/settings/AIPatrolSettings.defaults.json"
 $ourNames   = @($mine | ForEach-Object { [string]$_.name })
 
@@ -252,11 +260,11 @@ if ($ours.Count) {
 
 if ($PreviewOut) { New-Item -ItemType Directory -Force -Path (Split-Path $PreviewOut) | Out-Null; Set-Content -LiteralPath $PreviewOut -Value $json -Encoding utf8; Show-Info "  preview -> $PreviewOut" }
 if ($Fix) {
-    New-Item -ItemType Directory -Force -Path (Split-Path $livePath) | Out-Null
-    Set-Content -LiteralPath $livePath -Value $json -Encoding utf8
-    Show-Info "  wrote $livePath"
+    New-Item -ItemType Directory -Force -Path (Split-Path $draftPath) | Out-Null
+    Set-Content -LiteralPath $draftPath -Value $json -Encoding utf8
+    Show-Info "  wrote $draftPath (DRAFT - the live AIPatrolSettings.json is not touched)"
 } elseif (-not $PreviewOut) {
-    Show-Info "  (dry-run - re-run with -Fix to write $livePath)"
+    Show-Info "  (dry-run - re-run with -Fix to write $draftPath)"
 }
 if ($warn) { Show-Info "AIPatrols[$Mission]: $warn warning(s)." }
 exit 0

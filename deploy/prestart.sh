@@ -66,7 +66,9 @@ if [ -f "$SERVER/.update-pending" ] && [ -x "$SERVER/update.sh" ]; then
 fi
 # ------------------------------------------------------------------------------------
 
-[ -f "$SERVER/map.env" ] || echo "DAYZ_MISSION=dayzOffline.chernarusplus" > "$SERVER/map.env"
+# Self-heal a deleted map.env from the deployed example (the ONE home of the default —
+# no literal mission name here, so the default can't drift between seed sites).
+[ -f "$SERVER/map.env" ] || cp "$SERVER/map.env.example" "$SERVER/map.env"
 source "$SERVER/map.env"
 TARGET=$DAYZ_MISSION
 LAST=$(cat "$STATE" 2>/dev/null || echo "$TARGET")
@@ -115,20 +117,19 @@ if [ -f "$SERVER/Build-AIBandits.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AIBandits.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
-# Expansion AI roaming destinations: compose the active map's AILocationSettings.json from the
-# frozen default (mod's auto-gen settlements) + map-points that opt into 'expansion'. Runs AFTER
-# Build-AIBandits (same map-points store, different consumer). Fail-soft + `|| true`; a mission with
-# no 'expansion' points is left untouched, so this can never block boot or wipe the mod's locations.
+# Expansion AI roaming destinations: compose a DRAFT (AILocations.draft.json) from the frozen
+# default + map-points that opt into 'expansion'. DRAFT-ONLY - the live AILocationSettings.json is
+# hand-authored and is never written here. Runs AFTER Build-AIBandits (same map-points store,
+# different consumer). Fail-soft + `|| true`; it can never block boot.
 if [ -f "$SERVER/Build-AILocations.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AILocations.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
-# Expansion AI SPAWNS: compose the active map's AIPatrolSettings.json (the file that actually spawns
-# Expansion AI - Faction/Loadout/NumberOfAI/Waypoints) from the frozen base (mod/admin patrols,
-# captured once) + map-points that opt into 'expansion'. Independent master switch lives in
-# profiles/ExpansionMod/AIPatrols.control.json (enabled). Same map-points store as Build-AIBandits,
-# different consumer - AIB is never touched. Fail-soft + `|| true`; an empty base can never wipe the
-# authored patrols (the builder captures them first), and no 'expansion' points leaves the file alone.
+# Expansion AI SPAWNS: compose a DRAFT (AIPatrols.draft.json) from the frozen base + map-points that
+# opt into 'expansion'. DRAFT-ONLY since 2026-07-21 - the live AIPatrolSettings.json is hand-authored,
+# unlocked in the web editor, and is NEVER written here. The draft exists so you can see what
+# map-points would produce without the builder taking the file back. Independent master switch lives
+# in profiles/ExpansionMod/AIPatrols.control.json (enabled). Fail-soft + `|| true`.
 if [ -f "$SERVER/Build-AIPatrols.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AIPatrols.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi

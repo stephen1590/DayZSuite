@@ -182,7 +182,7 @@ if (-not $Local) {
     # committed here, never unrelated working-tree changes. Prod-only, same reason as the
     # pulls above: staging state must never enter the prod mirror history.
     if ($Fix -and $Env -eq 'prod') {
-        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults')
+        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror')
         git -C $PSScriptRoot add -- $mirrorPaths 2>$null
         if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
             git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
@@ -224,7 +224,10 @@ if (-not $Local) {
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
         if (Test-Path (Join-Path $PSScriptRoot $f)) { $payload.Add($f) }
     }
-    foreach ($d in 'deploy', 'config-defaults') {
+    # Directories shipped WHOLE to the box's deploy-stage. The seed steps later in this script run
+    # ON THE BOX from that stage, so a mirror dir missing here silently seeds nothing - its
+    # Test-Path just returns false against a path that only exists on the dev machine.
+    foreach ($d in 'deploy', 'config-defaults', 'config-mirror') {
         $base = Join-Path $PSScriptRoot $d
         if (Test-Path $base) {
             Get-ChildItem $base -Recurse -File | ForEach-Object {
@@ -406,6 +409,9 @@ $items = @(
     @{ Src = "../serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo"
        Dst = Join-Path $ServerDir "@transfer_spawn/addons/TransferSpawn_main.pbo"; Sudo = $false; Exec = $false }
     @{ Src = "prestart.sh";         Dst = Join-Path $ServerDir "prestart.sh";  Sudo = $false; Exec = $true  }
+    # The ONE home of the default mission. The real map.env is runtime state, seeded from
+    # this below only when missing; prestart.sh also self-heals a deleted map.env from it.
+    @{ Src = "map.env.example";     Dst = Join-Path $ServerDir "map.env.example"; Sudo = $false; Exec = $false }
     # prestart.sh calls this to write profiles/transfer_spawn.json for the TransferSpawn PBO.
     @{ Src = "Build-TransferSpawns.ps1"; Dst = Join-Path $ServerDir "Build-TransferSpawns.ps1"; Sudo = $false; Exec = $false }
     @{ Src = "serverDZ.cfg";        Dst = Join-Path $ServerDir "serverDZ.cfg"; Sudo = $false; Exec = $false; Render = $true }
@@ -512,6 +518,20 @@ foreach ($i in $items) {
     }
 }
 
+# map.env is runtime state (which mission boots) — seeded ONLY when missing, like host.env.
+# It must exist BEFORE the first service start: systemd loads the unit's EnvironmentFile
+# ahead of ExecStartPre, so relying on prestart's self-heal alone costs one failed boot
+# (and without the unit's "-" prefix it deadlocked a fresh box outright — staging gap #2).
+$mapEnvPath = Join-Path $ServerDir "map.env"
+if (-not (Test-Path $mapEnvPath)) {
+    if ($Fix) {
+        Copy-Item (Join-Path $ServerDir "map.env.example") $mapEnvPath
+        Write-Host "Seeded map.env from map.env.example - edit DAYZ_MISSION on the box + restart to switch maps"
+    } else {
+        Write-Host "map.env  Missing  (-Fix will seed it from map.env.example)"
+    }
+}
+
 # --- Config content: box-owned, SEEDED from the single registry (config-registry.json). Every
 # surface with a 'seed' is copied to the box ONLY when missing there (fresh box / disaster
 # recovery); an existing box copy is authoritative and reported BoxOwned (never overwritten -
@@ -568,6 +588,30 @@ if (Test-Path $defaultsDir) {
     if (-not $defFiles.Count) { Write-Host "  (none yet - born on first prestart, pulled into the repo by Sync-ConfigDefaults)" }
 }
 
+# --- Live folder mirror: config-mirror/ is a PULLED MIRROR of the LIVE files behind registry
+# folder rows tagged "mirror":"live" (Pull-Configs). Same rule as config-defaults/ - SEED ONLY:
+# restored when missing on the box (fresh box / disaster recovery / a staging VM that has never
+# booted that mission), never overwritten when present. This is what makes staging able to hold
+# prod's real mission config instead of whatever the mod happens to generate on first boot.
+$mirrorDir = Join-Path $PSScriptRoot "config-mirror"
+if (Test-Path $mirrorDir) {
+    Write-Host "`n--- Live config mirror (config-mirror/ -> seed-if-missing) ---"
+    $mirFiles = @(Get-ChildItem -Path $mirrorDir -Recurse -File | Where-Object Name -ne 'README.md')
+    foreach ($f in $mirFiles) {
+        $rel = $f.FullName.Substring($mirrorDir.Length).TrimStart('/', '\')
+        $dst = Join-Path $ServerDir $rel
+        $state = if (Test-Path $dst) { "BoxOwned" } else { "Missing" }
+        $action = "none"
+        if ($Fix -and $state -eq "Missing") {
+            New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+            Copy-Item $f.FullName $dst -Force
+            $action = "seeded"
+        }
+        Write-Host ("{0,-8} {1,-9} {2}" -f $state, $action, $rel)
+    }
+    if (-not $mirFiles.Count) { Write-Host "  (empty - run Pull-Configs.ps1 -Execute against prod to populate it)" }
+}
+
 # Mods referenced by the unit but missing on disk: in -Fix mode, download them NOW by
 # running update.sh (just synced above, so it has the current mod list). The player
 # guard already ensured nobody is on the server; the steamcmd login still kicks any
@@ -618,6 +662,11 @@ if (Test-Path $applier) {
 $restarted = $false
 if ($Fix) {
     sudo systemctl daemon-reload
+    # Boot persistence: `enable` (NOT --now) only writes the wants symlink, so it is safe
+    # under -NoRestart and a no-op on a box that already has it. Without this a rebuilt box
+    # comes up with the game server dead after every reboot — found on staging 2026-07-21,
+    # where the unit was 'disabled' after a clean deploy (RECOVERY.md depends on this).
+    sudo systemctl enable dayz-server
     # Timer enable is safe under -NoRestart: it never touches the game server process.
     sudo systemctl enable --now dayz-logarchive.timer
     # Auto-update-check timer: on unless DEPLOY_UPDATE_CHECK_INTERVAL=off. Disabling only

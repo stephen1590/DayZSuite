@@ -1,7 +1,11 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Compose a mission's Expansion AILocationSettings.json RoamingLocations from map-points.json.
+    Compose a DRAFT of a mission's Expansion AILocationSettings RoamingLocations from
+    map-points.json, written to AILocations.draft.json beside the live file.
+
+    DRAFT-ONLY since 2026-07-21. It does NOT write AILocationSettings.json - that file is hand-
+    authored and box-owned (unlocked in the web editor). This only shows what WOULD be there.
     The Expansion counterpart of Build-AIBandits: a prestart compiler, run per map, driven by the
     SAME map-points store. A map point becomes a roaming DESTINATION (not an AI - AI presence is
     the separate AIPatrols layer). Faction/loadout never live here; AILocationSettings is geography.
@@ -84,12 +88,15 @@ function Wants-Expansion($p) {
 
 $mine = @($doc.points | Where-Object { $letters -contains $_.map -and (Wants-Expansion $_) })
 if (-not $mine.Count) {
-    Show-Info "AILocations[$Mission]: no 'expansion'-toggled points for this mission - leaving AILocationSettings untouched."
+    Show-Info "AILocations[$Mission]: no 'expansion'-toggled points for this mission - no draft written."
     exit 0
 }
 
 # --- BASE (frozen default preferred; else the live file; else a minimal wrapper) -----------
 $livePath = Join-Path $ServerDir "mpmissions/$Mission/expansion/settings/AILocationSettings.json"
+# DRAFT is the ONLY write target (2026-07-21) - twin of Build-AIPatrols. The live file is hand-
+# authored and box-owned; we read it as a base candidate and never write it.
+$draftPath = Join-Path $ServerDir "mpmissions/$Mission/expansion/settings/AILocations.draft.json"
 $baseCandidates = @(
     (Join-Path $ServerDir "config-defaults/mpmissions/$Mission/expansion/settings/AILocationSettings.defaults.json"),
     (Join-Path $ServerDir "mpmissions/$Mission/expansion/settings/AILocationSettings.defaults.json"),
@@ -136,11 +143,11 @@ Show-Info "AILocations[$Mission]: base $($baseLocs.Count) + $($ours.Count) map-p
 
 if ($PreviewOut) { New-Item -ItemType Directory -Force -Path (Split-Path $PreviewOut) | Out-Null; Set-Content -LiteralPath $PreviewOut -Value $json -Encoding utf8; Show-Info "  preview -> $PreviewOut" }
 if ($Fix) {
-    New-Item -ItemType Directory -Force -Path (Split-Path $livePath) | Out-Null
-    Set-Content -LiteralPath $livePath -Value $json -Encoding utf8
-    Show-Info "  wrote $livePath"
+    New-Item -ItemType Directory -Force -Path (Split-Path $draftPath) | Out-Null
+    Set-Content -LiteralPath $draftPath -Value $json -Encoding utf8
+    Show-Info "  wrote $draftPath (DRAFT - the live AILocationSettings.json is not touched)"
 } elseif (-not $PreviewOut) {
-    Show-Info "  (dry-run - re-run with -Fix to write $livePath)"
+    Show-Info "  (dry-run - re-run with -Fix to write $draftPath)"
 }
 if ($warn) { Show-Info "AILocations[$Mission]: $warn warning(s)." }
 exit 0
