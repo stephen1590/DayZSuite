@@ -209,6 +209,10 @@ foreach ($m in $missions) {
         try {
             $pd = Get-Content -Raw $patP | ConvertFrom-Json
             Show-Pass "$patRel composed for $m parses ($(@($pd.Patrols).Count) patrol(s), Enabled=$($pd.Enabled))"
+            # Object patrols with persistence abort the mod's ENTIRE AIPatrol load - assert the guard neutralized them.
+            $badObj = @($pd.Patrols | Where-Object { $_.PSObject.Properties['ObjectClassName'] -and [string]$_.ObjectClassName -and $_.PSObject.Properties['Persist'] -and [int]$_.Persist -ne 0 })
+            if ($badObj.Count) { Show-Fail "$patRel for $m - $($badObj.Count) object patrol(s) still carry Persist!=0 (would abort the mod's AIPatrol load): $(($badObj | ForEach-Object { $_.Name }) -join ', ')" }
+            else { Show-Pass "$patRel for $m - object patrols carry no illegal persistence" }
         } catch { Show-Fail "$patRel for $m - invalid JSON: $($_.Exception.Message)" }
     }
 

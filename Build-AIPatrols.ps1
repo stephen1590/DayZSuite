@@ -153,18 +153,35 @@ function New-Patrol($name, $faction, $loadout, $number, $behaviour, $waypoints) 
     [ordered]@{
         Name = [string]$name; Persist = 0; Faction = [string]$faction; Formation = ''
         FormationScale = 1.5; FormationLooseness = 0; Loadout = [string]$loadout; Units = @()
-        NumberOfAI = [int]$number; NumberOfAIMax = 0; Behaviour = [string]$behaviour
-        LootingBehaviour = 'DEFAULT | UPGRADE'; Speed = 'JOG'; UnderThreatSpeed = 'SPRINT'
+        NumberOfAI = [int]$number; NumberOfAIMax = [int]$number; Behaviour = [string]$behaviour
+        LootingBehaviour = 'NONE'; Speed = 'WALK'; UnderThreatSpeed = 'SPRINT'
         DefaultStance = 'STANDING'; DefaultLookAngle = 0; CanBeLooted = 1; LootDropOnDeath = ''
         UnlimitedReload = 1; SniperProneDistanceThreshold = 0; AccuracyMin = -1; AccuracyMax = -1
         ThreatDistanceLimit = -1; NoiseInvestigationDistanceLimit = -1; MaxFlankingDistance = -1
         EnableFlankingOutsideCombat = -1; DamageMultiplier = -1; DamageReceivedMultiplier = -1
         HeadshotResistance = 0; ShoryukenChance = 0; ShoryukenDamageMultiplier = 0
-        CanSpawnInContaminatedArea = 0; CanBeTriggeredByAI = 0; MinDistRadius = -1; MaxDistRadius = -1
+        CanSpawnInContaminatedArea = 0; CanBeTriggeredByAI = 0; MinDistRadius = 50; MaxDistRadius = -1
         DespawnRadius = -1; MinSpreadRadius = 0; MaxSpreadRadius = 0; Chance = 1; DespawnTime = -1
         RespawnTime = -2; LoadBalancingCategory = 'Survivor'; ObjectClassName = ''
-        WaypointInterpolation = ''; UseRandomWaypointAsStartPoint = 1; Waypoints = @($waypoints)
+        WaypointInterpolation = ''; UseRandomWaypointAsStartPoint = 0; Waypoints = @($waypoints)
     }
+}
+
+# Per-point patrol overrides: a point may carry a `patrol` object whose keys override the safe
+# template above. THIS hashtable is the ONE place a Patrol field becomes point-editable (pointKey
+# -> exact Patrol JSON field). Add a knob = add a line here (then expose it in the Api validator +
+# Map UI). Faction/Loadout/Behaviour/NumberOfAI stay the flat top-level point fields (the common
+# ones); these are the advanced tuning knobs. NOT exposed on purpose: ObjectClassName (would make a
+# point an object patrol), Persist (kept 0 for roaming), Units, Waypoints (separate, handled later).
+$PATROL_OVERRIDABLE = [ordered]@{
+    numberOfAIMax = 'NumberOfAIMax'; chance = 'Chance'; loadBalancingCategory = 'LoadBalancingCategory'
+    accuracyMin = 'AccuracyMin'; accuracyMax = 'AccuracyMax'; canBeLooted = 'CanBeLooted'
+    lootDropOnDeath = 'LootDropOnDeath'; speed = 'Speed'; underThreatSpeed = 'UnderThreatSpeed'
+    defaultStance = 'DefaultStance'; formation = 'Formation'; formationScale = 'FormationScale'
+    minDistRadius = 'MinDistRadius'; maxDistRadius = 'MaxDistRadius'; despawnRadius = 'DespawnRadius'
+    respawnTime = 'RespawnTime'; despawnTime = 'DespawnTime'; threatDistanceLimit = 'ThreatDistanceLimit'
+    damageMultiplier = 'DamageMultiplier'; damageReceivedMultiplier = 'DamageReceivedMultiplier'
+    headshotResistance = 'HeadshotResistance'; useRandomWaypointAsStartPoint = 'UseRandomWaypointAsStartPoint'
 }
 
 # --- our points -> Patrol entries ----------------------------------------------------------
@@ -181,13 +198,38 @@ foreach ($p in ($mine | Sort-Object -Property name)) {
     if ($null -eq $number) { $number = $defNumberOfAI }
     $behaviour = [string](Get-Prop $p 'behaviour' $defBehaviour)
     $loadout   = [string]$loadout
-    $wp = @(, @([double]$p.x, [double]$p.y, [double]$p.z))
-    $ours += [pscustomobject](New-Patrol $p.name $faction $loadout ([int]$number) $behaviour $wp)
+    # Waypoints = the spawn (point x/y/z) as waypoint 1, then any extra path waypoints the point carries.
+    $wp = @(); $wp += , @([double]$p.x, [double]$p.y, [double]$p.z)
+    if ($p.PSObject.Properties['waypoints'] -and $p.waypoints) {
+        foreach ($w in $p.waypoints) { $wp += , @([double]$w.x, [double]$w.y, [double]$w.z) }
+    }
+    $patrol = New-Patrol $p.name $faction $loadout ([int]$number) $behaviour $wp
+    # Overlay any per-point `patrol` overrides for allowlisted fields (template default otherwise).
+    $ov = Get-Prop $p 'patrol' $null
+    if ($ov) {
+        foreach ($k in $PATROL_OVERRIDABLE.Keys) {
+            if ($ov.PSObject.Properties[$k] -and $null -ne $ov.$k) { $patrol[$PATROL_OVERRIDABLE[$k]] = $ov.$k }
+        }
+    }
+    $ours += [pscustomobject]$patrol
 }
 
 # --- merge + compose (base first, ours appended - lined up for review) ---------------------
 $out = $base
 $allPatrols = @($basePatrols + $ours)
+# The mod ABORTS its whole AIPatrolSettings load on an object patrol (non-empty ObjectClassName)
+# with persistence on ("Persistence is not supported for object patrols") - one in the authored base
+# silently kills every patrol after it, ours included. Object patrols can't persist, so force
+# Persist=0 on any carried through: the patrol still spawns, only the illegal flag the mod refuses is
+# cleared. Neutralize dirty INPUT here so no one hand-launders a captured default.
+$fixedPersist = 0
+foreach ($p in $allPatrols) {
+    if ($p.PSObject.Properties['ObjectClassName'] -and [string]$p.ObjectClassName -and (Get-Prop $p 'Persist' 0) -ne 0) {
+        if ($p.PSObject.Properties['Persist']) { $p.Persist = 0 } else { $p | Add-Member -NotePropertyName Persist -NotePropertyValue 0 }
+        $fixedPersist++
+    }
+}
+if ($fixedPersist) { Show-Warn "forced Persist=0 on $fixedPersist object patrol(s) from the base (the mod rejects persistence on object patrols and aborts the load otherwise)." }
 if ($out.PSObject.Properties['Patrols']) { $out.Patrols = $allPatrols }
 else { $out | Add-Member -NotePropertyName Patrols -NotePropertyValue $allPatrols }
 
