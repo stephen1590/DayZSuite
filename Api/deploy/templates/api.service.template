@@ -4,7 +4,7 @@
 #
 # SANDBOXING NOTE: this service's whole job is to escalate to root via `sudo dayz-ctl`
 # (a closed verb set) — so NoNewPrivileges MUST stay off, and the strict sandbox that
-# CryptPad uses would break sudo and dayz-ctl's file writes/systemctl calls (systemd
+# some services use would break sudo and dayz-ctl's file writes/systemctl calls (systemd
 # sandboxing propagates to child processes). The real security boundary here is the
 # sudoers allowlist + dayz-ctl's validation, not systemd confinement. We still apply
 # the confinement that is compatible with sudo.

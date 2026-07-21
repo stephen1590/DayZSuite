@@ -7,7 +7,8 @@
 
   // Loopback-only listeners: nothing in the stack is TLS'd or authed box-to-box.
   // Grafana is the one public face, and only via the nginx vhost below.
-  // Grafana's default port is 3000 — taken here by CryptPad, so use 3001. On a
+  // Grafana's default port is 3000 — already claimed on this box (port map:
+  // ../../../CLAUDE.md), so use 3001. On a
   // fresh box, check `ss -tln` for a free loopback port before picking one.
   "PrometheusListen": "127.0.0.1:9090",
   "NodeExporterListen": "127.0.0.1:9100",

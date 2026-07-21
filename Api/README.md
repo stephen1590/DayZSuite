@@ -10,7 +10,7 @@ module + a namespace entry, not a rewrite. (Formerly "Webhooks" on `hooks.<domai
 renamed 2026-07-13; the `hooks.` name and the DayZ-only framing are both retired.)
 
 It is served *behind nginx*, so it lives **inside `NginxService/`** as a sibling of
-CryptPad. Its *effects*, however, land on the **DayZ server, which lives outside**
+the others behind nginx. Its *effects*, however, land on the **DayZ server, which lives outside**
 `NginxService/` (DayZ is UDP, not proxied). That crossing is real and deliberate - it
 is made explicit here, not hidden (see [The one deliberate coupling](#the-one-deliberate-coupling)).
 
@@ -33,7 +33,7 @@ Api/
 │           ├── host.ts      POST /sysload             (root, authed host load)
 │           ├── public.ts    GET  /dayz/server-info    (PUBLIC, cached - the site's info panel)
 │           └── sources.ts   POST /dayz/sources/vpp/:token (VPP event feed)
-└── deploy/                  render → stage → ship → run (same shape as CryptPad)
+└── deploy/                  render → stage → ship → run (the repo's standard shape)
     ├── Deploy-Api.ps1
     ├── deploy.config.json     ← EVERY tunable lives here
     ├── nginx/                api.conf.template (reverse proxy)
@@ -158,7 +158,7 @@ This service can reboot a game server from the public internet, so it is layered
    journald (full JSON) **and** a fixed-column CSV ledger in `AuditDir`.
 
 > **Why the systemd unit is only lightly sandboxed:** the service's job is to `sudo`
-> to a helper, and systemd's strict sandbox (like CryptPad's) both breaks `sudo`
+> to a helper, and a strict systemd sandbox both breaks `sudo`
 > (`NoNewPrivileges`) and propagates to the helper's child processes (blocking
 > `map.env` writes / `systemctl`). The boundary here is the **sudoers allowlist +
 > `dayz-ctl` validation**, not systemd confinement. This is called out in the unit.

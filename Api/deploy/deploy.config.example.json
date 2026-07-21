@@ -22,7 +22,7 @@
 
   // --- app deploy (Deploy-Api.ps1) ---
   "AppDir":    "/opt/api",       // where the built Node app is installed
-  "NodeMajor": 22,                    // Node.js major (matches CryptPad on this box)
+  "NodeMajor": 22,                    // Node.js major (Active LTS)
   "NodeBin":   "/usr/bin/node",       // node path baked into the systemd unit
   "RunUser":   "api",            // dedicated, unprivileged service account
   "Port":      3100,                  // localhost port the Node app listens on

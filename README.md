@@ -19,8 +19,6 @@ NginxService/                 ← the shared nginx + Let's Encrypt layer
 │
 ├── StaticishSite/            ← nested: it is served by nginx
 │   └── deploy/ …             Hugo site at the apex  cytonicmushroom.ddns.net
-├── CryptPad/                 ← nested: it is served by nginx
-│   └── deploy/ …             CryptPad at  pad.  +  pad-sandbox.
 └── Api/                      ← nested: it is served by nginx
     └── deploy/ …             command/observability API at  api.  (drives the DayZ server)
 ```
@@ -29,9 +27,13 @@ NginxService/                 ← the shared nginx + Let's Encrypt layer
 > server, which lives outside** this folder. That crossing is one-directional and
 > declared in its config - see [Api/README.md](Api/README.md).
 
-> **Rule:** if a service is inside `NginxService/`, it sits behind nginx.
-> **DayZ-Server** is *not* here - it is UDP, not proxied, and keeps its own
-> `host.env`. It lives at `../DayZ-Server/`.
+> **Rule:** nesting means "served by nginx AND part of the DayZ stack". Nesting
+> is not required to use the engine: `Provision-Tls.ps1` also resolves `-Service`
+> one directory up, so a sibling repo behind this layer provisions its edge from
+> here without copying anything. One engine, one `host.config.<env>.env`.
+> Cross-repo contracts live in `../CLAUDE.md` - not in this file.
+> **DayZ-Server** is not behind nginx at all - it is UDP, not proxied, and keeps
+> its own `host.env` at `../DayZ-Server/`.
 
 Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, one
 level **above** this repo. This folder is a single git repo rooted **here**
@@ -69,8 +71,6 @@ would do. Add the apply flag to actually touch the box.
 | ------------- | ---------------------- | -------------------------------------------- | ---------- |
 | StaticishSite | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service StaticishSite` | `-Apply`   |
 | StaticishSite | payload (site content) | `StaticishSite/deploy/Deploy-Site.ps1`       | `-Push`    |
-| CryptPad      | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service CryptPad`      | `-Apply`   |
-| CryptPad      | payload (app build)    | `CryptPad/deploy/Deploy-CryptPad.ps1`        | `-Apply`   |
 | Api           | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service Api`           | `-Apply`   |
 | Api           | payload (app build)    | `Api/deploy/Deploy-Api.ps1`                  | `-Apply`   |
 | ConfigViewer  | edge (vhost + cert)    | `./Provision-Tls.ps1 -Service ConfigViewer`  | `-Apply`   |
@@ -86,7 +86,7 @@ The services share **nothing** but the nginx daemon itself:
 - different certs
 - different vhost files
 - different payload directories on the box (`/var/www/personal-projects`,
-  `/opt/cryptpad` + `/var/lib/cryptpad`, `/opt/api`)
+  `/opt/api`, …)
 
 Update any one at any time without touching the others.
 
@@ -97,9 +97,9 @@ Update any one at any time without touching the others.
 ./Provision-Tls.ps1 -Service StaticishSite -Apply
 StaticishSite/deploy/Deploy-Site.ps1 -Push
 
-# 2. CryptPad
-./Provision-Tls.ps1 -Service CryptPad -Apply
-CryptPad/deploy/Deploy-CryptPad.ps1 -Apply
+# 2. Each remaining service, edge then payload
+./Provision-Tls.ps1 -Service Api -Apply
+Api/deploy/Deploy-Api.ps1 -Apply
 ```
 
 Use `-SkipTls` on `Provision-Tls.ps1` to bring a service up over plain HTTP
@@ -110,9 +110,9 @@ resolves). Re-run without `-SkipTls` once DNS is live.
 
 ## How a deploy actually runs: render → stage → ship → run
 
-`Provision-Tls.ps1` and `Deploy-CryptPad.ps1` follow the same shape. Nothing is
-built as a string inside the script. Nothing lands on the box that you can't
-read as a file first:
+`Provision-Tls.ps1` and the per-service `Deploy-*.ps1` scripts follow the same
+shape. Nothing is built as a string inside the script. Nothing lands on the box
+that you can't read as a file first:
 
 1. **Render** - the templates are filled in with values from that service's
    `deploy/deploy.config.json` (domain, paths, upload cap, …).
@@ -122,8 +122,8 @@ read as a file first:
 3. **Ship** *(apply only)* - `rsync -az --delete` copies the stage to
    `~/.deploy/<SiteName>/{tls,app}/` on the box.
 4. **Run** *(apply only)* - `ssh bash <script>.sh` runs the **static** bash from
-   `remote/` (or `CryptPad/deploy/remote/`), which reads its values only from the
-   shipped `provision.env` / `deploy.env`. Full output is tee'd to
+   the service's `remote/`, which reads its values only from the shipped
+   `provision.env` / `deploy.env`. Full output is tee'd to
    `<service>/logs/<step>_<utc-timestamp>Z.log`.
 
 `Deploy-Site.ps1` is simpler - it builds Hugo and `rsync`s `./public` straight to
@@ -133,14 +133,14 @@ the webroot (dry-run by default, `-Push` to apply) - no staging needed.
 
 ## Where things live (so you never hunt for a value)
 
-- **Box address / SSH / email:** [`host.config.env`](host.config.env) - the only
-  place. Every service reads it via `../../host.config.env`.
+- **Box address / SSH / email:** `host.config.<env>.env` at this root - the only
+  place, for every service including the out-of-repo ones. Nested services find it
+  two levels up automatically; a sibling service passes `-HostConfigDir` instead.
+  There is exactly one copy.
 - **Per-service settings:** that service's `deploy/deploy.config.json` - the
   **only** place tunables live. The scripts themselves hold no values, only flow.
-  (CryptPad example: `Ref`, `NodeMajor`, `MaxUploadMb`, `DefaultStorageGb`,
-  `AdminKeys` - see [`CryptPad/deploy/deploy.config.json`](CryptPad/deploy/deploy.config.json).)
-  Where two files must agree - e.g. nginx `client_max_body_size` and CryptPad's
-  `maxUploadSize` - both render from a **single** config value so they cannot drift.
+  Where two files must agree - e.g. an nginx `client_max_body_size` and an app's
+  own upload cap - both render from a **single** config value so they cannot drift.
 - **nginx vhosts:** each service's `deploy/nginx/*.conf.template`.
 - **What ran, and when:** `<service>/logs/` - a `*.csv` audit row per run plus the
   full tee'd output log of each apply.
@@ -159,6 +159,6 @@ cannot be split.
 
 > **Open item:** the `default_server` → 404 catch-all (what happens to
 > subdomains no service claims) lives *inside StaticishSite's vhost* right now.
-> That makes CryptPad's routing depend on StaticishSite - it shouldn't. The
-> proper home is a host-level catch-all owned by this `NginxService/` layer,
-> belonging to neither service. Not yet lifted.
+> That makes every other service's fallback routing depend on StaticishSite - it
+> shouldn't. The proper home is a host-level catch-all owned by this
+> `NginxService/` layer, belonging to no service. Not yet lifted.

@@ -7,9 +7,9 @@
 # so nginx must decide what an UNMATCHED hostname gets. The static site is the
 # box's default_server (the catch-all blocks at the bottom of this file). That
 # means a vhost is reached ONLY on its own exact server_name: the apex here, and
-# pad./pad-sandbox. in the CryptPad config. Any other subdomain falls through to
-# the catch-all and gets a 404 — it never reaches CryptPad. (This lives in the
-# static config, not CryptPad's; the two still deploy independently.)
+# their own vhosts (installed per service by Provision-Tls). Any other subdomain
+# falls through to the catch-all here and gets a 404 — it never reaches another
+# service's vhost. (Each service still deploys independently.)
 
 # Port 80: ACME challenge + redirect only. No site content is served over HTTP.
 server {
@@ -68,10 +68,10 @@ server {
 
 # ---------------------------------------------------------------------------
 # Catch-all (default_server): any hostname pointing at this box that is NOT an
-# exact match above (apex) or in the CryptPad config (pad./pad-sandbox.) lands
-# here and gets a 404. This is what makes the static site — not CryptPad — the
-# box's fallback. Exactly ONE default_server may exist per port across all
-# enabled sites; the CryptPad vhost is deliberately NOT a default_server.
+# exact match above (apex) or claimed by another service's vhost lands here and
+# gets a 404. This is what makes the static site — no other service — the box's
+# fallback. Exactly ONE default_server may exist per port across all enabled
+# sites; the other vhosts are deliberately NOT default_server.
 
 # Port 80 fallback. Still answers ACME so a future name can be validated; every
 # other path 404s (no redirect — an unknown name has no cert to redirect to).

@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Shared, service-agnostic provisioner: nginx + Let's Encrypt TLS (HTTP-01) for
-  ONE service on the box. Every service (StaticishSite, CryptPad, ...) runs THIS
+  ONE service on the box. Every service (StaticishSite, Api, ...) runs THIS
   script; the differences live entirely in that service's deploy/deploy.config.json
   and its nginx templates. No service names are hard-coded here.
 
@@ -20,6 +20,12 @@
   Report-only by default: builds the stage and stops. Nothing on the server
   changes without -Apply. Idempotency (skip issuance if cert exists, etc.)
   lives in remote/provision-tls.sh — read it there.
+
+  -Service is resolved against exactly two hardcoded locations, first hit wins:
+    1. <this dir>/<Service>/deploy     nested in this repo
+    2. <this dir>/../<Service>/deploy  a sibling repo behind this layer
+  Both misses throws, naming both paths. The resolved path is printed on every run.
+  host.config.<env>.env is always read from THIS directory, whichever branch hit.
 
   Host-level setup (nginx + certbot, /var/www/acme, dropping the distro default)
   happens idempotently on every run, so whichever service you deploy FIRST sets
@@ -46,7 +52,7 @@
 .EXAMPLE
   ./Provision-Tls.ps1 -Service StaticishSite            # dry run: stage only
   ./Provision-Tls.ps1 -Service StaticishSite -Apply     # ship + provision
-  ./Provision-Tls.ps1 -Service CryptPad -Apply -SkipTls # plain HTTP before DNS
+  ./Provision-Tls.ps1 -Service Api -Apply -SkipTls      # plain HTTP before DNS
 
 .NOTES
   Sets up the server ONCE per service. App/content deploys happen separately.
@@ -54,12 +60,12 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$Service, # e.g. StaticishSite | CryptPad
+    [Parameter(Mandatory)][string]$Service, # e.g. StaticishSite | Api
     [switch]$Apply,
     [ValidateSet('staging','prod')]
     [string]$Env = 'staging',   # which box: staging default, prod explicit (STAGING-PLAN.md) - picks host.config.<env>.env
     [switch]$SkipTls,       # plain HTTP only — use before DNS points here; REQUIRED on staging
-    [string]$ConfigPath,    # override; default <Service>/deploy/deploy.config.json (sibling of this script)
+    [string]$ConfigPath,    # override; default <Service>/deploy/deploy.config.json, looked up in the two places below
     [switch]$NoLog
 )
 
@@ -85,12 +91,26 @@ if ($ConfigPath) {
     if (-not (Test-Path $ConfigPath)) { throw "No deploy config at: $ConfigPath." }
     $serviceDeployDir = Split-Path -Parent (Resolve-Path $ConfigPath).Path
 } else {
-    $serviceDeployDir = Join-Path $PSScriptRoot "$Service/deploy"
+    # A service lives in ONE of exactly two places - no config key, no service list:
+    #   1. nested in this repo        <root>/<Service>/deploy
+    #   2. a sibling repo one up      <root>/../<Service>/deploy
+    # First hit wins. Both misses is an error naming both paths.
+    $candidates = @(
+        (Join-Path $PSScriptRoot "$Service/deploy"),
+        (Join-Path $PSScriptRoot "../$Service/deploy")
+    )
+    $serviceDeployDir = $candidates | Where-Object { Test-Path (Join-Path $_ 'deploy.config.json') } | Select-Object -First 1
+    if (-not $serviceDeployDir) {
+        throw ("No deploy config for '$Service'. Looked in:`n  " + (($candidates | ForEach-Object { "$_/deploy.config.json" }) -join "`n  ") + "`n(copy deploy.config.example.json, or pass -ConfigPath.)")
+    }
+    $serviceDeployDir = (Resolve-Path $serviceDeployDir).Path
 }
 if (-not (Test-Path (Join-Path $serviceDeployDir 'deploy.config.json'))) {
     throw "No deploy config for '$Service' at $serviceDeployDir/deploy.config.json (copy deploy.config.example.json, or pass -ConfigPath)."
 }
-$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env
+# This script sits AT the NginxService root, so it always knows where host.config.<env>.env
+# is - pass it explicitly so an out-of-repo service resolves it too.
+$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env -HostConfigDir $PSScriptRoot
 
 foreach ($key in @('Server','SshUser','AdminEmail','SiteName','NginxTemplate')) {
     if (-not $cfg[$key]) { throw "Service '$Service' config is missing '$key'." }
@@ -153,6 +173,7 @@ Copy-Item (Join-Path $PSScriptRoot 'remote/provision-tls.sh') (Join-Path $stageD
 # --- Report ----------------------------------------------------------------
 $target = "$($cfg.SshUser)@$($cfg.Server)"
 Write-Host "Service: $Service   Target: $target (port $(if ($SshPort) { $SshPort } else { 'per ssh_config' }))" -ForegroundColor Cyan
+Write-Host "Config : $serviceDeployDir/deploy.config.json"
 Write-Host "Host(s): $serverNames"
 if ($cfg.Webroot) { Write-Host "Webroot: $($cfg.Webroot)   ACME: $acmeWebroot" } else { Write-Host "ACME   : $acmeWebroot" }
 Write-Host "Staged : $stageDir" -ForegroundColor Cyan

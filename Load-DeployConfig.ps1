@@ -16,8 +16,13 @@
   scripts already expect (Server, SshUser, SiteName, Hostnames, TemplateVars, ...).
 
   host.config.env always lives at the NginxService root, i.e. two levels above a
-  service's deploy/ dir (deploy -> <service> -> NginxService), so callers only
-  pass their own deploy dir.
+  service's deploy/ dir (deploy -> <service> -> NginxService), so nested callers
+  only pass their own deploy dir.
+
+  A service that lives OUTSIDE this repo breaks that two-levels-up assumption,
+  so it passes -HostConfigDir pointing at the NginxService root explicitly.
+  Everything downstream - the per-env filename, the legacy host.config.env
+  fallback - keys off that ONE directory either way.
 #>
 
 # Parse a flat KEY=VALUE .env file into a hashtable. Blank lines and #-comments
@@ -68,13 +73,19 @@ function Import-DeployConfig {
         [Parameter(Mandatory)][string]$ServiceDeployDir,  # the <service>/deploy folder
         [ValidateSet('staging','prod')]
         [string]$Env = 'staging',                          # which box: staging is the DEFAULT, prod must be explicit (../STAGING-PLAN.md). Picks host.config.<env>.env
-        [string]$HostConfigPath                            # override; default = repo root host.config.<env>.env
+        [string]$HostConfigDir,                            # NginxService root; default = two levels above the deploy dir (nested services)
+        [string]$HostConfigPath                            # override the whole path; default = <HostConfigDir>/host.config.<env>.env
     )
     $ServiceDeployDir = (Resolve-Path $ServiceDeployDir).Path
+    # Nested service (StaticishSite/, Api/, ...): the NginxService root is two levels up.
+    # Out-of-repo service: it passes -HostConfigDir instead.
+    if (-not $HostConfigDir) { $HostConfigDir = Join-Path $ServiceDeployDir '../..' }
+    if (-not (Test-Path $HostConfigDir)) { throw "Host config dir not found: $HostConfigDir" }
+    $HostConfigDir = (Resolve-Path $HostConfigDir).Path
     if (-not $HostConfigPath) {
-        $HostConfigPath = Join-Path $ServiceDeployDir "../../host.config.$Env.env"
+        $HostConfigPath = Join-Path $HostConfigDir "host.config.$Env.env"
         if (-not (Test-Path $HostConfigPath) -and $Env -eq 'prod') {
-            $legacy = Join-Path $ServiceDeployDir '../../host.config.env'
+            $legacy = Join-Path $HostConfigDir 'host.config.env'
             if (Test-Path $legacy) { $HostConfigPath = $legacy; Write-Host 'using legacy host.config.env for prod - rename it host.config.prod.env' }
         }
     }
