@@ -66,14 +66,20 @@ function Resolve-ConfigRefs($Node, [hashtable]$Root) {
 function Import-DeployConfig {
     param(
         [Parameter(Mandatory)][string]$ServiceDeployDir,  # the <service>/deploy folder
-        [string]$HostConfigPath                            # override; default = repo root host.config.env
+        [ValidateSet('staging','prod')]
+        [string]$Env = 'staging',                          # which box: staging is the DEFAULT, prod must be explicit (../STAGING-PLAN.md). Picks host.config.<env>.env
+        [string]$HostConfigPath                            # override; default = repo root host.config.<env>.env
     )
     $ServiceDeployDir = (Resolve-Path $ServiceDeployDir).Path
     if (-not $HostConfigPath) {
-        $HostConfigPath = Join-Path $ServiceDeployDir '../../host.config.env'
+        $HostConfigPath = Join-Path $ServiceDeployDir "../../host.config.$Env.env"
+        if (-not (Test-Path $HostConfigPath) -and $Env -eq 'prod') {
+            $legacy = Join-Path $ServiceDeployDir '../../host.config.env'
+            if (Test-Path $legacy) { $HostConfigPath = $legacy; Write-Host 'using legacy host.config.env for prod - rename it host.config.prod.env' }
+        }
     }
     if (-not (Test-Path $HostConfigPath)) {
-        throw "Missing host config: $HostConfigPath (copy host.config.example.env -> host.config.env)."
+        throw "Missing host config for env '$Env': $HostConfigPath (copy host.config.example.env -> host.config.$Env.env)."
     }
     $svcPath = Join-Path $ServiceDeployDir 'deploy.config.json'
     if (-not (Test-Path $svcPath)) {
@@ -90,6 +96,9 @@ function Import-DeployConfig {
     $cfg = @{}
     foreach ($k in $hostCfg.Keys) { $cfg[$k] = $hostCfg[$k] }
     foreach ($k in $svcCfg.Keys)  { $cfg[$k] = $svcCfg[$k] }
+    # Expose the selected environment (and ${Env} in templates). Any `if ($cfg.Env ...)`
+    # branch in deploy code must map to a row in ../STAGING-PLAN.md's deviation table.
+    $cfg['Env'] = $Env
 
     return (Resolve-ConfigRefs $cfg $cfg)
 }

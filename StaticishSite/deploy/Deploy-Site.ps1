@@ -26,6 +26,8 @@
 [CmdletBinding()]
 param(
     [switch]$Push,                       # actually deploy (default: dry-run only)
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',            # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
     [string]$Server,                     # e.g. myhost.example.com
     [string]$SshUser,                    # e.g. deploy
     [string]$RemotePath,                 # e.g. /var/www/personal-projects
@@ -45,7 +47,7 @@ $SiteRoot = Split-Path -Parent $PSScriptRoot          # StaticishSite/
 # host.config.env + deploy.config.json, merged. Params still win when passed.
 $configJson = Join-Path $PSScriptRoot 'deploy.config.json'
 if (Test-Path $configJson) {
-    $cfg = Import-DeployConfig -ServiceDeployDir $PSScriptRoot
+    $cfg = Import-DeployConfig -ServiceDeployDir $PSScriptRoot -Env $Env
     if (-not $Server)     { $Server     = $cfg.Server }
     if (-not $SshUser)    { $SshUser    = $cfg.SshUser }
     if (-not $RemotePath) { $RemotePath = $cfg.RemotePath }

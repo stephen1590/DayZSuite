@@ -34,6 +34,8 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
     [string]$ConfigPath,
     [switch]$NoLog
 )
@@ -52,7 +54,7 @@ $serviceDeployDir = if ($ConfigPath) {
     if (-not (Test-Path $ConfigPath)) { throw "No deploy config at: $ConfigPath (copy deploy.config.example.json -> deploy.config.json)." }
     Split-Path -Parent (Resolve-Path $ConfigPath).Path
 } else { $PSScriptRoot }
-$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir
+$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env
 
 foreach ($key in @('Server','SshUser','SiteName','AppDir','NodeMajor','NodeBin','RunUser','Port','AuditDir')) {
     if (-not $cfg[$key]) { throw "Api deploy config is missing '$key'." }

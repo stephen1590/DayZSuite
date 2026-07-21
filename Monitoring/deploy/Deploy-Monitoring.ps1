@@ -31,6 +31,8 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
     [switch]$NoLog
 )
 
@@ -41,7 +43,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../Load-DeployConfig.ps1')
 . (Join-Path $PSScriptRoot '../../common/Deploy-Helpers.ps1')
 
-$cfg = Import-DeployConfig -ServiceDeployDir $PSScriptRoot
+$cfg = Import-DeployConfig -ServiceDeployDir $PSScriptRoot -Env $Env
 foreach ($key in @('Server', 'SshUser', 'SiteName', 'PrometheusListen', 'NodeExporterListen', 'GrafanaListen', 'RetentionTime', 'ScrapeIntervalSec')) {
     if (-not $cfg[$key]) { throw "Monitoring deploy config is missing '$key'." }
 }

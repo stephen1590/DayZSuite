@@ -40,6 +40,8 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,         # actually ship + run (default: stage only)
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
     [string]$ConfigPath,    # override deploy.config.json
     [switch]$NoLog
 )
@@ -58,7 +60,7 @@ $serviceDeployDir = if ($ConfigPath) {
     if (-not (Test-Path $ConfigPath)) { throw "No deploy config at: $ConfigPath (copy deploy.config.example.json -> deploy.config.json)." }
     Split-Path -Parent (Resolve-Path $ConfigPath).Path
 } else { $PSScriptRoot }
-$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir
+$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env
 
 foreach ($key in @('Server','SshUser','SiteName','AppDir','DataDir','Ref','RepoUrl',
                    'NodeMajor','NodeBin','RunUser','MaxUploadMb','DefaultStorageGb')) {

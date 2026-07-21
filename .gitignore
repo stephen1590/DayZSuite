@@ -4,7 +4,11 @@
 # generated output. Committable *.example.ps1 siblings stay tracked.
 
 # ── Secrets / machine-specific (never commit; ship a *.example.env/.json instead) ──
+# Per-env host configs (host.config.prod.env / host.config.staging.env; legacy bare
+# host.config.env). The negation keeps the tracked example.
 /host.config.env
+/host.config.*.env
+!/host.config.example.env
 **/deploy/deploy.config.json
 **/deploy/deploy.config.cytonicmushroom.json
 **/secrets.env

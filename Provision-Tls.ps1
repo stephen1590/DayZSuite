@@ -56,10 +56,20 @@
 param(
     [Parameter(Mandatory)][string]$Service, # e.g. StaticishSite | CryptPad
     [switch]$Apply,
-    [switch]$SkipTls,       # plain HTTP only — use before DNS points here
+    [ValidateSet('staging','prod')]
+    [string]$Env = 'staging',   # which box: staging default, prod explicit (STAGING-PLAN.md) - picks host.config.<env>.env
+    [switch]$SkipTls,       # plain HTTP only — use before DNS points here; REQUIRED on staging
     [string]$ConfigPath,    # override; default <Service>/deploy/deploy.config.json (sibling of this script)
     [switch]$NoLog
 )
+
+# Staging is http-only by design (STAGING-PLAN.md deviation table: no public DNS, no
+# HTTP-01). The bootstrap path (-SkipTls) is exactly the staging vhost; certbot never
+# runs there.
+if ($Env -eq 'staging' -and -not $SkipTls) {
+    Write-Error "staging is http-only: re-run with -SkipTls (TLS/certbot is prod-only - see STAGING-PLAN.md deviation table)."
+    exit 2
+}
 
 $ErrorActionPreference = 'Stop'
 # Shared code utils live at Dev/common (one level ABOVE UbuntuHost). This engine
@@ -80,7 +90,7 @@ if ($ConfigPath) {
 if (-not (Test-Path (Join-Path $serviceDeployDir 'deploy.config.json'))) {
     throw "No deploy config for '$Service' at $serviceDeployDir/deploy.config.json (copy deploy.config.example.json, or pass -ConfigPath)."
 }
-$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir
+$cfg = Import-DeployConfig -ServiceDeployDir $serviceDeployDir -Env $Env
 
 foreach ($key in @('Server','SshUser','AdminEmail','SiteName','NginxTemplate')) {
     if (-not $cfg[$key]) { throw "Service '$Service' config is missing '$key'." }
