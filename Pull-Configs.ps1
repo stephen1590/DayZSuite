@@ -89,6 +89,10 @@ $target    = "${RemoteUser}@${RemoteHost}"
 $mirrorDir = Join-Path $PSScriptRoot "config-mirror"
 $registry  = Get-Content -Raw (Join-Path $PSScriptRoot "config-registry.json") | ConvertFrom-Json
 $liveRows  = @($registry.surfaces | Where-Object { $_.mirror -eq 'live' -and $_.dir })
+# Compiled 'generated' globs ('*' spans '/', matching the UI and dayz-ctl) - never mirrored.
+$genRe = @(@($registry.generated) | ForEach-Object {
+    '^' + ([regex]::Escape("$_") -replace '\\\*', '.*') + '$'
+})
 
 Write-Host "--- Live folder mirror (config-mirror/) ---" -ForegroundColor Cyan
 $pulled = 0; $same = 0; $bad = 0
@@ -101,9 +105,13 @@ foreach ($row in $liveRows) {
         $find = "cd '$RemotePath/$relDir' 2>/dev/null && ls -1 $glob 2>/dev/null"
         # NEVER pull a *.defaults.* here - those are config-defaults/'s files (Sync-ConfigDefaults
         # owns them). One file, one mirror: two mirrors of the same path is the drift this replaces.
+        # NEVER pull a registry-'generated' file either: it is rebuilt from its sources every boot,
+        # so mirroring it would churn git history on every restart and back up an artifact whose
+        # inputs are already backed up. The registry is the single authority for that list.
         $names = @((Get-Stdout { ssh -o ConnectTimeout=10 $target $find } | Out-String) -split "`n" |
                    ForEach-Object { $_.Trim() } |
-                   Where-Object { $_ -and $_ -notmatch '/|\.\.' -and $_ -notmatch '\.defaults\.' })
+                   Where-Object { $_ -and $_ -notmatch '/|\.\.' -and $_ -notmatch '\.defaults\.' } |
+                   Where-Object { $n = $_; -not ($genRe | Where-Object { $n -match $_ -or "$relDir/$n" -match $_ }) })
         foreach ($n in $names) {
             $text = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$relDir/$n'" } | Out-String
             try { $null = $text | ConvertFrom-Json } catch { Write-Warning "  SKIP $relDir/$n - does not parse as JSON on the box"; $bad++; continue }
