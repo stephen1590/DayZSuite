@@ -1,0 +1,284 @@
+variant,type,nominal_before,nominal_after,min_before,min_after,restock_before,restock_after,gap_before,gap_after
+shared (chernarusplus + sakhal),Expansion_Landrover_Wheel,25,25,10,6,0,1800,15,19
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Yellow,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Orange,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Red,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Blue,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Grey,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Hood_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Driverdoor_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Codriverdoor_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Left_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Right_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),Expansion_Landrover_Trunk_Green,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionHelicopterBattery,20,20,10,5,0,1800,10,15
+shared (chernarusplus + sakhal),ExpansionIgniterPlug,20,20,10,5,0,1800,10,15
+shared (chernarusplus + sakhal),ExpansionHydraulicHoses,20,20,10,5,0,1800,10,15
+shared (chernarusplus + sakhal),ExpansionBusWheel,5,5,2,1,0,1800,3,4
+shared (chernarusplus + sakhal),ExpansionBusWheelDouble,5,5,2,1,0,1800,3,4
+shared (chernarusplus + sakhal),ExpansionUAZWheel,25,25,10,6,0,1800,15,19
+shared (chernarusplus + sakhal),ExpansionTractorFrontWheel,15,15,8,4,0,1800,7,11
+shared (chernarusplus + sakhal),ExpansionTractorBackWheel,15,15,8,4,0,1800,7,11
+shared (chernarusplus + sakhal),ExpansionTractorDoorsDriver,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionTractorDoorsCoDriver,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionVodnikWheel,25,25,10,6,0,1800,15,19
+shared (chernarusplus + sakhal),ExpansionVodnikDoorDriver,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionVodnikDoorCoDriver,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionUAZDoorDriver,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionUAZDoorCoDriver,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionUAZDoorCargo1,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionUAZDoorCargo2,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionUh1hDoor_1_1,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),ExpansionUh1hDoor_1_2,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),ExpansionUh1hDoor_2_1,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),ExpansionUh1hDoor_2_2,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),Expansion_Mh6_Door_1_1,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),Expansion_Mh6_Door_1_2,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),Expansion_Mh6_Door_2_1,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),Expansion_Mh6_Door_2_2,5,5,0,1,0,1800,5,4
+shared (chernarusplus + sakhal),ExpansionKar98ScopeOptic,15,15,7,4,1800,1800,8,11
+shared (chernarusplus + sakhal),ExpansionDeltapointOptic,10,10,7,3,1800,1800,3,7
+shared (chernarusplus + sakhal),ExpansionEXPS3HoloOptic,10,10,7,3,1800,1800,3,7
+shared (chernarusplus + sakhal),ExpansionHAMROptic,10,10,7,3,1800,1800,3,7
+shared (chernarusplus + sakhal),Expansion_PMII25Optic,10,10,7,3,1800,1800,3,7
+shared (chernarusplus + sakhal),ExpansionReflexMRSOptic,20,20,10,5,0,1800,10,15
+shared (chernarusplus + sakhal),Expansion_M1A_RailAtt,7,7,4,2,800,800,3,5
+shared (chernarusplus + sakhal),Expansion_ANPEQ15_Red,15,15,7,4,800,800,8,11
+shared (chernarusplus + sakhal),Expansion_Kar98_Bayonet,15,15,5,4,0,1800,10,11
+shared (chernarusplus + sakhal),ExpansionSatchel,10,10,1,3,10800,10800,9,7
+shared (chernarusplus + sakhal),ExpansionRPG7,5,5,2,1,3600,3600,3,4
+shared (chernarusplus + sakhal),ExpansionLAW,5,5,2,1,3600,3600,3,4
+shared (chernarusplus + sakhal),Expansion_Taser_Yellow,20,20,10,5,900,900,10,15
+shared (chernarusplus + sakhal),Expansion_M9,20,20,15,5,1800,1800,5,15
+shared (chernarusplus + sakhal),Expansion_G36,15,15,7,4,3600,3600,8,11
+shared (chernarusplus + sakhal),Expansion_MPX,20,20,15,5,1800,1800,5,15
+shared (chernarusplus + sakhal),Expansion_MP5,20,20,10,5,1800,1800,10,15
+shared (chernarusplus + sakhal),Expansion_MP5SD,20,20,10,5,1800,1800,10,15
+shared (chernarusplus + sakhal),Expansion_MP5_RailAtt,20,20,10,5,1800,1800,10,15
+shared (chernarusplus + sakhal),Expansion_MP7,20,20,10,5,1800,1800,10,15
+shared (chernarusplus + sakhal),Expansion_Kedr,20,20,15,5,900,900,5,15
+shared (chernarusplus + sakhal),Expansion_VityazSN,20,20,15,5,1200,1200,5,15
+shared (chernarusplus + sakhal),Expansion_M16,10,10,4,3,3600,3600,6,7
+shared (chernarusplus + sakhal),Expansion_M1A,9,9,3,2,3600,3600,6,7
+shared (chernarusplus + sakhal),Expansion_DT11,15,15,5,4,1200,1200,10,11
+shared (chernarusplus + sakhal),Expansion_Kar98,25,25,10,6,900,900,15,19
+shared (chernarusplus + sakhal),AmmoBox_Expansion_46x30_25rnd,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),AmmoBox_Expansion_338_15rnd,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Expansion_AmmoBox_8mm_15rnd,30,30,20,8,800,800,10,22
+shared (chernarusplus + sakhal),Expansion_Ammo_8mm,40,40,30,10,800,800,10,30
+shared (chernarusplus + sakhal),ExpansionAmmoRPG,8,8,1,2,10800,10800,7,6
+shared (chernarusplus + sakhal),ExpansionAmmoLAW,8,8,1,2,10800,10800,7,6
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_White,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_Red,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_Green,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_Yellow,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_Purple,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Smoke_Teargas,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_White,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_Red,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_Green,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_Yellow,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_Purple,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_Sticky_Smoke_Teargas,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_M203_HE,10,10,5,3,0,0,5,7
+shared (chernarusplus + sakhal),Ammo_Expansion_46x30,20,20,12,5,0,0,8,15
+shared (chernarusplus + sakhal),Ammo_Expansion_338,20,20,12,5,0,0,8,15
+shared (chernarusplus + sakhal),Mag_Expansion_Taser,30,30,15,8,1800,1800,15,22
+shared (chernarusplus + sakhal),Mag_Expansion_Vityaz_30Rnd,25,25,15,6,800,800,10,19
+shared (chernarusplus + sakhal),Mag_Expansion_M9_15Rnd,30,30,20,8,1800,1800,10,22
+shared (chernarusplus + sakhal),Mag_Expansion_MPX_50Rnd,30,30,20,8,1800,1800,10,22
+shared (chernarusplus + sakhal),Mag_Expansion_G36_30Rnd,20,20,15,5,0,0,5,15
+shared (chernarusplus + sakhal),Mag_Expansion_Kedr_20Rnd,30,30,20,8,1800,1800,10,22
+shared (chernarusplus + sakhal),Mag_Expansion_MP7_40Rnd,25,25,20,6,1800,1800,5,19
+shared (chernarusplus + sakhal),Mag_Expansion_AWM_5Rnd,20,20,15,5,1800,1800,5,15
+shared (chernarusplus + sakhal),ExpansionCamoBoxKit,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionCamoTentKit,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionSafeLarge,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionSafeMini,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionSafeMedium,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionGunrack,20,20,10,5,0,1800,10,15
+shared (chernarusplus + sakhal),ExpansionHescoKit,10,10,5,3,0,1800,5,7
+shared (chernarusplus + sakhal),ExpansionCodeLock,45,45,35,11,0,1800,10,34
+shared (chernarusplus + sakhal),ExpansionGPS,35,35,30,9,0,1800,5,26
+shared (chernarusplus + sakhal),ExpansionMilkBottle,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionBread1,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionBread2,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionBread3,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionCheese1,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionCheese2,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionCheese3,25,10,15,3,0,1800,10,7
+shared (chernarusplus + sakhal),ExpansionCheese4,25,10,15,3,0,1800,10,7
+enoch,Expansion_Landrover_Wheel,25,25,10,6,0,1800,15,19
+enoch,Expansion_Landrover_Hood,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Yellow,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Orange,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Red,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Blue,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Grey,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Hood_Green,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Driverdoor_Green,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Codriverdoor_Green,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Left_Green,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Right_Green,15,15,5,4,0,1800,10,11
+enoch,Expansion_Landrover_Trunk_Green,15,15,5,4,0,1800,10,11
+enoch,ExpansionHelicopterBattery,20,20,10,5,0,1800,10,15
+enoch,ExpansionIgniterPlug,20,20,10,5,0,1800,10,15
+enoch,ExpansionHydraulicHoses,20,20,10,5,0,1800,10,15
+enoch,ExpansionBusWheel,5,5,2,1,0,1800,3,4
+enoch,ExpansionBusWheelDouble,5,5,2,1,0,1800,3,4
+enoch,ExpansionUAZWheel,25,25,10,6,0,1800,15,19
+enoch,ExpansionTractorFrontWheel,15,15,8,4,0,1800,7,11
+enoch,ExpansionTractorBackWheel,15,15,8,4,0,1800,7,11
+enoch,ExpansionTractorDoorsDriver,10,10,5,3,0,1800,5,7
+enoch,ExpansionTractorDoorsCoDriver,10,10,5,3,0,1800,5,7
+enoch,ExpansionVodnikWheel,25,25,10,6,0,1800,15,19
+enoch,ExpansionVodnikDoorDriver,15,15,5,4,0,1800,10,11
+enoch,ExpansionVodnikDoorCoDriver,15,15,5,4,0,1800,10,11
+enoch,ExpansionUAZDoorDriver,15,15,5,4,0,1800,10,11
+enoch,ExpansionUAZDoorCoDriver,15,15,5,4,0,1800,10,11
+enoch,ExpansionUAZDoorCargo1,15,15,5,4,0,1800,10,11
+enoch,ExpansionUAZDoorCargo2,15,15,5,4,0,1800,10,11
+enoch,ExpansionUh1hDoor_1_1,5,5,0,1,0,1800,5,4
+enoch,ExpansionUh1hDoor_1_2,5,5,0,1,0,1800,5,4
+enoch,ExpansionUh1hDoor_2_1,5,5,0,1,0,1800,5,4
+enoch,ExpansionUh1hDoor_2_2,5,5,0,1,0,1800,5,4
+enoch,Expansion_Mh6_Door_1_1,5,5,0,1,0,1800,5,4
+enoch,Expansion_Mh6_Door_1_2,5,5,0,1,0,1800,5,4
+enoch,Expansion_Mh6_Door_2_1,5,5,0,1,0,1800,5,4
+enoch,Expansion_Mh6_Door_2_2,5,5,0,1,0,1800,5,4
+enoch,ExpansionKar98ScopeOptic,15,15,7,4,1800,1800,8,11
+enoch,ExpansionDeltapointOptic,10,10,7,3,1800,1800,3,7
+enoch,ExpansionEXPS3HoloOptic,10,10,7,3,1800,1800,3,7
+enoch,ExpansionHAMROptic,10,10,7,3,1800,1800,3,7
+enoch,Expansion_PMII25Optic,10,10,7,3,1800,1800,3,7
+enoch,ExpansionReflexMRSOptic,20,20,10,5,0,1800,10,15
+enoch,Expansion_M1A_RailAtt,7,7,4,2,800,800,3,5
+enoch,Expansion_ANPEQ15_Red,15,15,7,4,800,800,8,11
+enoch,Expansion_Kar98_Bayonet,15,15,5,4,0,1800,10,11
+enoch,ExpansionSatchel,10,10,1,3,10800,10800,9,7
+enoch,ExpansionRPG7,5,5,2,1,3600,3600,3,4
+enoch,ExpansionLAW,5,5,2,1,3600,3600,3,4
+enoch,Expansion_Taser_Yellow,20,20,10,5,900,900,10,15
+enoch,Expansion_M9,20,20,15,5,1800,1800,5,15
+enoch,Expansion_G36,15,15,7,4,3600,3600,8,11
+enoch,Expansion_MPX,20,20,15,5,1800,1800,5,15
+enoch,Expansion_MP5,20,20,10,5,1800,1800,10,15
+enoch,Expansion_MP5SD,20,20,10,5,1800,1800,10,15
+enoch,Expansion_MP5_RailAtt,20,20,10,5,1800,1800,10,15
+enoch,Expansion_MP7,20,20,10,5,1800,1800,10,15
+enoch,Expansion_Kedr,20,20,15,5,900,900,5,15
+enoch,Expansion_VityazSN,20,20,15,5,1200,1200,5,15
+enoch,Expansion_M16,10,10,4,3,3600,3600,6,7
+enoch,Expansion_M1A,9,9,3,2,3600,3600,6,7
+enoch,Expansion_DT11,15,15,5,4,1200,1200,10,11
+enoch,Expansion_Kar98,25,25,10,6,900,900,15,19
+enoch,AmmoBox_Expansion_46x30_25rnd,10,10,5,3,0,0,5,7
+enoch,AmmoBox_Expansion_338_15rnd,10,10,5,3,0,0,5,7
+enoch,Expansion_AmmoBox_8mm_15rnd,30,30,20,8,800,800,10,22
+enoch,Expansion_Ammo_8mm,40,40,30,10,800,800,10,30
+enoch,ExpansionAmmoRPG,8,8,1,2,10800,10800,7,6
+enoch,ExpansionAmmoLAW,8,8,1,2,10800,10800,7,6
+enoch,Ammo_Expansion_M203_Smoke_White,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Smoke_Red,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Smoke_Green,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Smoke_Yellow,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Smoke_Purple,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Smoke_Teargas,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_White,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_Red,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_Green,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_Yellow,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_Purple,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_Sticky_Smoke_Teargas,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_M203_HE,10,10,5,3,0,0,5,7
+enoch,Ammo_Expansion_46x30,20,20,12,5,0,0,8,15
+enoch,Ammo_Expansion_338,20,20,12,5,0,0,8,15
+enoch,Mag_Expansion_Taser,30,30,15,8,1800,1800,15,22
+enoch,Mag_Expansion_Vityaz_30Rnd,25,25,15,6,800,800,10,19
+enoch,Mag_Expansion_M9_15Rnd,30,30,20,8,1800,1800,10,22
+enoch,Mag_Expansion_MPX_50Rnd,30,30,20,8,1800,1800,10,22
+enoch,Mag_Expansion_G36_30Rnd,20,20,15,5,0,0,5,15
+enoch,Mag_Expansion_Kedr_20Rnd,30,30,20,8,1800,1800,10,22
+enoch,Mag_Expansion_MP7_40Rnd,25,25,20,6,1800,1800,5,19
+enoch,Mag_Expansion_AWM_5Rnd,20,20,15,5,1800,1800,5,15
+enoch,ExpansionCamoBoxKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionBarrierGateKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionCamoTentKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionSafeLarge,10,10,5,3,0,1800,5,7
+enoch,ExpansionSafeMini,10,10,5,3,0,1800,5,7
+enoch,ExpansionSafeMedium,10,10,5,3,0,1800,5,7
+enoch,ExpansionGunrack,20,20,10,5,0,1800,10,15
+enoch,ExpansionHelipadKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionBarbedWireKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionHescoKit,10,10,5,3,0,1800,5,7
+enoch,ExpansionCodeLock,45,45,35,11,0,1800,10,34
+enoch,ExpansionGPS,35,35,30,9,0,1800,5,26
+enoch,ExpansionMilkBottle,25,10,15,3,0,1800,10,7
+enoch,ExpansionBread1,25,10,15,3,0,1800,10,7
+enoch,ExpansionBread2,25,10,15,3,0,1800,10,7
+enoch,ExpansionBread3,25,10,15,3,0,1800,10,7
+enoch,ExpansionCheese1,25,10,15,3,0,1800,10,7
+enoch,ExpansionCheese2,25,10,15,3,0,1800,10,7
+enoch,ExpansionCheese3,25,10,15,3,0,1800,10,7
+enoch,ExpansionCheese4,25,10,15,3,0,1800,10,7

@@ -1,0 +1,10 @@
+{
+    "_readme": "Registry of extra Central Economy types files to load WITHOUT touching vanilla db/types.xml. At prestart, Apply-CustomCE.ps1 copies each 'from' file into the active mission's custom/ folder as 'name', then regenerates ONE <ce folder=\"custom\"> block in that mission's cfgeconomycore.xml listing them. 'from' is relative to the DayZ server dir: use custom-ce/<file> for our own repo-authored types, or a mod's doc path (e.g. @aibandits/doc/bandit_types.xml) to pull the mod's own file so it tracks the installed mod version - never hand-duplicated. PER-MAP OVERRIDE: if custom-ce/maps/<mission>/<name> exists it beats 'from' for that mission (the Expansion types need it - Enoch defines no Tier4, so its variant re-tiers 31 types). 'type' is the cfgeconomycore file type: types | spawnabletypes | events. Add a modded types file = add ONE line here. Missing/invalid sources are skipped fail-soft; vanilla types.xml is never touched; a game update that rewrites cfgeconomycore.xml gets the block re-added next boot.",
+    "files": [
+        { "name": "custom_types.xml", "type": "types", "from": "custom-ce/custom_types.xml" },
+        { "name": "bandit_types.xml", "type": "types", "from": "@aibandits/doc/bandit_types.xml" },
+        { "name": "dayzdog_types.xml", "type": "types", "from": "@dayzdog/types.xml" },
+        { "name": "expansion_types.xml", "type": "types", "from": "custom-ce/expansion_types.xml" },
+        { "name": "expansion_spawnabletypes.xml", "type": "spawnabletypes", "from": "custom-ce/expansion_spawnabletypes.xml" }
+    ]
+}

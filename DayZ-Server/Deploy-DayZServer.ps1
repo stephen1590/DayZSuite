@@ -489,6 +489,13 @@ $items = @(
     @{ Src = "custom-ce/expansion_types.xml";          Dst = Join-Path $ServerDir "custom-ce/expansion_types.xml";          Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/expansion_spawnabletypes.xml"; Dst = Join-Path $ServerDir "custom-ce/expansion_spawnabletypes.xml"; Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Sudo = $false; Exec = $false }
+    # Our loot-balance tuning, registered AFTER expansion_types.xml so each <type> replaces the
+    # upstream entry (min 25% of nominal, food nominal cut, restock 1800 on non-essentials). GENERATED
+    # from the template above - regenerate after an Expansion update or the values go stale. It needs
+    # the SAME per-map split as the file it patches: 33 of the tuned types differ between the Chernarus
+    # and Enoch variants, so one shared file would restore Tier4 on Enoch and kill them there.
+    @{ Src = "custom-ce/expansion_types_tuning.xml";   Dst = Join-Path $ServerDir "custom-ce/expansion_types_tuning.xml";   Sudo = $false; Exec = $false }
+    @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types_tuning.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types_tuning.xml"; Sudo = $false; Exec = $false }
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
     # Bubaku spawner composer lives in the server dir so prestart writes the fixed-path file from
     # the active map's source on every start (mirrors Build-TransferSpawns/Build-AIBandits). Engine

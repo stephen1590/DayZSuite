@@ -31,3 +31,25 @@ enableGitInfo = false
   [markup.highlight]
     style = 'base16-snazzy'   # dark code theme, reads well on the Delver ground
     noClasses = true
+
+# --- Mounts -----------------------------------------------------------------
+# Declaring ANY content mount replaces Hugo's default one, so ./content is
+# re-declared explicitly first - drop that line and the whole site disappears.
+#
+# The second mount grafts the StarDZ modding wiki (git submodule under external/,
+# pinned to a reviewed commit) in ONE node below our own docs. Only en/ is mounted:
+# the repo carries 12 languages and ~44 MB of assets, and rendering the other 11
+# would bury our own pages in their own sidebar. The submodule is a BUILD-time
+# dependency only - Deploy-Site ships ./public, so the box never sees the source.
+[module]
+  [[module.mounts]]
+    source = 'content'
+    target = 'content'
+  [[module.mounts]]
+    source = 'external/DayZ-Modding-Wiki/en'
+    target = 'content/docs/reference/dayz-modding-wiki'
+    # index.md is VitePress's landing page (layout: home - meaningless here), and in Hugo an
+    # index.md makes the directory a LEAF BUNDLE, which swallows every file below it as a page
+    # resource instead of a page. Left in, the whole 105-chapter wiki renders as ONE page.
+    # Excluding it lets our own _index.md be the branch index, with the chapters as children.
+    excludeFiles = ['index.md']

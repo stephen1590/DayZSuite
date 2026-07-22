@@ -1,0 +1,60 @@
+{{- /*
+  Link render hook.
+
+  The mounted DayZ wiki cross-references itself with ~1200 relative ".md" links
+  (04-loot-economy.md, ../README.md, 01-enforce-script/01-basics.md#anchor). Hugo
+  publishes every page as its own DIRECTORY, so those links break twice over:
+
+    1. the ".md" suffix does not exist in the output, and
+    2. the page now sits one level DEEPER than its source file did, so every
+       source-relative path needs one extra "../" - the bug that left 948 of
+       13,804 links dead on the first attempt.
+
+  Both are fixed at render time rather than by rewriting the submodule's files,
+  which would make it impossible to update.
+
+    foo.md              -> ../foo/
+    ../README.md        -> ../../readme/
+    a/b.md#anchor       -> ../a/b/#anchor
+
+  Only paths ending in .md are touched. Anchor-only and protocol links pass
+  through; external ones also get target/rel, since they leave the site.
+*/ -}}
+{{- $d := .Destination -}}
+{{- $ext := false -}}
+{{- if or (hasPrefix $d "http://") (hasPrefix $d "https://") (hasPrefix $d "//") (hasPrefix $d "mailto:") -}}
+  {{- $ext = true -}}
+{{- else if not (hasPrefix $d "#") -}}
+  {{- /* We mirror en/ ONLY, but the upstream README links sideways to its 11 sibling language
+         dirs and to CONTRIBUTING.md - targets that are not mounted and can never resolve here.
+         Send those upstream instead of leaving 12 dead links on the page. Hardcoded because the
+         mirrored subset is a deliberate choice: widen the mount and you shorten this list. */ -}}
+  {{- $upstream := "https://github.com/StarDZ-Team/DayZ-Modding-Wiki" -}}
+  {{- range $lang := slice "cs" "de" "es" "fr" "hu" "it" "ja" "pl" "pt" "ru" "zh-hans" -}}
+    {{- if eq $d (printf "../%s/README.md" $lang) -}}
+      {{- $d = printf "%s/tree/main/%s" $upstream $lang -}}
+      {{- $ext = true -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if eq $d "../CONTRIBUTING.md" -}}
+    {{- $d = printf "%s/blob/main/CONTRIBUTING.md" $upstream -}}
+    {{- $ext = true -}}
+  {{- end -}}
+{{- end -}}
+{{- if and (not $ext) (not (hasPrefix $d "#")) -}}
+  {{- $path := $d -}}
+  {{- $frag := "" -}}
+  {{- if strings.Contains $d "#" -}}
+    {{- $parts := split $d "#" -}}
+    {{- $path = index $parts 0 -}}
+    {{- $frag = printf "#%s" (index $parts 1) -}}
+  {{- end -}}
+  {{- if hasSuffix (lower $path) ".md" -}}
+    {{- /* Case is PRESERVED: this site sets disablePathToLower, so README.md publishes as
+           README/, not readme/. Lower-casing here cost 149 dead links. */ -}}
+    {{- $clean := substr $path 0 (sub (len $path) 3) -}}
+    {{- $d = printf "../%s/%s" $clean $frag -}}
+    {{- $d = replace $d "/./" "/" -}}
+  {{- end -}}
+{{- end -}}
+<a href="{{ $d | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if $ext }} target="_blank" rel="noopener noreferrer external"{{ end }}>{{ .Text | safeHTML }}</a>
