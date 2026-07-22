@@ -217,7 +217,12 @@ if (-not $Local) {
     # the server dir and survives every wipe.
     Write-Host "Deploying to ${RemoteTarget}:${RemoteDir} (payload-only staging, Fix=$Fix)`n"
     $payload = [System.Collections.Generic.List[string]]::new()
+    # EVERY root-level file an $items row reaches with a '../' Src must be listed here, or it
+    # never reaches deploy-stage and the copy fails ON THE BOX, mid-deploy (the Test-Path below
+    # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
+    # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
+                   'Apply-ServerCfg.ps1',
                    'Build-AIBandits.ps1', 'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
@@ -498,6 +503,19 @@ $items = @(
     @{ Src = "dayz-update-check.service"; Dst = "/etc/systemd/system/dayz-update-check.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-update-check.timer";   Dst = "/etc/systemd/system/dayz-update-check.timer";   Sudo = $true; Exec = $false; Render = $true }
 )
+
+# PRE-FLIGHT: every payload source must exist BEFORE we copy anything. Without this the first
+# missing file surfaces as a bare Copy-Item error partway through, leaving the box half-updated
+# and the cause ("it was never rsynced into deploy-stage") invisible.
+$absent = @($items | Where-Object { -not (Test-Path (Join-Path $deployDir $_.Src)) })
+if ($absent) {
+    $names = ($absent | ForEach-Object { $_.Src }) -join ', '
+    Write-Error ("payload incomplete - these `$items sources are not in deploy-stage: $names`n" +
+        "A '../' Src must ALSO be listed in the root-file payload list near the top of this script, " +
+        "and a directory in the 'deploy', 'config-defaults', 'config-mirror' ship list. Nothing was copied.")
+    if (-not $NoLog) { Stop-Transcript | Out-Null }
+    exit 4
+}
 
 $results = @()
 foreach ($i in $items) {

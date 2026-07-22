@@ -1,5 +1,24 @@
 {
     "_readme": "The web-editable slice of serverDZ.cfg. Apply-ServerCfg.ps1 renders serverDZ.cfg at EVERY prestart from serverDZ.cfg.template + host.env (the two passwords) + this file, so a value changed in the web editor lands on the next restart with no deploy. ONLY the keys below may be set - the renderer's allowlist is closed, so anything else here is ignored with a warning. Everything NOT listed (password, passwordAdmin, verifySignatures, shardId, instanceId, guaranteedUpdates, serverTime, storageAutoFix, vppDisablePassword, adminLogPlayerList, loginQueue*, class Missions) stays owned by the template because changing it breaks server identity, persistence, or the boot itself: instanceId/shardId select the storage folder (a change reads as a full wipe), verifySignatures is a security control, and the active map comes from map.env, not the Missions class. Values are validated by type and range; a bad one is skipped with a warning and the template default stands. serverTimeAcceleration/serverNightTimeAcceleration drive the day/night cycle - see the Server tab's cycle sliders, or docs/SETUP.md for the math.",
+    "_labels": {
+        "enableWhitelist": "enableAllowList"
+    },
+    "_help": {
+        "hostname": "Server name",
+        "description": "Description of the server. Gets displayed to users in client server browser.",
+        "maxPlayers": "Maximum amount of players",
+        "enableWhitelist": "Enable/disable whitelist (value 0-1)",
+        "forceSameBuild": "When enabled, the server will allow the connection only to clients with same the .exe revision as the server (value 0-1)",
+        "disableVoN": "Enable/disable voice over network (0 = VoN ENABLED, 1 = disabled)",
+        "vonCodecQuality": "Voice over network codec quality, the higher the better (values 0-30)",
+        "disable3rdPerson": "Toggles the 3rd person view for players (value 0-1)",
+        "disableCrosshair": "Toggles the cross-hair (value 0-1)",
+        "disablePersonalLight": "Disables personal light for all clients connected to server",
+        "lightingConfig": "0 for brighter night setup, 1 for darker night setup",
+        "serverTimeAcceleration": "Accelerated Time (value 0-24)",
+        "serverNightTimeAcceleration": "Accelerated Nigh Time - The numerical value being a multiplier (0.1-64) and also multiplied by serverTimeAcceleration value. Thus, in case it is set to 4 and serverTimeAcceleration is set to 2, night time would move 8 times faster than normal. An entire night would pass in 3 hours.",
+        "serverTimePersistent": "Persistent Time (value 0-1)"
+    },
     "hostname": "[US-PNW] Commie Lobby (PVE)",
     "description": "Say Friend and enter.",
     "maxPlayers": 60,

@@ -23,7 +23,8 @@
     never patched) are still identical to their repo copies by definition.
 
     Read-only by default (each sync reports what it would pull). -Execute writes the
-    mirrors (each sync snapshots into backups/ first, keep 10). Run it after web-editing
+    mirrors (each sync snapshots into backups/ first; retention is per-sync - overrides 30,
+    map-points 20, loadouts 10). Run it after web-editing
     sessions worth keeping, then COMMIT the mirrors — git history is the long-term backup.
 
     PROD-ONLY BY DESIGN: the mirrors are the committed history of what runs on PROD, so

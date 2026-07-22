@@ -6,7 +6,7 @@
 .DESCRIPTION
     The LIVE box is authoritative for config-overrides.json — the web editor
     (ConfigViewer -> API -> dayz-ctl override-write) writes it at runtime, and the box
-    snapshots every write (.overrides-versions/, keep 10). The repo working copy is a
+    snapshots every write (.overrides-versions/, keep 30 - matches KeepVersions below). The repo working copy is a
     MIRROR: a committed, versioned backup this script maintains. The deploy seeds it back
     only to a box that has NO overrides document (fresh box / disaster recovery) — it
     never overwrites a live one.
@@ -30,7 +30,7 @@
 
     Read-only by default (shows what pulling WOULD change). -Execute writes:
       config-overrides.json           the repo mirror (= the box's live document)
-      backups/config-overrides/*.json timestamped snapshot of the PREVIOUS mirror (keep 10)
+      backups/config-overrides/*.json timestamped snapshot of the PREVIOUS mirror (keep 30)
       backups/config-overrides/last-synced.sha256   the guard marker
 .EXAMPLE
     ./Sync-ConfigOverrides.ps1                     # dry-run: what pulling the box would change

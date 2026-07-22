@@ -350,8 +350,70 @@ if ((Test-Path $serverCfgScript) -and (Test-Path $stagedTpl)) {
             }
             if ($missed.Count) { Show-Fail "server-settings.json key(s) did not reach serverDZ.cfg: $($missed -join ', ')" }
             else { Show-Pass "all $(@($want.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) server-settings.json toggle(s) applied to serverDZ.cfg" }
+
+            # The web editor's comment column is the cfg's OWN trailing // comment, copied into
+            # server-settings.json's _help. Assert it still matches the template, so editing a
+            # comment in serverDZ.cfg.template can never leave the UI quietly describing the
+            # old behaviour. Same normalisation the generator used: first // clause, whitespace
+            # collapsed.
+            $tplText = Get-Content -Raw -LiteralPath $stagedTpl
+            $help    = $want._help
+            $helpBad = @()
+            foreach ($p in $want.PSObject.Properties) {
+                if ($p.Name.StartsWith('_')) { continue }
+                $m = [regex]::Match($tplText, '(?m)^[ \t]*' + [regex]::Escape($p.Name) + '[ \t]*=.*?;[ \t]*//[ \t]*(.*)$')
+                if (-not $m.Success) { $helpBad += "$($p.Name): no // comment in the template"; continue }
+                $want2 = $m.Groups[1].Value.Trim()
+                $i = $want2.IndexOf('//'); if ($i -gt 0) { $want2 = $want2.Substring(0, $i).Trim() }
+                $want2 = [regex]::Replace($want2, '\s+', ' ')
+                $have  = if ($help -and $help.PSObject.Properties.Name -contains $p.Name) { [string]$help.$($p.Name) } else { $null }
+                if ($null -eq $have)   { $helpBad += "$($p.Name): missing from _help" }
+                elseif ($have -ne $want2) { $helpBad += "$($p.Name): _help text differs from the template comment" }
+            }
+            foreach ($hp in @($help.PSObject.Properties.Name)) {
+                if (-not ($want.PSObject.Properties.Name -contains $hp)) { $helpBad += "$hp : _help entry for a key that is not a toggle" }
+            }
+            if ($helpBad.Count) { Show-Fail "server-settings.json _help out of sync with serverDZ.cfg.template - $($helpBad -join '; ')" }
+            else { Show-Pass "server-settings.json _help matches every serverDZ.cfg.template comment (UI comment column)" }
+
+            # _labels renames a field for READING only. A label on a key that is not a toggle
+            # would silently do nothing, so treat it as a typo and fail. The real key must also
+            # still be the one in the cfg - the toggle check above already proves that.
+            if ($want.PSObject.Properties.Name -contains '_labels') {
+                $lblBad = @()
+                foreach ($lp in @($want._labels.PSObject.Properties)) {
+                    if (-not ($want.PSObject.Properties.Name -contains $lp.Name)) { $lblBad += "$($lp.Name): label for a key that is not a toggle" }
+                    elseif ([string]::IsNullOrWhiteSpace([string]$lp.Value))       { $lblBad += "$($lp.Name): empty label" }
+                }
+                if ($lblBad.Count) { Show-Fail "server-settings.json _labels invalid - $($lblBad -join '; ')" }
+                else { Show-Pass "server-settings.json _labels ($(@($want._labels.PSObject.Properties).Count)) all rename real toggles (display-only)" }
+            }
         }
         if ($cfgWarns.Count) { Write-Host ("  [note] Apply-ServerCfg warned: {0}" -f (($cfgWarns | ForEach-Object { ("$_" -replace '.*\[WARN\]\s*', '').Trim() }) -join '; ')) -ForegroundColor DarkYellow }
+    }
+}
+
+# --- Deploy payload completeness ------------------------------------------------------------
+# Deploy-DayZServer has TWO lists that must agree: the root-file rsync list (what reaches the
+# box's deploy-stage) and $items (what gets placed from there into the server dir). A '../' Src
+# missing from the rsync list is skipped silently on the dev machine and then fails mid-deploy
+# ON THE BOX, half-applied. Static cross-check so that mismatch fails here instead. Both lists
+# are plain quoted literals in one file, so a text scan is enough - and a false positive costs
+# one obvious gate failure, not a broken deploy.
+$deployScript = Join-Path $PSScriptRoot "Deploy-DayZServer.ps1"
+if (Test-Path $deployScript) {
+    $dtext = Get-Content -Raw -LiteralPath $deployScript
+    $fe = [regex]::Match($dtext, '(?s)foreach \(\$f in (.*?)\) \{')
+    if (-not $fe.Success) {
+        Show-Fail "could not locate the root-file payload list in Deploy-DayZServer.ps1 (this check needs updating)"
+    } else {
+        $shipped = @([regex]::Matches($fe.Groups[1].Value, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+        # '../x' Srcs resolve from deploy/ up to the repo root. common/ ships via its own rsync.
+        $needed  = @([regex]::Matches($dtext, 'Src\s*=\s*"\.\./([^"]+)"') | ForEach-Object { $_.Groups[1].Value } |
+                     Where-Object { -not $_.StartsWith('common/') } | Select-Object -Unique)
+        $unshipped = @($needed | Where-Object { $shipped -notcontains $_ })
+        if ($unshipped.Count) { Show-Fail "Deploy `$items reference file(s) that the payload rsync never ships: $($unshipped -join ', ') - add them to the root-file list in Deploy-DayZServer.ps1" }
+        else { Show-Pass "every '../' deploy payload source ($($needed.Count)) is in the rsync ship list" }
     }
 }
 

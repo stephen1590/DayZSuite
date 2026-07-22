@@ -389,7 +389,10 @@ function editorChrome(row) {
     '<div class="ovr-pact">' +
       '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
       layerSel +
-      '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button>' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '" title="Edit the whole file — Save derives the minimal override delta">Edit file</button>') + '</div>' +
+      // server-settings.json is fields-only: the whole-file views would expose the same 14
+      // toggles a second way, and "Edit file" could add keys the renderer's allowlist refuses.
+      (isCycleRow(row) ? '' :
+        '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button>' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '" title="Edit the whole file — Save derives the minimal override delta">Edit file</button>') + '</div>') +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
       (locked ? '' : '<button class="btn-sm" id="ovrDiscard" type="button">Discard</button>') +
       (locked ? '' : '<button class="btn-sm primary" id="ovrSave">Save ' + nOver + ' delta' + (nOver === 1 ? '' : 's') + '</button>') +
@@ -426,8 +429,10 @@ async function renderBody(row) {
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
   const eff = effectivePatches(row);
-  if (ovrView === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
-  if (ovrView === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
+  // Fields-only rows ignore whatever view the last row left in ovrView (it is module state).
+  const view = isCycleRow(row) ? 'fields' : ovrView;
+  if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
+  if (view === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
   if (row.access === 'lock') {
     body.innerHTML = '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
     return;
@@ -453,8 +458,12 @@ function applyFieldVisibility() {
   const q = ovrFilter.trim().toLowerCase();
   let shown = 0;
   body.querySelectorAll('.fld').forEach((r) => {
-    const key = (r.querySelector('.k')?.textContent || '').toLowerCase();
-    const vis = q ? key.includes(q) : (ovrCapOpen || !r.classList.contains('cap-hide'));
+    const kEl = r.querySelector('.k');
+    // Match either what is shown or the real cfg key, so searching "whitelist" still finds
+    // the field that now reads "enableAllowList".
+    const shown = (kEl?.textContent || '').toLowerCase();
+    const real  = (kEl?.dataset.key || '').toLowerCase();
+    const vis = q ? (shown.includes(q) || real.includes(q)) : (ovrCapOpen || !r.classList.contains('cap-hide'));
     r.style.display = vis ? '' : 'none';
     if (vis) shown++;
   });
@@ -473,7 +482,7 @@ function flattenJson(obj, prefix, out) {
 }
 // One overridden-field row. layer = which overrides layer holds it ('common' gets the
 // 'all missions' chip); def = the frozen-default value string (context for the change).
-function fieldRowOver(row, sel, val, def, layer) {
+function fieldRowOver(row, sel, val, def, layer, help, label) {
   const mode = cxMode(val);
   const e = jsonEnc(val);
   const input = mode
@@ -487,7 +496,20 @@ function fieldRowOver(row, sel, val, def, layer) {
   const layerChip = (row.scope === 'mission' && layer === 'common') ? '<span class="tag all">all missions</span>' : '';
   const tag = row.kind === 'xml' ? '<span class="tag">override</span>' : (mode ? '<span class="tag cx">' + mode + '</span>' : '<span class="tag">override</span>');
   const defHtml = def != null ? '<span class="base">default ' + escapeHtml(String(def)) + '</span>' : '';
-  return '<div class="fld over"><div class="k" title="' + attr(sel) + '">' + escapeHtml(sel) + '</div><div>' + input + '</div><div class="meta2">' + layerChip + tag + defHtml + '</div><button class="x ovr-rm" data-sel="' + attr(sel) + '" data-layer="' + layer + '" title="Remove override — reverts this field to its default">✕</button></div>';
+  return '<div class="fld over">' + keyCell(sel, label) + '<div>' + input + '</div>' + helpCell(help) + '<div class="meta2">' + layerChip + tag + defHtml + '</div><button class="x ovr-rm" data-sel="' + attr(sel) + '" data-layer="' + layer + '" title="Remove override — reverts this field to its default">✕</button></div>';
+}
+// The comment column. Text comes from the file's own "_help" map, which for
+// server-settings.json is lifted verbatim from serverDZ.cfg.template's trailing // comments -
+// the game's own documentation of each field, rather than a second set of wording to maintain.
+// null = this list has no help at all, so the row keeps the original 4-column grid.
+function helpCell(help) { return help === null || help === undefined ? '' : '<div class="hlp">' + escapeHtml(help) + '</div>'; }
+// The key cell. A "_labels" entry renames it for READING only — data-key keeps the real
+// selector so the filter, the override write and the box all still see the game's own name,
+// and the tooltip shows it too, so nobody is left guessing what actually lands in the cfg.
+function keyCell(sel, label) {
+  const shown = label || sel;
+  const renamed = shown !== sel;
+  return '<div class="k' + (renamed ? ' renamed' : '') + '" data-key="' + attr(sel) + '" title="' + attr(renamed ? sel + '  (written to serverDZ.cfg under this name)' : sel) + '">' + escapeHtml(shown) + '</div>';
 }
 // ===================== serverDZ.cfg day/night cycle =====================
 // server-settings.json is the web-editable slice of serverDZ.cfg (Apply-ServerCfg renders the
@@ -566,8 +588,12 @@ function cycleHtml(row, eff) {
     + ctl(CYCLE_Y, 'Night acceleration (Y)', y, 1, 24, 0.5, 'Multiplies again during night only. Higher = shorter nights.')
     + '</div>'
     + '<div class="cyc-out" id="cycOut">' + cycleOutHtml(x, y) + '</div>'
-    + '<div class="cyc-note">Applies at the next restart — Apply-ServerCfg renders serverDZ.cfg at prestart. Map selection is unaffected (that is map.env).</div>'
-    + '</div>';
+    + '<div class="cyc-foot">'
+    + '<span class="cyc-note">Applies at the next restart — Apply-ServerCfg renders serverDZ.cfg at prestart. Map selection is unaffected (that is map.env).</span>'
+    // These two keys are hidden from the field list below, so this is the only way back to the
+    // frozen default once one is overridden.
+    + ((eff.has(CYCLE_X) || eff.has(CYCLE_Y)) ? '<button type="button" class="btn-sm" id="cycReset">Reset to default</button>' : '')
+    + '</div></div>';
 }
 function wireCycle(row) {
   const panel = $('cycPanel'); if (!panel) return;
@@ -597,6 +623,20 @@ function wireCycle(row) {
     n.addEventListener('input', () => { if (sld) sld.value = n.value; redraw(); });
     n.addEventListener('change', () => commit(n.dataset.sel, n.value));
   });
+  const rst = $('cycReset');
+  if (rst) rst.onclick = () => {
+    const now = effectivePatches(row);
+    let n = 0;
+    for (const sel of [CYCLE_X, CYCLE_Y]) {
+      const o = now.get(sel);
+      if (!o) continue;
+      delete layerMapRW(row, o.layer)[sel];
+      n++;
+    }
+    if (!n) return;
+    updateDirtyUi(); renderFilesNav(); renderEditor();
+    setGlobalMsg('Cycle reverted to default — press Save.', false);
+  };
 }
 
 function jsonFieldsHtml(row, eff, text, defaultText) {
@@ -607,20 +647,38 @@ function jsonFieldsHtml(row, eff, text, defaultText) {
   const defMap = (defObj && typeof defObj === 'object' && !Array.isArray(defObj)) ? new Map(flattenJson(defObj, '', []).map((l) => [l.path, l.value])) : new Map();
   const leaves = (fileObj && typeof fileObj === 'object' && !Array.isArray(fileObj)) ? flattenJson(fileObj, '', []) : [];
   ovrLeafMap = new Map(leaves.map((l) => [l.path, l.value]));
-  let html = '<div class="fields">';
+  // "_help": { key: "comment" } — per-field documentation carried by the file itself.
+  const rawHelp = (fileObj && fileObj._help && typeof fileObj._help === 'object' && !Array.isArray(fileObj._help)) ? fileObj._help : null;
+  const helpMap = new Map(rawHelp ? Object.entries(rawHelp).filter(([, v]) => typeof v === 'string') : []);
+  const hasHelp = helpMap.size > 0;
+  const helpFor = (sel) => (hasHelp ? (helpMap.get(sel) || '') : null);
+  // "_labels": { key: "display name" } — DISPLAY ONLY. The game dictates the real cfg key
+  // (enableWhitelist), so that is what gets written, filtered and patched; this only changes
+  // what a human reads. Same idea as the registry surfacing whitelist.txt as "Allowlist".
+  const rawLabels = (fileObj && fileObj._labels && typeof fileObj._labels === 'object' && !Array.isArray(fileObj._labels)) ? fileObj._labels : null;
+  const labelMap = new Map(rawLabels ? Object.entries(rawLabels).filter(([, v]) => typeof v === 'string' && v) : []);
+  const labelFor = (sel) => labelMap.get(sel) || sel;
+  // Rows this list must not offer as plain fields:
+  //   - anything under an underscore key (_readme/_help) — the override engine drops those, so
+  //     showing them as overridable only invites a patch that silently does nothing;
+  //   - the two cycle multipliers on server-settings.json — the slider panel above owns them,
+  //     and a second editor for the same value is just a way to disagree with yourself.
+  const skip = (sel) => sel.startsWith('_') || (isCycleRow(row) && (sel === CYCLE_X || sel === CYCLE_Y));
+  let html = '<div class="fields' + (hasHelp ? ' with-help' : '') + '">';
   for (const [sel, p] of eff) {
+    if (skip(sel)) continue;
     const def = defMap.has(sel) ? valPreview(defMap.get(sel)) : null;
-    html += fieldRowOver(row, sel, p.value, def, p.layer);
+    html += fieldRowOver(row, sel, p.value, def, p.layer, helpFor(sel), labelFor(sel));
   }
   if (fileObj === null && text !== null) html += '<div class="ovr-note">This file isn\'t valid JSON — showing overrides only.</div>';
-  const ctx = leaves.filter((l) => !eff.has(l.path));
+  const ctx = leaves.filter((l) => !eff.has(l.path) && !skip(l.path));
   if (ctx.length) {
     html += '<div class="fdiv">Rest of the file — click a value to override it</div>';
     const CAP = 100;   // render all, but hide past CAP behind a Show-more button (filtering ignores the cap)
     ctx.forEach((l, i) => {
       const lm = cxMode(l.value);
       const lprev = lm ? cxSummary(l.value, lm) : valPreview(l.value);
-      html += '<div class="fld ctx' + (i >= CAP ? ' cap-hide' : '') + '"><div class="k">' + escapeHtml(l.path) + '</div><div class="v ovr-addv" data-sel="' + attr(l.path) + '" title="Click to override">' + escapeHtml(lprev) + '</div><div class="meta2"><button class="addb ovr-addctx" data-sel="' + attr(l.path) + '">+ override</button></div><span></span></div>';
+      html += '<div class="fld ctx' + (i >= CAP ? ' cap-hide' : '') + '">' + keyCell(l.path, labelFor(l.path)) + '<div class="v ovr-addv" data-sel="' + attr(l.path) + '" title="Click to override">' + escapeHtml(lprev) + '</div>' + helpCell(helpFor(l.path)) + '<div class="meta2"><button class="addb ovr-addctx" data-sel="' + attr(l.path) + '">+ override</button></div><span></span></div>';
     });
     if (ctx.length > CAP) html += '<div class="fld-more" id="ovrMoreWrap"><button type="button" id="ovrMore" class="ghost">Show ' + (ctx.length - CAP) + ' more field' + (ctx.length - CAP === 1 ? '' : 's') + '</button></div>';
   }

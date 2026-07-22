@@ -31,13 +31,17 @@ OVR_VERSIONS="$SERVER_DIR/.overrides-versions"
 SPAWNS="$SERVER_DIR/profiles/AI_Shared/map-points.json"
 SPAWN_VERSIONS="$SERVER_DIR/.spawn-versions"
 
-# Snapshot the current config-overrides.json into the versions dir (keep the 10 newest),
+# How many override snapshots the BOX keeps. Deliberately matches Sync-ConfigOverrides.ps1's
+# KeepVersions on the repo side, so "how far back can I roll an override?" has one answer
+# wherever you ask it. Raised 10 -> 30 on 2026-07-22.
+OVR_KEEP=30
+# Snapshot the current config-overrides.json into the versions dir (keep the newest $OVR_KEEP),
 # restoring the server-dir owner so a later ubuntu-run deploy can still replace it. Best-effort.
 snapshot_overrides() {
   [ -f "$OVERRIDES" ] || return 0
   mkdir -p "$OVR_VERSIONS"
   cp -p "$OVERRIDES" "$OVR_VERSIONS/config-overrides.$(date -u +%Y%m%dT%H%M%S%NZ).json"
-  find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' | sort -r | tail -n +11 \
+  find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' | sort -r | tail -n +$((OVR_KEEP + 1)) \
     | while IFS= read -r _old; do rm -f "$_old"; done
   _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
   [ -n "$_own" ] && chown -R "$_own" "$OVR_VERSIONS" 2>/dev/null || true
