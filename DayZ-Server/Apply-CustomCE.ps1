@@ -16,6 +16,7 @@
   'from' is relative to the server dir: custom-ce/<file> for our own repo-authored types
   (e.g. custom_types.xml = CodeLock), or a mod's own doc file (e.g. @aibandits/doc/
   bandit_types.xml) so it tracks the INSTALLED mod version instead of a hand-duplicated copy.
+  A map-tuned variant at custom-ce/maps/<mission>/<name> beats 'from' for that mission.
 
   IDEMPOTENT and NON-DESTRUCTIVE: vanilla db/types.xml is never touched; the block is
   REGENERATED each run (so adding/removing a manifest line just works, and a vanilla rewrite
@@ -66,13 +67,18 @@ $registered = @()
 foreach ($e in $entries) {
     $name = [string]$e.name
     $type = if ($e.type) { [string]$e.type } else { 'types' }
-    $src  = Join-Path $ServerDir ([string]$e.from)
     if (-not $name -or -not $e.from) { Show-Warn "manifest entry missing name/from - skipped."; continue }
-    if (-not (Test-Path $src))      { Show-Warn "source not found for '$name': $($e.from) - skipped (mod not installed?)."; continue }
-    try { [xml](Get-Content -Raw -LiteralPath $src) | Out-Null }
-    catch { Show-Warn "source for '$name' ($($e.from)) is not valid XML - skipped ($($_.Exception.Message))."; continue }
-    $count = @(([xml](Get-Content -Raw -LiteralPath $src)).types.type).Count
-    Show-Info "CustomCE[$Mission]: $name <- $($e.from) ($count type(s), type=$type)$(if (-not $Fix) { ' (report-only)' })."
+    # A map-tuned variant at custom-ce/maps/<mission>/<name> beats the shared 'from' for that
+    # mission (e.g. Enoch defines no Tier4 - its expansion_types re-tiers those entries).
+    $from = [string]$e.from
+    $mapFrom = "custom-ce/maps/$Mission/$name"
+    if (Test-Path (Join-Path $ServerDir $mapFrom)) { $from = $mapFrom }
+    $src = Join-Path $ServerDir $from
+    if (-not (Test-Path $src))      { Show-Warn "source not found for '$name': $from - skipped (mod not installed?)."; continue }
+    try { $doc = [xml](Get-Content -Raw -LiteralPath $src) }
+    catch { Show-Warn "source for '$name' ($from) is not valid XML - skipped ($($_.Exception.Message))."; continue }
+    $count = @($doc.DocumentElement.ChildNodes | Where-Object { $_.NodeType -eq 'Element' }).Count
+    Show-Info "CustomCE[$Mission]: $name <- $from ($count entries, type=$type)$(if (-not $Fix) { ' (report-only)' })."
     if ($Fix) {
         New-Item -ItemType Directory -Force -Path $destDir | Out-Null
         Copy-Item -LiteralPath $src -Destination (Join-Path $destDir $name) -Force

@@ -464,6 +464,16 @@ $items = @(
     # (never the vanilla types.xml). Add a modded types file = one line in custom-ce.json.
     @{ Src = "custom-ce/custom-ce.json";     Dst = Join-Path $ServerDir "custom-ce/custom-ce.json";   Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/custom_types.xml";   Dst = Join-Path $ServerDir "custom-ce/custom_types.xml"; Sudo = $false; Exec = $false }
+    # Expansion CE (from the DayZ-Expansion-Missions mission templates): none of our missions ever
+    # registered these, so NO Expansion item spawned as world loot. The shared types file is the
+    # Chernarus variant (usage-based, Tier1-4 - fits chernarusplus AND sakhal); Enoch defines no
+    # Tier4, so its re-tiered template variant ships under maps/ and wins there (Apply-CustomCE's
+    # per-map override). spawnabletypes is byte-identical across every template - truly shared.
+    # expansion_events.xml is NOT shipped: map-specific AND inert without per-map cfgeventspawns
+    # positions, which no mission has yet - separate task.
+    @{ Src = "custom-ce/expansion_types.xml";          Dst = Join-Path $ServerDir "custom-ce/expansion_types.xml";          Sudo = $false; Exec = $false }
+    @{ Src = "custom-ce/expansion_spawnabletypes.xml"; Dst = Join-Path $ServerDir "custom-ce/expansion_spawnabletypes.xml"; Sudo = $false; Exec = $false }
+    @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Sudo = $false; Exec = $false }
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
     # Bubaku spawner composer lives in the server dir so prestart writes the fixed-path file from
     # the active map's source on every start (mirrors Build-TransferSpawns/Build-AIBandits). Engine
