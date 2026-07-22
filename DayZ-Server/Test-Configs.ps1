@@ -125,6 +125,15 @@ if (Test-Path $ceSrc) {
     New-Item -ItemType Directory -Force -Path $ceDst | Out-Null
     Copy-Item (Join-Path $ceSrc '*') $ceDst -Recurse -Force
 }
+#   - serverDZ.cfg.template ships from deploy/ as CODE; stage it with a THROWAWAY host.env so
+#     Apply-ServerCfg can render offline. The dummy passwords never leave this staging dir -
+#     the real ones live only in the box's host.env and are never in the repo.
+$tplSrc = Join-Path $deployDir "serverDZ.cfg.template"
+if (Test-Path $tplSrc) {
+    Copy-Item $tplSrc (Join-Path $StagingDir "serverDZ.cfg.template") -Force
+    Set-Content -LiteralPath (Join-Path $StagingDir "host.env") -Encoding utf8 `
+        -Value "DEPLOY_SERVER_PASSWORD=offline-test-join`nDEPLOY_ADMIN_PASSWORD=offline-test-admin"
+}
 $fixturesDir = Join-Path $PSScriptRoot "test/fixtures"
 $stagedFixtures = 0
 foreach ($m in $missions) {
@@ -308,6 +317,43 @@ foreach ($f in @(Get-ChildItem -Path $StagingDir -Recurse -File -Include *.json,
     } catch { $badParse++; Show-Fail "unparseable: $($f.FullName.Substring($StagingDir.Length).TrimStart('/','\')) - $($_.Exception.Message)" }
 }
 if ($badParse -eq 0) { Show-Pass "all staged/built JSON + XML parse" }
+
+# --- serverDZ.cfg render (Apply-ServerCfg) --------------------------------------------------
+# The engine reads serverDZ.cfg before anything else, so a broken render is a dead server. Prove
+# offline that the template + host.env + server-settings.json actually produce a bootable file:
+# every toggle applied, no placeholder left, and the load-bearing Missions block intact.
+$serverCfgScript = Join-Path $PSScriptRoot "Apply-ServerCfg.ps1"
+$stagedTpl       = Join-Path $StagingDir "serverDZ.cfg.template"
+if ((Test-Path $serverCfgScript) -and (Test-Path $stagedTpl)) {
+    $cfgCap   = & $serverCfgScript -ServerDir $StagingDir -Fix 6>&1
+    $cfgWarns = @($cfgCap | Where-Object { "$_" -match '\[WARN\]' })
+    $builtCfg = Join-Path $StagingDir "serverDZ.cfg"
+    if (-not (Test-Path $builtCfg)) {
+        Show-Fail "Apply-ServerCfg produced no serverDZ.cfg$(if ($cfgWarns) { ' - ' + (($cfgWarns | Select-Object -First 1) -replace '.*\[WARN\]\s*', '') })"
+    } else {
+        $cfgText = Get-Content -Raw -LiteralPath $builtCfg
+        if ($cfgText -match '\{\{[A-Za-z0-9_]+\}\}') { Show-Fail "rendered serverDZ.cfg still contains an unresolved {{placeholder}}" }
+        else { Show-Pass "serverDZ.cfg renders with no unresolved placeholders" }
+        # Map selection lives in map.env -> the unit's -mission=, but the engine still needs this
+        # block present to run a mission at all. The renderer must never drop it.
+        if ($cfgText -match '(?s)class\s+Missions\s*\{.*?template\s*=') { Show-Pass "rendered serverDZ.cfg keeps its class Missions block (map selection unaffected)" }
+        else { Show-Fail "rendered serverDZ.cfg lost its class Missions block - the server would boot with no mission" }
+        # Every key the web editor may set must actually reach the file.
+        $settingsFile = Join-Path $StagingDir "server-settings.json"
+        if (Test-Path $settingsFile) {
+            $want = (Get-Content -Raw -LiteralPath $settingsFile | ConvertFrom-Json)
+            $missed = @()
+            foreach ($p in $want.PSObject.Properties) {
+                if ($p.Name.StartsWith('_')) { continue }
+                $lit = if ($p.Value -is [string]) { '"' + $p.Value + '"' } else { "$($p.Value)" }
+                if ($cfgText -notmatch ('(?m)^\s*' + [regex]::Escape($p.Name) + '\s*=\s*' + [regex]::Escape($lit) + '\s*;')) { $missed += $p.Name }
+            }
+            if ($missed.Count) { Show-Fail "server-settings.json key(s) did not reach serverDZ.cfg: $($missed -join ', ')" }
+            else { Show-Pass "all $(@($want.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) server-settings.json toggle(s) applied to serverDZ.cfg" }
+        }
+        if ($cfgWarns.Count) { Write-Host ("  [note] Apply-ServerCfg warned: {0}" -f (($cfgWarns | ForEach-Object { ("$_" -replace '.*\[WARN\]\s*', '').Trim() }) -join '; ')) -ForegroundColor DarkYellow }
+    }
+}
 
 # --- Summary --------------------------------------------------------------------------------
 $color = if ($fail) { 'Red' } else { 'Green' }

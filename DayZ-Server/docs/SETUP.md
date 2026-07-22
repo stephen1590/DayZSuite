@@ -142,21 +142,35 @@ sed -e 's#{{DEPLOY_HOME}}#/home/ubuntu#g' -e 's#{{DEPLOY_USER}}#ubuntu#' -e 's#{
 
 ## Day/night cycle
 
-`serverDZ.cfg`'s `serverTimeAcceleration` (X) scales the full 24 in-game-hour cycle;
-`serverNightTimeAcceleration` (Y) applies an *additional* multiplier during night only:
+`serverTimeAcceleration` (X) scales in-game time; `serverNightTimeAcceleration` (Y)
+multiplies again during night only. Each portion of the in-game day is divided by the
+rate that applies to it, where `D` = in-game daylight hours (12 unless the map/season
+says otherwise):
 
 ```
-full_cycle_real_hours = 24 / X
-night_real_hours      = 24 / (X * Y)
-day_real_hours        = full_cycle_real_hours - night_real_hours
+day_real_hours   = D / X
+night_real_hours = (24 - D) / (X * Y)
+full_cycle_real  = day_real_hours + night_real_hours
 ```
 
-To retarget from a desired `day_real_hours`/`night_real_hours`:
+To retarget from a desired `day_real_hours`/`night_real_hours` (D = 12):
 
 ```
-X = 24 / (day + night)
-Y = 24 / (X * night)
+X = 12 / day_real_hours
+Y = day_real_hours / night_real_hours      # Y IS the day:night ratio
 ```
+
+**Current (`deploy/serverDZ.cfg.template`): X=5, Y=4** → 2h24m daylight + 36m night =
+a **3h** full cycle, and Y=4 means daylight runs 4x longer than night.
+
+Both values are web-editable — `server-settings.json` in the config editor has cycle
+sliders that show these numbers live. Don't hand-edit `serverDZ.cfg`; it is rendered
+at every prestart by `Apply-ServerCfg.ps1`.
+
+> Corrected 2026-07-22. The earlier formula here (`full = 24/X`, `night = 24/(X*Y)`,
+> `day = full - night`) charged all 24 in-game hours at the day rate and then subtracted
+> night out of the result, so it overstated the cycle — and at Y=1 it reported zero
+> daylight instead of an even split.
 
 ## Updating the server (patch days)
 

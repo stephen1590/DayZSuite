@@ -97,9 +97,15 @@ One rule: **the deploy ships code and overwrites it; it never overwrites config 
 Every file is in exactly one class, and the class decides the direction it moves:
 
 - **Code (repo-owned, ships on drift):** scripts, systemd units, PBOs, `update.sh`,
-  `prestart.sh`, `serverDZ.cfg` (rendered from `host.env`), `mods.conf`, the `custom-ce/`
+  `prestart.sh`, `serverDZ.cfg.template`, `mods.conf`, the `custom-ce/`
   injection layer, VPP permission files. Only the deploy writes these — edit in the repo,
   redeploy.
+- **Artifacts (compiler output, rebuilt every restart):** `serverDZ.cfg` is rendered at
+  prestart by `Apply-ServerCfg.ps1` from `serverDZ.cfg.template` + `host.env` (the two
+  passwords) + `server-settings.json` (the web-editable toggles). Nobody edits it; a hand
+  edit on the box vanishes on the next restart. It is listed in the registry's `generated`
+  set so the web editor can never patch it. The rendered file carries both passwords and is
+  therefore never mirrored, never browsable, and stays mode 0600.
 - **Config content (box-owned, seed-if-missing):** `config-overrides.json`,
   the shared `AI_Shared/map-points.json` store, the AI_Bandits source tree, the Babaku per-map sources,
   `messages.xml`, every mod-generated settings file, and the frozen `.defaults`

@@ -50,6 +50,7 @@
   "surfaces": [
     { "name": "overrides", "box": "config-overrides.json", "scope": "shared", "seed": "config-overrides.json", "mirror": "overrides", "web": "patch", "check": "json" },
     { "name": "map", "box": "map.env", "scope": "shared", "seed": null, "mirror": null, "web": "file", "check": "none" },
+    { "name": "Server-settings", "box": "server-settings.json", "scope": "shared", "seed": "deploy/server-settings.json", "mirror": "defaults", "web": "patch", "check": "json" },
     { "name": "mods", "box": "mods.conf", "scope": "shared", "seed": null, "mirror": null, "web": "view", "check": "none" },
     { "name": "messages", "box": "messages.xml", "scope": "shared", "seed": "deploy/messages.xml", "mirror": null, "web": "view", "check": "xml" },
     { "name": "Aib-common", "box": "profiles/AI_Bandits/common/DynamicAIB.common.json", "scope": "shared", "seed": "deploy/profiles/AI_Bandits/common/DynamicAIB.common.json", "mirror": "defaults", "web": "patch", "check": "json" },
@@ -72,6 +73,7 @@
     { "group": "Map; Sakhal Settings", "dir": "mpmissions/dayzOffline.sakhal", "subfolders": ["db", "env", "expansion/settings"], "scope": "map:dayzOffline.sakhal", "web": "browse", "mirror": "live", "mirrorGlob": "*.json" }
   ],
   "generated": [
+    "serverDZ.cfg",
     "profiles/AI_Bandits/DynamicAIB.json",
     "profiles/AI_Bandits/StaticAIB.json",
     "mpmissions/*/expansion/settings/AIPatrols.draft.json",

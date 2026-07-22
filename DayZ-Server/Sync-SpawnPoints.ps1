@@ -39,7 +39,7 @@ param(
     [string]$SpawnRel   = "profiles/AI_Shared/map-points.json",                # shared spawn store (feeds AIB + Expansion), neutral location
     [string]$LocalPath  = (Join-Path $PSScriptRoot "deploy/profiles/AI_Shared/map-points.json"),
     [string]$BackupDir  = (Join-Path $PSScriptRoot "backups/map-points"),
-    [int]$KeepVersions  = 10,
+    [int]$KeepVersions  = 20,
     [switch]$Execute,
     [switch]$NoLog
 )

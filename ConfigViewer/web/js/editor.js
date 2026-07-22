@@ -435,11 +435,16 @@ async function renderBody(row) {
   const wfNote = wholeFileOf(row) !== undefined
     ? '<div class="ovr-note wf-active"><b>Whole-file override active</b> — the box writes this file verbatim and ignores the field patches below. <button type="button" class="btn-sm" id="wfClear">Revert to field patches</button></div>'
     : '';
+  // Fields first: jsonFieldsHtml populates ovrLeafMap, which the cycle panel reads for the
+  // live values. The panel still renders ABOVE the list.
+  const fieldsHtml = (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
   body.innerHTML = wfNote + (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
+    (isCycleRow(row) ? cycleHtml(row, eff) : '') +
     '<div class="fld-filter"><input id="ovrFilter" type="text" placeholder="Filter fields by name…" spellcheck="false" autocomplete="off"><span id="ovrFilterNote" class="meta">no matching fields</span></div>' +
-    (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
+    fieldsHtml;
   const wfClr = $('wfClear'); if (wfClr) wfClr.onclick = () => wholeFileClear(row);
   wireFields(row);
+  if (isCycleRow(row)) wireCycle(row);
   applyFieldVisibility();
 }
 // Fields-view visibility: filter by key substring, and cap the "rest of the file" list until expanded.
@@ -484,6 +489,116 @@ function fieldRowOver(row, sel, val, def, layer) {
   const defHtml = def != null ? '<span class="base">default ' + escapeHtml(String(def)) + '</span>' : '';
   return '<div class="fld over"><div class="k" title="' + attr(sel) + '">' + escapeHtml(sel) + '</div><div>' + input + '</div><div class="meta2">' + layerChip + tag + defHtml + '</div><button class="x ovr-rm" data-sel="' + attr(sel) + '" data-layer="' + layer + '" title="Remove override — reverts this field to its default">✕</button></div>';
 }
+// ===================== serverDZ.cfg day/night cycle =====================
+// server-settings.json is the web-editable slice of serverDZ.cfg (Apply-ServerCfg renders the
+// real file at prestart). Two of its keys only mean anything together: serverTimeAcceleration
+// (X) scales in-game time, serverNightTimeAcceleration (Y) multiplies again during night only.
+// As bare multipliers they tell an admin nothing, so this panel shows the real-world clock
+// players actually feel:
+//     day_real = D / X        night_real = (24 - D) / (X * Y)      cycle = day + night
+// where D = in-game daylight hours. D varies by map/season; 12 is the standard assumption and
+// is stated in the panel rather than hidden.
+//
+// NOTE: this supersedes the formula that used to be in docs/SETUP.md and .internal/OPERATIONS.md
+// (full = 24/X, night = 24/(X*Y), day = full - night). That one treats all 24 in-game hours as
+// running at the day rate and then carves night out of the result, so it overstates the cycle
+// and breaks outright at Y=1 - no night acceleration reported day = 0 rather than an even split.
+// Both docs were corrected to match this. 2026-07-22.
+//
+// Map selection is NOT here - that is map.env -> the unit's -mission=; serverDZ.cfg's Missions
+// block is untouched by the renderer.
+const CYCLE_FILE = 'server-settings.json';
+const CYCLE_X = 'serverTimeAcceleration';
+const CYCLE_Y = 'serverNightTimeAcceleration';
+const CYCLE_DAYLIGHT = 12;     // assumed in-game daylight hours; stated in the panel
+function isCycleRow(row) { return !!row && row.relpath === CYCLE_FILE; }
+function cycleHours(x, y, D = CYCLE_DAYLIGHT) {
+  const day = D / x, night = (24 - D) / (x * y);
+  return { day, night, full: day + night };
+}
+function hm(h) {
+  if (!isFinite(h) || h <= 0) return '—';
+  const t = Math.round(h * 60);
+  return (t >= 60 ? Math.floor(t / 60) + 'h ' : '') + (t % 60) + 'm';
+}
+// Effective value for a cycle key: the pending override wins, else the live file, else the default.
+function cycleVal(eff, sel, fallback) {
+  const o = eff.get(sel);
+  const raw = o ? o.value : (ovrLeafMap.has(sel) ? ovrLeafMap.get(sel) : fallback);
+  const n = Number(raw);
+  return (isFinite(n) && n > 0) ? n : fallback;
+}
+const CYCLE_RESTART_H = 4;     // the messages.xml restart schedule, for "cycles per restart"
+function cycleOutHtml(x, y) {
+  const c = cycleHours(x, y);
+  const ok = isFinite(c.full) && c.full > 0;
+  const dayPct = ok ? Math.max(0, Math.min(100, (c.day / c.full) * 100)) : 0;
+  const bar = !ok ? ''
+    : '<div class="cyc-bar"><i class="day" style="width:' + dayPct.toFixed(2) + '%">'
+      + (dayPct >= 18 ? 'Daylight ' + escapeHtml(hm(c.day)) : '') + '</i>'
+      + '<i class="night" style="width:' + (100 - dayPct).toFixed(2) + '%">'
+      + (100 - dayPct >= 18 ? 'Night ' + escapeHtml(hm(c.night)) : '') + '</i></div>';
+  const perRestart = ok ? (CYCLE_RESTART_H / c.full) : null;
+  const nums = '<div class="cyc-nums">'
+    + '<span>Full cycle <b>' + escapeHtml(hm(c.full)) + '</b></span>'
+    + '<span>Daylight <b>' + escapeHtml(hm(c.day)) + '</b></span>'
+    + '<span>Night <b>' + escapeHtml(hm(c.night)) + '</b></span>'
+    + '<span>Cycles per restart <b>' + (perRestart === null ? '—' : perRestart.toFixed(1)) + '</b> <span class="meta">(' + CYCLE_RESTART_H + 'h schedule)</span></span>'
+    + '</div>';
+  // Y below 1 means night runs SLOWER than day - legal, rarely intended.
+  const warn = (y < 1)
+    ? '<div class="cyc-warn">Night acceleration below 1 makes night pass slower than daylight — night becomes the longest part of the cycle.</div>' : '';
+  return bar + nums + warn;
+}
+function cycleHtml(row, eff) {
+  const x = cycleVal(eff, CYCLE_X, 5), y = cycleVal(eff, CYCLE_Y, 4);
+  const ctl = (sel, label, val, min, max, step, hint) =>
+    '<div class="cyc-ctl"><label for="cyc-' + sel + '">' + escapeHtml(label) + '</label>'
+    + '<div class="cyc-row">'
+    + '<input type="range" id="cyc-' + sel + '" class="cyc-in" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
+    + '<input type="number" class="cyc-num" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
+    + '</div><span class="cyc-hint">' + escapeHtml(hint) + '</span></div>';
+  return '<div class="cyc" id="cycPanel">'
+    + '<h4>Day / night cycle</h4>'
+    + '<p class="cyc-sub">What these two multipliers actually buy in real time, assuming ' + CYCLE_DAYLIGHT + 'h of in-game daylight. Moving a slider writes the same field override as the list below — press Save, then restart to apply.</p>'
+    + '<div class="cyc-grid">'
+    + ctl(CYCLE_X, 'Time acceleration (X)', x, 1, 24, 0.5, 'Scales in-game time overall. Higher = shorter days.')
+    + ctl(CYCLE_Y, 'Night acceleration (Y)', y, 1, 24, 0.5, 'Multiplies again during night only. Higher = shorter nights.')
+    + '</div>'
+    + '<div class="cyc-out" id="cycOut">' + cycleOutHtml(x, y) + '</div>'
+    + '<div class="cyc-note">Applies at the next restart — Apply-ServerCfg renders serverDZ.cfg at prestart. Map selection is unaffected (that is map.env).</div>'
+    + '</div>';
+}
+function wireCycle(row) {
+  const panel = $('cycPanel'); if (!panel) return;
+  const out = $('cycOut');
+  const readAll = () => {
+    const g = (sel) => Number(panel.querySelector('.cyc-in[data-sel="' + sel + '"]').value);
+    return { x: g(CYCLE_X), y: g(CYCLE_Y) };
+  };
+  const redraw = () => { const v = readAll(); if (out) out.innerHTML = cycleOutHtml(v.x, v.y); };
+  // Live readout while dragging; the override is written on release/commit so the field list
+  // and the dirty flag update once, not on every intermediate pixel.
+  const commit = (sel, valStr) => {
+    const n = Number(valStr);
+    if (!isFinite(n) || n <= 0) { setGlobalMsg('Acceleration must be a positive number.', true); return; }
+    layerMapRW(row, newLayerFor(row))[sel] = n;
+    updateDirtyUi();
+    renderFilesNav(); renderEditor();
+    setGlobalMsg('Unsaved change — press Save.', false);
+  };
+  panel.querySelectorAll('.cyc-in').forEach((s) => {
+    const num = panel.querySelector('.cyc-num[data-sel="' + s.dataset.sel + '"]');
+    s.addEventListener('input', () => { if (num) num.value = s.value; redraw(); });
+    s.addEventListener('change', () => commit(s.dataset.sel, s.value));
+  });
+  panel.querySelectorAll('.cyc-num').forEach((n) => {
+    const sld = panel.querySelector('.cyc-in[data-sel="' + n.dataset.sel + '"]');
+    n.addEventListener('input', () => { if (sld) sld.value = n.value; redraw(); });
+    n.addEventListener('change', () => commit(n.dataset.sel, n.value));
+  });
+}
+
 function jsonFieldsHtml(row, eff, text, defaultText) {
   let fileObj = null;
   if (text !== null) { try { fileObj = bigParse(text); } catch { fileObj = null; } }

@@ -47,7 +47,7 @@ param(
     [string]$OverridesRel = "config-overrides.json",              # under the server root
     [string]$LocalPath   = (Join-Path $PSScriptRoot "config-overrides.json"),
     [string]$BackupDir   = (Join-Path $PSScriptRoot "backups/config-overrides"),
-    [int]$KeepVersions   = 10,
+    [int]$KeepVersions   = 30,
     [switch]$Execute,
     [switch]$AcceptLocalLoss,
     [switch]$NoLog

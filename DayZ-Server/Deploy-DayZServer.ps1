@@ -415,7 +415,13 @@ $items = @(
     @{ Src = "map.env.example";     Dst = Join-Path $ServerDir "map.env.example"; Sudo = $false; Exec = $false }
     # prestart.sh calls this to write profiles/transfer_spawn.json for the TransferSpawn PBO.
     @{ Src = "Build-TransferSpawns.ps1"; Dst = Join-Path $ServerDir "Build-TransferSpawns.ps1"; Sudo = $false; Exec = $false }
-    @{ Src = "serverDZ.cfg";        Dst = Join-Path $ServerDir "serverDZ.cfg"; Sudo = $false; Exec = $false; Render = $true }
+    # serverDZ.cfg is a prestart ARTIFACT now, not a deploy-rendered file: Apply-ServerCfg.ps1
+    # builds it from this template + host.env (the two passwords) + the box-owned
+    # server-settings.json, so the web-exposed toggles (hostname, maxPlayers, the day/night
+    # cycle, ...) take effect on a restart instead of needing a repo edit and a redeploy.
+    # The template ships UNRENDERED — the passwords stay {{...}} here and resolve on the box,
+    # so no deploy-time temp file ever holds them.
+    @{ Src = "serverDZ.cfg.template"; Dst = Join-Path $ServerDir "serverDZ.cfg.template"; Sudo = $false; Exec = $false }
     @{ Src = "profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt"
        Dst = Join-Path $ServerDir "profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt"
        Sudo = $false; Exec = $false }
@@ -449,6 +455,10 @@ $items = @(
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     @{ Src = "../Build-AIBandits.ps1";       Dst = Join-Path $ServerDir "Build-AIBandits.ps1";       Sudo = $false; Exec = $true }
+    # serverDZ.cfg renderer (template + host.env secrets + server-settings.json). Lives in the
+    # server dir because prestart rebuilds serverDZ.cfg on every start; the ENGINE is code, the
+    # server-settings.json DOCUMENT is box-owned content seeded from config-registry.json.
+    @{ Src = "../Apply-ServerCfg.ps1";       Dst = Join-Path $ServerDir "Apply-ServerCfg.ps1";       Sudo = $false; Exec = $true }
     # Expansion AI patrol builder (twin of Build-AIBandits): prestart composes AIPatrolSettings.json
     # from the frozen base + 'expansion'-toggled map-points on every start. Same map-points store,
     # independent on/off (profiles/ExpansionMod/AIPatrols.control.json). Lives in the server dir.
@@ -540,6 +550,20 @@ if (-not (Test-Path $mapEnvPath)) {
         Write-Host "Seeded map.env from map.env.example - edit DAYZ_MISSION on the box + restart to switch maps"
     } else {
         Write-Host "map.env  Missing  (-Fix will seed it from map.env.example)"
+    }
+}
+
+# serverDZ.cfg is prestart-generated (Apply-ServerCfg). prestart runs before every start so it
+# normally exists by the time the engine reads it - but prestart SKIPS the compiler when pwsh
+# is absent, and a box with no serverDZ.cfg does not boot at all. Render it once here, with the
+# same engine, so the file can never be missing. Present = leave it; prestart owns it from then on.
+$serverCfgPath  = Join-Path $ServerDir "serverDZ.cfg"
+$applyServerCfg = Join-Path $ServerDir "Apply-ServerCfg.ps1"
+if (-not (Test-Path $serverCfgPath)) {
+    if ($Fix -and (Test-Path $applyServerCfg)) {
+        & $applyServerCfg -ServerDir $ServerDir -Fix
+    } else {
+        Write-Host "serverDZ.cfg  Missing  (-Fix renders it from serverDZ.cfg.template + host.env + server-settings.json)"
     }
 }
 

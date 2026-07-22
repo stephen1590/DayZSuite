@@ -99,6 +99,15 @@ if [ -f "$SERVER/Apply-ConfigOverrides.ps1" ] && command -v pwsh >/dev/null 2>&1
     pwsh -NoProfile -File "$SERVER/Apply-ConfigOverrides.ps1" -ServerDir "$SERVER" -Fix || true
 fi
 
+# Rebuild serverDZ.cfg = serverDZ.cfg.template + host.env passwords + server-settings.json's
+# allowlisted toggles. Runs right AFTER Apply-ConfigOverrides so a web edit to
+# server-settings.json is already patched in before we read it. The renderer refuses to write
+# a half-rendered file (missing host.env, leftover placeholder), so the worst case is the
+# previous serverDZ.cfg surviving unchanged - and the `|| true` keeps it off the boot path.
+if [ -f "$SERVER/Apply-ServerCfg.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Apply-ServerCfg.ps1" -ServerDir "$SERVER" -Fix || true
+fi
+
 # Bubaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Compose the
 # fixed file from the ACTIVE map's source so a map switch can never leave the previous map's
 # spawns; a map with no source (or a corrupt one) gets an empty-but-valid file (spawns nothing).
