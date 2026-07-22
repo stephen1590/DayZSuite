@@ -562,3 +562,9 @@
   /* A field shown under a friendlier name than the game's own key. Dotted underline + help
      cursor so it reads as an alias; the tooltip carries the real cfg key. */
   .fld .k.renamed { text-decoration: underline dotted color-mix(in srgb, var(--fg) 40%, transparent); text-underline-offset: 3px; cursor: help; }
+
+  /* "Other links" in the Mod Docs sidebar: real anchors, so they need the side-item look
+     without the default link styling, plus an arrow marking that they leave the app. */
+  .side-item.doc-link { text-decoration: none; color: inherit; }
+  .side-item.doc-link .ext { font-size: 11px; color: var(--faint); flex: none; }
+  .side-item.doc-link:hover .ext { color: var(--accent); }

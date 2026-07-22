@@ -1,0 +1,40 @@
+{
+    "_readme": "External reference links shown as an 'Other links' group at the bottom of the Mod Docs tab. Everything else in that tab is a doc file read off the box out of an @mod folder; these are the off-box sources those mods come from, kept here so the answer to 'where is this documented?' lives next to the docs themselves instead of in someone's bookmarks. Add a link = add one row. Only http/https URLs are rendered - anything else is dropped by the UI. This file ships with the ConfigViewer deploy (static asset, no API involvement), so adding a link needs no Api redeploy.",
+    "links": [
+        {
+            "name": "DayZ Expansion - Scripts",
+            "url": "https://github.com/salutesh/DayZ-Expansion-Scripts",
+            "note": "Source for the @expansion* mods. The authority on Expansion settings files and their fields."
+        },
+        {
+            "name": "DayZ Expansion - Missions",
+            "url": "https://github.com/ExpansionModTeam/DayZ-Expansion-Missions",
+            "note": "Per-map Expansion mission templates. Our expansion_types.xml / expansion_spawnabletypes.xml come from here."
+        },
+        {
+            "name": "VPP Admin Tools",
+            "url": "https://github.com/VanillaPlusPlus/VPP-Admin-Tools",
+            "note": "Source for @vppadmintools - permissions, SuperAdmins.txt, the server-status webhook that feeds our FPS metric."
+        },
+        {
+            "name": "VPP Admin Tools - Wiki",
+            "url": "https://github.com/VanillaPlusPlus/VPP-Admin-Tools/wiki",
+            "note": "Setup and permission-group reference for VPP."
+        },
+        {
+            "name": "DayZ Modding Wiki (StarDZ)",
+            "url": "https://stardz-team.github.io/DayZ-Modding-Wiki/",
+            "note": "Community wiki - Enforce Script, config files, server admin. Broad but self-described pre-alpha and AI-assisted; verify before acting on it."
+        },
+        {
+            "name": "dzconfig - serverDZ.cfg",
+            "url": "https://dzconfig.com/wiki/serverdz",
+            "note": "Field-by-field serverDZ.cfg reference. The one to check before adding a parameter to server-settings.json."
+        },
+        {
+            "name": "dzconfig - Wiki index",
+            "url": "https://dzconfig.com/wiki",
+            "note": "types.xml, events, spawnabletypes and the rest of the Central Economy."
+        }
+    ]
+}

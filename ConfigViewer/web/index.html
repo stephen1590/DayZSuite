@@ -476,6 +476,8 @@ import { detectLang, highlight } from './js/highlight.js';
   let docsData = null;      // [{mod, path, name}] after first fetch
   let docsSel = null;       // selected doc path
   let docsLoadSeq = 0;
+  let modLinks = null;      // mod-links.json: off-box reference URLs, shown under the doc groups
+  let modLinksTried = false;
 
   // A deep link (#docs/<path>) stashes its target in pendingDoc; open it once the list is in.
   // With nothing pending, reflect whatever's already open in the URL (symmetry with the map tab).
@@ -488,6 +490,13 @@ import { detectLang, highlight } from './js/highlight.js';
     if (docsData && !force) { renderDocsNav(); consumePendingDoc(); return; }
     const seq = ++docsLoadSeq;
     el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">Loading…</span>';
+    if (!modLinksTried) {
+      modLinksTried = true;
+      try {
+        const lr = await fetch('mod-links.json', { cache: 'no-cache' });
+        if (lr.ok) modLinks = await lr.json();
+      } catch { modLinks = null; }
+    }
     try {
       const r = await apiPost('/dayz/docs/list', cred);
       if (seq !== docsLoadSeq) return;
@@ -502,9 +511,34 @@ import { detectLang, highlight } from './js/highlight.js';
     consumePendingDoc();
   }
 
+
+  // "Other links" - external references from mod-links.json. Rendered LAST, collapsed by
+  // default, and only for http/https URLs: this file is editable config, and an anchor will
+  // happily run a javascript: URL if you let it.
+  function renderLinksGroup() {
+    const rows = (modLinks && Array.isArray(modLinks.links) ? modLinks.links : []).filter((l) => {
+      if (!l || typeof l.url !== 'string' || typeof l.name !== 'string' || !l.name) return false;
+      // Parsed with NO base on purpose: these are off-box references, so the URL must be
+      // absolute. Resolving against location.href would quietly turn a typo like
+      // "github.com/foo" - or any junk string - into a same-origin link that 404s our own site.
+      try { const u = new URL(l.url); return u.protocol === 'https:' || u.protocol === 'http:'; }
+      catch { return false; }
+    });
+    if (!rows.length) return '';
+    const items = rows.map((l) =>
+      '<a class="side-item doc-link" href="' + attr(l.url) + '" target="_blank" rel="noopener noreferrer external"' +
+      ' title="' + attr(l.note ? l.note + '\n' + l.url : l.url) + '">' +
+      '<span class="fn">' + escapeHtml(l.name) + '</span><span class="ext" aria-hidden="true">\u2197</span></a>').join('');
+    return '<details class="side-grp" data-g="__links"><summary>Other links' +
+      '<span class="side-count">' + rows.length + '</span></summary>' + items + '</details>';
+  }
+
   function renderDocsNav() {
+    // Links render even when the box has no mod docs at all - they are the fallback answer to
+    // "where is this documented?", so an empty docs list is exactly when they matter most.
+    const linksHtml = renderLinksGroup();
     if (!docsData || !docsData.length) {
-      el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">No mod docs found.</span>';
+      el.docsNav.innerHTML = '<span class="meta" style="padding:10px;display:block">No mod docs found.</span>' + linksHtml;
       return;
     }
     const byMod = new Map();
@@ -520,7 +554,7 @@ import { detectLang, highlight } from './js/highlight.js';
       html += '<details class="side-grp"' + (open ? ' open' : '') + ' data-g="' + attr(mod) + '"><summary>' +
         escapeHtml(mod.replace(/^@/, '')) + '<span class="side-count">' + list.length + '</span></summary>' + rows + '</details>';
     }
-    el.docsNav.innerHTML = html;
+    el.docsNav.innerHTML = html + linksHtml;
   }
 
   async function openDoc(path) {
