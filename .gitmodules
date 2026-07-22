@@ -1,3 +1,6 @@
 [submodule "StaticishSite/themes/hugo-book"]
 	path = StaticishSite/themes/hugo-book
 	url = https://github.com/alex-shpak/hugo-book
+[submodule "StaticishSite/external/DayZ-Modding-Wiki"]
+	path = StaticishSite/external/DayZ-Modding-Wiki
+	url = https://github.com/StarDZ-Team/DayZ-Modding-Wiki.git
