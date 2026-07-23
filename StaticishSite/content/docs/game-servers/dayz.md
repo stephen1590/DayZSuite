@@ -5,9 +5,9 @@ weight: 10
 
 ## DayZ - *Commie Lobby*
 
-A modded **DayZ** dedicated server running on a dedicated box. Hostile AI, admin
-tooling, and a scheduled restart cycle keep the map fresh without wiping your
-progress.
+A modded **DayZ** dedicated server running on a dedicated box. DayZ-Expansion,
+dynamic missions and airdrops, admin tooling, and a scheduled restart cycle keep
+the map fresh without wiping your progress.
 
 ### Connect
 
@@ -50,16 +50,21 @@ progress.
 These run server-side - DayZ pulls whatever your client needs automatically when
 you connect.
 
-| Mod                          | Role                                             | Workshop                                                                                   |
-| ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| **Community Framework (CF)** | Required framework dependency for the other mods | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036)            |
-| **VPPAdminTools**            | Server administration & moderation tools         | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124)            |
-| **AI Bandits**               | Hostile roaming AI - patrols and ambushes        | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769)            |
-| **Knock Knock**              | AI Bandits add-on - currently off (config)       | [3638393043](https://steamcommunity.com/sharedfiles/filedetails/?id=3638393043)            |
-| **AIB Unleashed**            | AI Bandits add-on (expanded AI)                  | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844)            |
-| **AI Bandit Voices**         | AI Bandits add-on - voice lines for the bandits  | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) |
-| **Code Lock**                | Combination locks for doors, gates, and stashes  | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754)            |
-| **DayZ-Dog**                 | Tameable companion dogs                          | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750)            |
+| Mod                          | Role                                             | Workshop                                                                                   | Status   |
+| ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------- |
+| **Community Framework (CF)** | Required framework dependency for the other mods | [1559212036](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036)            | Enabled  |
+| **VPPAdminTools**            | Server administration & moderation tools         | [1828439124](https://steamcommunity.com/sharedfiles/filedetails/?id=1828439124)            | Enabled  |
+| **Code Lock**                | Combination locks for doors, gates, and stashes  | [1646187754](https://steamcommunity.com/sharedfiles/filedetails/?id=1646187754)            | Enabled  |
+| **AI Bandits**               | Hostile roaming AI - patrols and ambushes        | [3628006769](https://steamcommunity.com/sharedfiles/filedetails/?id=3628006769)            | Disabled |
+| **Knock Knock**              | AI Bandits add-on                                | [3638393043](https://steamcommunity.com/sharedfiles/filedetails/?id=3638393043)            | Disabled |
+| **AIB Unleashed**            | AI Bandits add-on (expanded AI)                  | [3682348844](https://steamcommunity.com/sharedfiles/filedetails/?id=3682348844)            | Disabled |
+| **AI Bandit Voices**         | AI Bandits add-on - voice lines for the bandits  | [3679500367](https://steamcommunity.com/sharedfiles/filedetails/?id=3679500367) (delisted) | Disabled |
+| **DayZ-Dog**                 | Tameable companion dogs                          | [2471347750](https://steamcommunity.com/sharedfiles/filedetails/?id=2471347750)            | Disabled |
+
+> [!NOTE]
+> The **Disabled** mods above are switched off on the server right now, so your client
+> is not asked to download them. They stay listed here because they have run before and
+> may return.
 
 #### DayZ-Expansion
 
@@ -94,28 +99,29 @@ A separate mod family - 20 pieces, each its own Workshop item, all required for 
 
 ### Gameplay notes
 
-- **AI Bandits** roam the whole map. Patrols, ambushes, and dug-in groups spread
-  across settlements and points of interest - not clustered in one place. Don't
-  treat any quiet stretch as safe. (See **Bandits** below for what you're up
-  against.)
-- **More bandits, more places** - bandit coverage recently expanded. More groups
-  seeded at more locations across Sakhal - settlements, landmarks, and chokepoints
-  alike. The extra pressure comes from **more spawn points**, not bigger packs.
-  The map feels lived-in - and dangerous - wherever you go.
 - **The world persists** - bases, vehicles, and stashed loot survive restarts
   (central economy). Build like you mean to keep it.
-- **Accelerated day/night cycle** - a full day/night takes **6 hours real time**:
-  **3 pars daylight, 1 part night**. Plan supply runs and bandit-territory
-  crossings around it - night falls faster than you'd expect.
+- **Dynamic missions and airdrops** - DayZ-Expansion seeds timed events across the
+  map: contamination zones, airdrops, and quest objectives. Some are AI-defended -
+  worth the risk for the gear, not a free grab.
+- **Accelerated day/night cycle** - a full day/night runs about **2 hours real
+  time**: roughly **90 minutes of daylight, 30 minutes of night**. Night falls
+  faster than you'd expect, so plan supply runs around it.
 - **Traders** - buy and sell gear for in-game currency at **safezone** trader points
   (part of the DayZ-Expansion market). No fighting inside the zone.
 - **Code locks** - lock doors, gates, and stashes with a combination code instead of
   a key. Don't forget the code.
-- **Dogs** - tameable companion dogs are in the world. Befriend one and it'll travel
-  with you. (Some bandit groups run dogs too - a bark in the treeline isn't always
-  friendly.)
+- **AI Bandits** *(currently disabled)* - hostile roaming AI that patrol, ambush, and
+  dig into settlements across the map. Switched off on the server right now - see
+  **Bandits** below for what they bring when they are on.
+- **Dogs** *(currently disabled)* - the DayZ-Dog mod adds tameable companion dogs.
+  Switched off on the server right now.
 
 ### Bandits - know what you're walking into
+
+> [!NOTE]
+> **AI Bandits are currently disabled on the server.** The tiers below describe what
+> they bring when the mod is switched back on.
 
 Not every bandit is the same fight. Roughly, from most to least dangerous:
 
@@ -126,17 +132,17 @@ Not every bandit is the same fight. Roughly, from most to least dangerous:
    the open, but beatable with cover and a working firearm.
 3. **Settlement holdouts** - smaller armed bands squatting in populated areas.
    Still deadly in numbers, but less disciplined than the raiders.
-4. **Scavengers & stragglers** *(new)* - no firearm at all: just a blade (knife,
-   machete, or a bat), usually in pairs. Dangerous only up close.
-5. **Desperates** *(new)* - the bottom rung: no gun at all, just fists or a crude
-   club, almost always alone and barely a threat. Wretched, cornered, and carrying
-   next to nothing - but a safe first kill.
+4. **Scavengers & stragglers** - no firearm at all: just a blade (knife, machete, or
+   a bat), usually in pairs. Dangerous only up close.
+5. **Desperates** - the bottom rung: no gun at all, just fists or a crude club,
+   almost always alone and barely a threat. Wretched, cornered, and carrying next to
+   nothing - but a safe first kill.
 
 > [!TIP]
-> The new **scavenger** and **desperate** spawns are deliberately **more forgiving** -
-> small, poorly armed, and easy to catch off guard. If you're fresh off the coast or
-> short on gear, they're the safest way to pick a fight (and grab some loot) without
-> getting instantly wiped.
+> When bandits are on, the **scavenger** and **desperate** tiers are deliberately
+> **more forgiving** - small, poorly armed, and easy to catch off guard. If you're
+> fresh off the coast or short on gear, they're the safest way to pick a fight
+> without getting instantly wiped.
 
 ### Restarts
 
