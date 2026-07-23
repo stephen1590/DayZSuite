@@ -107,6 +107,14 @@ fi
 if [ -f "$SERVER/Apply-ServerCfg.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Apply-ServerCfg.ps1" -ServerDir "$SERVER" -Fix || true
 fi
+# If the cfg STILL doesn't exist here, the engine cannot boot and Restart=always will loop
+# forever - that exact loop happened 2026-07-23 (renderer refused on a blank admin password
+# while serverDZ.cfg was absent, so every boot failed with nothing naming the cause). We do
+# NOT exit (prestart never blocks boot by doctrine; the engine fails either way) - but this
+# line turns a mystery loop into a named error in journalctl.
+if [ ! -f "$SERVER/serverDZ.cfg" ]; then
+    echo "prestart: FATAL - serverDZ.cfg is missing and Apply-ServerCfg could not render it (check host.env: DEPLOY_ADMIN_PASSWORD must be non-empty; DEPLOY_SERVER_PASSWORD= empty is fine = open server). The engine cannot start without it - this boot WILL fail and systemd will keep retrying." >&2
+fi
 
 # Bubaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Compose the
 # fixed file from the ACTIVE map's source so a map switch can never leave the previous map's
@@ -144,6 +152,15 @@ fi
 # in profiles/ExpansionMod/AIPatrols.control.json (enabled). Fail-soft + `|| true`.
 if [ -f "$SERVER/Build-AIPatrols.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AIPatrols.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+fi
+
+# Map inversion Phase 2 (2026-07-23): derive the Map tab's point store FROM the active
+# mission's live AILocationSettings/AIPatrolSettings (the web-edited truth). Writes
+# profiles/AI_Shared/map-points.generated.json - registry 'generated', read-only in the UI.
+# The authored map-points.json is frozen (archive/) and no longer rendered. Fail-soft +
+# `|| true`: can never block boot; an unparseable source leaves the previous store untouched.
+if [ -f "$SERVER/Build-MapPoints.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-MapPoints.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
 # Common custom CE types (modded items, e.g. CodeLock): copy the map-agnostic custom_types.xml

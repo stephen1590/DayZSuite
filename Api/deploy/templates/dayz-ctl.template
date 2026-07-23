@@ -10,7 +10,7 @@ set -euo pipefail
 UNIT='__UNIT__'
 SERVER_DIR='__SERVER_DIR__'
 RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
-CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath<TAB>group<TAB>label<TAB>ro" file allowlist (config-registry.json, DayZ-Server repo)
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind" file allowlist (config-registry.json, DayZ-Server repo); kind = the registry 'web' value (view/file/patch/types/...) - types-write gates on kind 'types'
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
@@ -222,19 +222,21 @@ _override_generated_hits() {
 
 # Emit the full set of retrievable configs, one file per line, TAB-separated:
 #   group <TAB> name <TAB> relpath <TAB> label <TAB> ro
-# Sources: explicit files (CONFIG_MAP "name<TAB>relpath<TAB>group<TAB>label<TAB>ro") and
-# every real file under each allowlisted folder (CONFIG_DIRS "group<TAB>reldir").
+# Sources: explicit files (CONFIG_MAP "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind")
+# and every real file under each allowlisted folder (CONFIG_DIRS "group<TAB>reldir").
 # `find -type f` does NOT follow symlinks, so nothing outside a folder is listed.
-# ro='1' marks a read-only surface (web:'view'); the editor locks it. Folder files
-# are always ro='0'. This is the ONE authority for what may be read: a config request
-# must name a relpath this function produced, so no caller-invented path can ever escape.
+# ro='1' marks a read-only surface (web:'view'); the editor locks it. kind is the registry
+# 'web' value (view/file/patch/types/...) so the editor can pick a surface-specific view and
+# types-write can gate on kind 'types'. Folder files are always ro='0', kind 'file'. This is
+# the ONE authority for what may be read: a config request must name a relpath this function
+# produced, so no caller-invented path can ever escape.
 emit_allowed() {
   if [ -n "$CONFIG_MAP" ]; then
-    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel _grp _label _ro; do
+    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel _grp _label _ro _kind; do
       [ -n "$_name" ] || continue
       [ -n "$_grp" ]   || _grp='General'
       [ -n "$_label" ] || _label="$_name"
-      printf '%s\t%s\t%s\t%s\t%s\n' "$_grp" "$_name" "$_rel" "$_label" "${_ro:-0}"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_grp" "$_name" "$_rel" "$_label" "${_ro:-0}" "${_kind:-file}"
     done
   fi
   if [ -n "$CONFIG_DIRS" ]; then
@@ -264,7 +266,7 @@ emit_allowed() {
             fi
             _n=$((_n + 1))
             [ "$_n" -le 1000 ] || break
-            printf '%s\t%s\t%s\t%s\t0\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
+            printf '%s\t%s\t%s\t%s\t0\tfile\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
           done
         } || true
       done
@@ -566,14 +568,15 @@ case "$verb" in
     ;;
 
   config-list)
-    # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro" for every retrievable config: explicit
-    # files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
+    # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind" for every retrievable config:
+    # explicit files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
     # a file across its read alias, folder listing and any config-overrides target; ro='1'
-    # tells the editor to lock the row read-only. No caller input reaches this — pure
-    # enumeration of the rendered allowlist. Hard-capped at 3000 lines so the reply can never
+    # tells the editor to lock the row read-only; kind (the registry 'web' value) lets it pick a
+    # surface-specific view (e.g. 'types' -> the CE types editor). No caller input reaches this —
+    # pure enumeration of the rendered allowlist. Hard-capped at 3000 lines so the reply can never
     # overflow the API's 1MB read buffer (retrieval still works for names past the cap —
     # `config` matches the full set, not this list).
-    emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4"\t"$3"\t"$5}' | head -n 3000 || true
+    emit_allowed | awk -F'\t' 'NF>=5{print $1"\t"$2"\t"$4"\t"$3"\t"$5"\t"$6}' | head -n 3000 || true
     ;;
 
   config-generated)
@@ -909,6 +912,98 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     echo ok
     ;;
 
+  types-read)
+    # types-read <name> — print ONE kind-'types' file: line 1 = its sha256 (the version the
+    # editor passes back to types-write as base=), the rest = the RAW contents. Raw on purpose,
+    # unlike print_config_file's redaction backstop: the editor round-trips this content into
+    # types-write, so a masked byte would be saved back masked. Safe because the allowlist here
+    # is ONLY kind-'types' CONFIG_MAP rows (CE types XML - no secret-bearing file can be one).
+    [ -n "$arg" ] || die "types-read needs a name"
+    case "$arg" in *[!A-Za-z0-9_.-]*) die "invalid types name" ;; esac
+    rel="$(printf '%s\n' "$CONFIG_MAP" | awk -F'\t' -v n="$arg" '$1==n && $6=="types"{print $2; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: not a types surface: $arg" >&2; exit 2; }
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: types file not present: $rel" >&2; exit 2; }
+    base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$real" in "$base"/*) ;; *) die "types file resolved outside the server dir" ;; esac
+    sz="$(wc -c < "$file")"
+    [ "$sz" -le 786432 ] || { echo "dayz-ctl: types file too large ($sz bytes): $rel" >&2; exit 3; }
+    sha256sum "$file" | awk '{print $1}'
+    cat "$file"
+    ;;
+
+  types-write)
+    # types-write <xml|-> <name> [base=<sha256>] — REPLACE one CE types file whole (the
+    # ConfigViewer types editor computed it: base file + the edited <type> override blocks).
+    # ARG ORDER: the document rides $2 like every stdin write verb (override-write/spawn-write) -
+    # the API's ctlStdin always places '-' at $2 - so the NAME comes third. The name must be a
+    # CONFIG_MAP row of kind 'types' (registry web:'types' - this verb is the ONLY writer for
+    # those rows; file-write/override-write can't reach them). The path comes from the map,
+    # NEVER the caller. Replace-only (the file is seeded by the deploy - a typo'd name can't
+    # create files). '-' = read the document from stdin: the tuning file is ~73KB and grows per
+    # override, and Linux caps one argv string at ~128KB (MAX_ARG_STRLEN). Same 2MB cap +
+    # base= optimistic concurrency as override-write.
+    # Validated STRUCTURALLY before the write: well-formed XML, root <types>, every child
+    # element a <type name="...">  - so a half-pasted document can never reach the CE.
+    # Takes effect at the next restart (prestart Apply-CustomCE copies it into the mission).
+    name="${3:-}"
+    [ -n "$name" ] || die "types-write needs a name"
+    case "$name" in *[!A-Za-z0-9_.-]*) die "invalid types name" ;; esac
+    rel="$(printf '%s\n' "$CONFIG_MAP" | awk -F'\t' -v n="$name" '$1==n && $6=="types"{print $2; exit}')"
+    [ -n "$rel" ] || { echo "dayz-ctl: not a types surface: $name" >&2; exit 2; }
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: types file not present: $rel" >&2; exit 2; }
+    # Defence in depth: the CURRENT file must resolve under the server dir (symlink guard).
+    base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$real" in "$base"/*) ;; *) die "types file resolved outside the server dir" ;; esac
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
+    [ -n "$arg" ] || die "types-write needs the new document"
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 2097152 ] || die "types-write: too large ($sz bytes)"
+    # Structural validation. python3 checks shape (root <types>, only <type name=...> children -
+    # comments are skipped by ElementTree, so the header comment passes); xmllint fallback proves
+    # well-formedness only. No validator on the box = refuse: never write an unparsed CE file.
+    if command -v python3 >/dev/null 2>&1; then
+      printf '%s' "$arg" | python3 -c '
+import sys, xml.etree.ElementTree as ET
+r = ET.fromstring(sys.stdin.read())
+assert r.tag == "types", "root element must be <types>"
+for c in r:
+    assert c.tag == "type" and c.get("name"), "every child must be <type name=...>"
+' 2>/dev/null || die "types-write: input is not a valid CE types document (root <types>, only <type name=...> children)"
+    elif command -v xmllint >/dev/null 2>&1; then
+      printf '%s' "$arg" | xmllint --noout - 2>/dev/null || die "types-write: input is not well-formed XML"
+    else
+      die "types-write: no XML validator (python3/xmllint) on the box"
+    fi
+    # Optimistic concurrency: the caller may pass base=<sha256> (the version it loaded); if the
+    # file changed since, another admin wrote first — refuse with the same DISTINCT exit (5) as
+    # override-write so the editor says "reload" instead of silently clobbering.
+    _base='__none__'
+    for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
+    if [ "$_base" != '__none__' ]; then
+      _cur="$(sha256sum "$file" | awk '{print $1}')"
+      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    # Snapshot the outgoing version (keep the 30 newest per file - loot policy, same retention
+    # as the overrides document), owner restored.
+    TYPES_VERSIONS="$SERVER_DIR/.types-versions"
+    mkdir -p "$TYPES_VERSIONS"
+    cp -p "$file" "$TYPES_VERSIONS/$name.$(date -u +%Y%m%dT%H%M%S%NZ).xml"
+    find "$TYPES_VERSIONS" -maxdepth 1 -name "$name.*.xml" | sort -r | tail -n +31 \
+      | while IFS= read -r _old; do rm -f "$_old"; done
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    [ -n "$_own" ] && chown -R "$_own" "$TYPES_VERSIONS" 2>/dev/null || true
+    tmp="$(mktemp "$SERVER_DIR/.types-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$file"
+    printf 'ok\n%s\n' "$(sha256sum "$file" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
+    ;;
+
   override-rollback)
     # override-rollback <version> — restore a snapshot (snapshots the current file first, so a
     # rollback is itself reversible). <version> validated to timestamp characters only.
@@ -961,6 +1056,6 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write types-read types-write update-arm update-disarm update-status mission-list)"
     ;;
 esac

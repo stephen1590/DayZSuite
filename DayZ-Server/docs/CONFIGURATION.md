@@ -9,7 +9,7 @@ need one at all), gitignored, copied from `host.env.example`, and never committe
 | Key | Used by | Notes |
 |---|---|---|
 | `DEPLOY_USER` / `DEPLOY_GROUP` / `DEPLOY_HOME` | `Deploy-DayZServer.ps1` | Rendered into the systemd unit template (`{{DEPLOY_USER}}` etc.). Falls back to built-in defaults if unset. |
-| `DEPLOY_SERVER_PASSWORD` / `DEPLOY_ADMIN_PASSWORD` | `Deploy-DayZServer.ps1` | Rendered into `serverDZ.cfg`'s `password`/`passwordAdmin`. No default — deploy refuses to run until both are set. |
+| `DEPLOY_SERVER_PASSWORD` / `DEPLOY_ADMIN_PASSWORD` | `Apply-ServerCfg.ps1` (prestart, on the box) | Rendered into `serverDZ.cfg`'s `password`/`passwordAdmin` at every restart. `DEPLOY_SERVER_PASSWORD=` (key present, value empty) is a deliberate OPEN server; a MISSING key or a blank admin password refuses the render. |
 | `DEPLOY_STEAM_ACCOUNT` | `Deploy-DayZServer.ps1` (rendered into `update.sh`) | The Steam account that owns DayZ; steamcmd needs it to download the app/mods. No default. |
 
 Any value can be overridden per-invocation with the matching CLI flag (`-DeployUser`,

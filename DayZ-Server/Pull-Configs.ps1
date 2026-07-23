@@ -17,6 +17,9 @@
                                                                expansion/settings and anything else
                                                                so tagged. Registry-driven: adding a
                                                                mirrored surface is one line there.)
+      (inline)                   registry FILE rows tagged "mirror":"live" - pulled back INTO
+                                 their own 'seed' path (seed = latest mirror, the map-points
+                                 model; e.g. the web-edited expansion_types_tuning pair).
 
     Together these reconstruct every managed config: live file = frozen default + override
     patches; spawn points are their own store. Files the box never rewrites (seeds that were
@@ -132,11 +135,46 @@ Write-Host ("  {0} to pull, {1} in sync, {2} rejected{3}" -f $pulled, $same, $ba
 if ($bad) { Write-Warning "config-mirror: $bad file(s) rejected - the repo copy is unchanged for those." }
 Write-Host ""
 
+# --- LIVE file mirror (seed = latest mirror) ----------------------------------------------
+# FILE rows tagged "mirror":"live" (2026-07-23: the web-edited expansion_types_tuning pair) are
+# pulled back INTO their registry 'seed' path - the map-points model. NOT into config-mirror/:
+# the seed path already holds a copy of this exact file, and "one file, one mirror" (above)
+# forbids a second. The box copy must pass the row's 'check' parse before it may enter the repo,
+# so a half-written box file can never overwrite a good committed copy.
+$liveFileRows  = @($registry.surfaces | Where-Object { $_.mirror -eq 'live' -and $_.box })
+$liveFilePaths = @()
+Write-Host "--- Live file mirror (registry file rows -> their seed path) ---" -ForegroundColor Cyan
+$fPulled = 0; $fSame = 0; $fBad = 0
+foreach ($row in $liveFileRows) {
+    if (-not $row.seed) { Write-Warning "  SKIP $($row.name) - mirror:'live' file row has no seed path (nowhere to pull to)."; $fBad++; continue }
+    $text = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$($row.box)'" } | Out-String
+    if (-not $text.Trim()) { Write-Warning "  SKIP $($row.name) - box copy missing/empty ($($row.box))."; $fBad++; continue }
+    $ok = switch ([string]$row.check) {
+        'json'  { try { $null = $text | ConvertFrom-Json; $true } catch { $false } }
+        'xml'   { try { $null = [xml]$text;               $true } catch { $false } }
+        default { $false }   # a mirrored file row must declare a parse check - refuse unvalidated pulls
+    }
+    if (-not $ok) { Write-Warning "  SKIP $($row.name) - box copy does not parse as $($row.check)."; $fBad++; continue }
+    $dst = Join-Path $PSScriptRoot $row.seed
+    $liveFilePaths += $row.seed
+    $old = if (Test-Path $dst) { Get-Content -Raw -LiteralPath $dst } else { $null }
+    if ($old -eq $text) { $fSame++; continue }
+    $fPulled++
+    Write-Host ("  {0,-8} {1}" -f $(if ($null -ne $old) { 'CHANGED' } else { 'NEW' }), $row.seed)
+    if ($Execute) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+        Set-Content -LiteralPath $dst -Value $text -NoNewline -Encoding utf8
+    }
+}
+Write-Host ("  {0} to pull, {1} in sync, {2} rejected{3}" -f $fPulled, $fSame, $fBad, $(if (-not $Execute) { ' (dry-run)' } else { '' }))
+if ($fBad) { Write-Warning "live file mirror: $fBad file(s) rejected/skipped - the repo copy is unchanged for those." }
+Write-Host ""
+
 # Commit the pulled state so git history IS the backup ("commit the history on sync" —
 # user directive 2026-07-16; Deploy-DayZServer.ps1 -Fix does the same). Pathspec-limited:
 # only the mirrors this script pulls are committed, never unrelated working-tree changes.
 if ($Execute) {
-    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror')
+    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror') + $liveFilePaths
     git -C $PSScriptRoot add -- $mirrorPaths 2>$null
     if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
         git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths

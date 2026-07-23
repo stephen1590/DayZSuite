@@ -13,6 +13,9 @@ import { isOperator, getActiveMission, setActiveMission } from './state.js';
 // bigStringify/restoreBigInts (exact literals back out). The API server normalizes to bare
 // literals on disk. Plain JSON.parse/stringify remain ONLY for internal snapshots.
 import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
+// CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
+// own module with its OWN save path (configs/set-types), never config-overrides.json.
+import { renderTypesEditor, typesAnyDirty } from './types-editor.js';
 
 let shellHooks = { syncHash: () => {} };
 export function setEditorHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -58,7 +61,7 @@ let overridesLoaded = false;
 // Optimistic concurrency: the version hash config-overrides.json had when we loaded it. Sent
 // back on Save so the box rejects (409) if another admin wrote in between — no silent clobber.
 let ovrBaseVersion = null;
-export function isDirty() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
+export function isDirty() { return JSON.stringify(overridesDoc) !== savedSnapshot || typesAnyDirty(); }
 function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
 // Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
 function discardChanges() {
@@ -157,6 +160,10 @@ function buildRows(items, writable, doc, mission) {
     row.access = (MAP_STORE_SURFACES.has(c.name) || c.readonly) ? 'lock'   // Map-store or view-only: RO here
       : w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
     if (c.readonly) row.readonly = true;
+    // c.kind 'types' (registry web:'types') = a CE types file the types-table editor writes via
+    // its OWN save path (configs/set-types). access stays 'edit' but renderBody/editorChrome
+    // branch to the types view; the standard Save-deltas chrome never renders for these rows.
+    if (c.kind === 'types' && !c.readonly) row.types = true;
     if (w) row.writableName = w.name;
     byRel.set(rel, row); list.push(row);
   }
@@ -246,7 +253,8 @@ function renderFilesNav() {
     }
     const rowHtml = (r) => {
       const n = ownLayerCount(r);   // a mission row counts ONLY its own layer; common has its own row
-      const badge = n > 0 ? '<span class="ovr-badge">' + n + '</span>'
+      const badge = r.types ? '<span class="own-badge">rw</span>'
+        : n > 0 ? '<span class="ovr-badge">' + n + '</span>'
         : r.access === 'own' ? '<span class="own-badge">rw</span>'
         : r.access === 'lock' ? '<span class="ro-badge">ro</span>' : '';
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
@@ -278,7 +286,7 @@ function selectRow(key) {
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
   if (row.access === 'own') { selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
-  ovrView = row.kind === 'other' ? 'file' : 'fields';
+  ovrView = row.types ? 'types' : row.kind === 'other' ? 'file' : 'fields';
   renderFilesNav();
   showFilesSurface();
   el.edEmpty.classList.add('hidden');
@@ -375,7 +383,22 @@ async function fetchDefaultFile(row) {
 }
 
 // ===================== the Fields ⇄ File editor =====================
+// Chrome for a types row: its own segment pair (the types editor owns Save/Discard in its own
+// toolbar, so the overrides Save-deltas / Discard buttons NEVER render here — they act on
+// config-overrides.json, a different document).
+function typesChrome(row) {
+  return '<div class="ovr-phead">' +
+    '<div class="ovr-ppath"><span class="crumb">files/</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
+    '<div class="ovr-pact">' +
+      '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+      '<div class="seg" id="ovrSeg"><button data-v="types" class="' + (ovrView === 'types' ? 'on' : '') + '">Types editor</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>' +
+      '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
+    '</div></div>' +
+    '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>web-edited CE types override layer — each entry fully replaces the same-named upstream type</span>' +
+    '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
+}
 function editorChrome(row) {
+  if (row.types) return typesChrome(row);
   const eff = effectivePatches(row);
   const nOver = eff.size;
   const locked = row.access === 'lock';
@@ -406,7 +429,7 @@ function editorChrome(row) {
     '<div class="ovr-sum">' + summary + '<span class="stat" style="margin-left:auto">' + (locked ? '' : 'Restart to apply') + '</span></div>';
 }
 function editorFoot(row) {
-  if (row.access === 'lock') return '';
+  if (row.access === 'lock' || row.types) return '';   // types rows: the note below is about override DELTAS, wrong for a whole-file writer
   return '<div class="ovr-note" style="border-top:1px solid var(--border);border-bottom:none">' +
     '<b style="color:var(--delta)">Deltas only.</b> The whole file shows for context — Save writes just your changes to <span class="mono">config-overrides.json</span>.</div>';
 }
@@ -430,6 +453,17 @@ async function renderEditor() {
 }
 async function renderBody(row) {
   const body = $('ovrBody'); if (!body) return;
+  // Types rows: the table editor is its own view with its own load/save (types-editor.js).
+  // The 'file' segment still falls through to the normal read-only whole-file view below.
+  if (row.types && ovrView !== 'file') {
+    body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading types…</span>';
+    const text = await renderTypesEditor(row, body, {
+      onDirty: updateDirtyUi,
+      onSaved: () => { delete fileCache['f|' + row.key]; },   // the File view refetches the saved doc
+    });
+    if (text != null && selKey === row.key) lastFileText = text;   // feed the Copy button
+    return;
+  }
   body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading file…</span>';
   const [file, def] = await Promise.all([fetchRowFile(row), row.access === 'lock' ? { text: null } : fetchDefaultFile(row)]);
   if (selKey !== row.key) return;                    // selection changed while awaiting

@@ -95,7 +95,7 @@ if (-not (Test-Path $registryPath)) {
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {
     if ($_.dir) { [pscustomobject]@{ group = $_.group; dir = $_.dir; subfolders = $_.subfolders } }
-    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view') } }
+    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view'); kind = "$($_.web)" } }
 }
 $fileEntries  = @($allConfigs | Where-Object { $_.path })
 $dirEntries   = @($allConfigs | Where-Object { $_.dir -and -not $_.path })
@@ -106,6 +106,9 @@ foreach ($c in $fileEntries) {
     # so neither may carry a TAB or newline (a group with a tab would split into a phantom field).
     if ("$($c.label)" -match "[`t`n]") { throw "Api Configs: label for '$($c.name)' must not contain tabs/newlines: '$($c.label)'." }
     if ("$($c.group)" -match "[`t`n]") { throw "Api Configs: group for '$($c.name)' must not contain tabs/newlines: '$($c.group)'." }
+    # kind rides the TAB-delimited CONFIG_MAP verbatim and dayz-ctl gates types-write on it -
+    # anything but a bare lowercase word is either a typo'd registry 'web' value or an injection.
+    if ("$($c.kind)" -notmatch '^[a-z]+$') { throw "Api Configs: web kind for '$($c.name)' must be a lowercase word: '$($c.kind)'." }
 }
 foreach ($c in $dirEntries) {
     if (-not "$($c.group)".Trim()) { throw "Api Configs: folder entry for dir '$($c.dir)' needs a 'group' label." }
@@ -116,15 +119,17 @@ foreach ($c in $dirEntries) {
         if ("$s" -match "[,`t`n]") { throw "Api Configs: subfolder must not contain comma/tab/newline: '$s' (in '$($c.group)')." }
     }
 }
-# CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro". name is the API key (stable);
-# group + label are display-only (default 'General' / name) and ro='1' locks the row read-only
-# in the editor (web:'view' surfaces). dayz-ctl parses all five; config/config-target still key
-# off fields 1-2, so appending 3-5 is backward-safe.
+# CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind". name is the API key
+# (stable); group + label are display-only (default 'General' / name); ro='1' locks the row
+# read-only in the editor (web:'view' surfaces); kind is the registry 'web' value verbatim so
+# dayz-ctl types-write can gate on kind 'types' and the editor can pick a surface-specific
+# view. dayz-ctl parses all six; config/config-target still key off fields 1-2, so appending
+# 3-6 is backward-safe.
 $configMap  = ($fileEntries | ForEach-Object {
     $g   = if ("$($_.group)".Trim()) { "$($_.group)".Trim() } else { 'General' }
     $lbl = if ("$($_.label)".Trim()) { "$($_.label)".Trim() } else { "$($_.name)" }
     $ro  = if ($_.ro) { '1' } else { '0' }
-    "$($_.name)`t$($_.path)`t$g`t$lbl`t$ro"
+    "$($_.name)`t$($_.path)`t$g`t$lbl`t$ro`t$($_.kind)"
 }) -join "`n"
 # CONFIG_DIRS: "group<TAB>reldir<TAB>subfolders". Files come from the dir root
 # (non-recursive) plus each named subfolder's root. Empty subfolders = root only.

@@ -249,6 +249,34 @@ foreach ($m in $missions) {
         } catch { Show-Fail "$locRel for $m - invalid JSON: $($_.Exception.Message)" }
     }
 
+    # Map inversion Phase 2: Build-MapPoints derives the Map tab's store FROM the live AI
+    # settings (the reverse direction of the two draft builders above). Assert the store
+    # parses AND accounts for every source entry: locations 1:1 with RoamingLocations,
+    # patrols + objectPatrols summing to Patrols with the object-class split exact - a
+    # dropped patrol here would silently vanish from the Phase 3 map.
+    if ((Test-Path $patLive) -or (Test-Path $locLive)) {
+        try { $null = & (Join-Path $PSScriptRoot "Build-MapPoints.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
+        catch { Show-Fail "Build-MapPoints threw for ${m}: $($_.Exception.Message)" }
+        $mpP = Join-Path $StagingDir "profiles/AI_Shared/map-points.generated.json"
+        if (-not (Test-Path $mpP)) { Show-Fail "map-points.generated.json not produced for $m" }
+        else {
+            try {
+                $mp = Get-Content -Raw $mpP | ConvertFrom-Json
+                $srcLocN = if (Test-Path $locLive) { @((Get-Content -Raw $locLive | ConvertFrom-Json).RoamingLocations).Count } else { 0 }
+                $srcPats = if (Test-Path $patLive) { @((Get-Content -Raw $patLive | ConvertFrom-Json).Patrols) } else { @() }
+                $srcObjN = @($srcPats | Where-Object { "$($_.ObjectClassName)" }).Count
+                $gotLoc = @($mp.locations).Count; $gotPat = @($mp.patrols).Count; $gotObj = @($mp.objectPatrols).Count
+                # Positional patrols with zero waypoints are legitimately skipped (unplottable) -
+                # allow patrols <= positional source count, but the object-class split must be exact.
+                $srcPosN = $srcPats.Count - $srcObjN
+                if ($gotLoc -ne $srcLocN)      { Show-Fail "map-points.generated for ${m}: $gotLoc location(s) != $srcLocN in AILocationSettings" }
+                elseif ($gotObj -ne $srcObjN)  { Show-Fail "map-points.generated for ${m}: $gotObj objectPatrol(s) != $srcObjN object-class patrols in AIPatrolSettings" }
+                elseif ($gotPat -gt $srcPosN)  { Show-Fail "map-points.generated for ${m}: $gotPat patrol(s) > $srcPosN positional in AIPatrolSettings" }
+                else { Show-Pass "map-points.generated.json derived for $m ($gotLoc location(s), $gotPat patrol(s), $gotObj object patrol(s) - accounts for all source entries)" }
+            } catch { Show-Fail "map-points.generated.json for $m - invalid JSON: $($_.Exception.Message)" }
+        }
+    }
+
     # Bubaku: fixed-path spawner file from the active map's source (or empty-valid fallback).
     try { $null = & (Join-Path $deployDir "Build-BabakuSpawns.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
     catch { Show-Fail "Build-BabakuSpawns threw for ${m}: $($_.Exception.Message)" }
@@ -415,6 +443,68 @@ if (Test-Path $deployScript) {
         if ($unshipped.Count) { Show-Fail "Deploy `$items reference file(s) that the payload rsync never ships: $($unshipped -join ', ') - add them to the root-file list in Deploy-DayZServer.ps1" }
         else { Show-Pass "every '../' deploy payload source ($($needed.Count)) is in the rsync ship list" }
     }
+}
+
+# --- Web-edited CE types surfaces (registry web:'types') -------------------------------------
+# The Expansion tuning pair is BOX-OWNED, WEB-EDITED content (2026-07-23): dayz-ctl types-write
+# is the only writer, the deploy only seeds-if-missing, Pull-Configs mirrors the box copy back
+# into the seed path. Four seams can silently break that contract, so gate all four:
+#   1. the registry row shape - a types surface needs seed + mirror:'live' + check:'xml' (the
+#      pull refuses to mirror an unvalidated file, and a fresh box could not be seeded);
+#   2. the seed document itself - types-write enforces root <types> / <type name=...> children,
+#      so a seed failing the same shape could be seeded once but never saved again;
+#   3. the editor's hardcoded TYPES_BASE pairing (types-editor.js) - a types row the editor
+#      cannot pair with its base surface renders an empty merge view;
+#   4. single ownership - a seeded (box-owned) file must NEVER also sit in Deploy's $items ship
+#      list: shipping overwrites on drift, clobbering every web edit at the next deploy (the
+#      exact dual-ownership the tuning files had before the flip).
+Write-Host "`nValidating web-edited types surfaces (config-registry.json web:'types')" -ForegroundColor Cyan
+$reg = Get-Content -Raw (Join-Path $PSScriptRoot 'config-registry.json') | ConvertFrom-Json
+$typesRows = @($reg.surfaces | Where-Object { $_.web -eq 'types' })
+foreach ($row in $typesRows) {
+    if (-not $row.seed -or $row.mirror -ne 'live' -or $row.check -ne 'xml') {
+        Show-Fail "registry types row '$($row.name)' must carry seed + mirror:'live' + check:'xml' (seed='$($row.seed)' mirror='$($row.mirror)' check='$($row.check)')"
+    } else { Show-Pass "registry types row '$($row.name)' carries seed + mirror:'live' + check:'xml'" }
+    $seedPath = Join-Path $PSScriptRoot $row.seed
+    if (-not (Test-Path $seedPath)) { Show-Fail "types seed missing: $($row.seed)"; continue }
+    try {
+        [xml]$tdoc = Get-Content -Raw -LiteralPath $seedPath
+        # LocalName, NOT Name: PowerShell's XML adapter resolves .Name on <type name="X"> to the
+        # ATTRIBUTE value (adapted members shadow the .NET property), so .Name reads "X".
+        $tkids = @($tdoc.DocumentElement.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })
+        $tbad  = @($tkids | Where-Object { $_.LocalName -ne 'type' -or -not $_.GetAttribute('name') })
+        if ($tdoc.DocumentElement.LocalName -ne 'types' -or $tbad.Count) {
+            Show-Fail "types seed '$($row.seed)' is not a valid CE types doc (root <types>, only <type name=...> children) - types-write would refuse to ever save it"
+        } else { Show-Pass "types seed '$($row.seed)' parses as a CE types doc ($($tkids.Count) types)" }
+    } catch { Show-Fail "types seed '$($row.seed)' does not parse as XML: $($_.Exception.Message)" }
+}
+# Seam 3: the registry <-> types-editor.js pairing.
+$tePath = Join-Path $PSScriptRoot '../ConfigViewer/web/js/types-editor.js'
+if ($typesRows.Count) {
+    if (-not (Test-Path $tePath)) { Show-Fail "types-editor.js not found at $tePath (types rows exist but no editor)" }
+    else {
+        $te = Get-Content -Raw -LiteralPath $tePath
+        $mapM = [regex]::Match($te, '(?s)const TYPES_BASE = \{(.*?)\};')
+        if (-not $mapM.Success) { Show-Fail "types-editor.js TYPES_BASE map not found (this check needs updating)" }
+        else {
+            $pairs = @{}
+            foreach ($m in [regex]::Matches($mapM.Groups[1].Value, "(\w+):\s*'([^']+)'")) { $pairs[$m.Groups[1].Value] = $m.Groups[2].Value }
+            foreach ($row in $typesRows) {
+                if (-not $pairs.ContainsKey($row.name)) { Show-Fail "types row '$($row.name)' has no TYPES_BASE entry in types-editor.js - the editor cannot pair it with its base file"; continue }
+                $baseName = $pairs[$row.name]
+                if (-not ($reg.surfaces | Where-Object { $_.name -eq $baseName })) { Show-Fail "TYPES_BASE pairs '$($row.name)' with unknown surface '$baseName'" }
+                else { Show-Pass "types row '$($row.name)' pairs with base surface '$baseName'" }
+            }
+        }
+    }
+}
+# Seam 4: single ownership - no registry-seeded (box-owned) file may also be shipped by $items.
+if (Test-Path $deployScript) {
+    $itemsSrcs = @([regex]::Matches($dtext, 'Src\s*=\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -notmatch '^\.\./' })
+    $seedRows2 = @($reg.surfaces | Where-Object { $_.seed })
+    $clobber = @($seedRows2 | Where-Object { $_.seed -like 'deploy/*' -and $itemsSrcs -contains ($_.seed -replace '^deploy/', '') })
+    if ($clobber.Count) { Show-Fail "box-owned (seeded) file(s) ALSO in Deploy `$items - every deploy would clobber web edits: $(@($clobber | ForEach-Object { $_.seed }) -join ', ')" }
+    else { Show-Pass "no registry-seeded (box-owned) file is shipped by Deploy `$items ($($seedRows2.Count) seed rows checked)" }
 }
 
 # --- Summary --------------------------------------------------------------------------------

@@ -568,3 +568,29 @@
   .side-item.doc-link { text-decoration: none; color: inherit; }
   .side-item.doc-link .ext { font-size: 11px; color: var(--faint); flex: none; }
   .side-item.doc-link:hover .ext { color: var(--accent); }
+
+  /* ===== CE types-table editor (types-editor.js — registry web:'types' surfaces) ===== */
+  .ty-bar { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
+  .ty-bar #tyFilter { flex: 1 1 260px; max-width: 420px; padding: 7px 10px; font-size: 13px; }
+  .ty-only { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+  .ty-head, .ty-row { display: grid; grid-template-columns: minmax(200px, 1fr) 88px 88px 88px 88px 92px minmax(130px, auto); gap: 10px; align-items: center; padding: 5px 22px; }
+  .ty-head { position: sticky; top: 0; z-index: 2; background: var(--card); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); padding-top: 9px; padding-bottom: 7px; }
+  .ty-row { border-bottom: 1px solid var(--border-soft); }
+  .ty-row.over { background: var(--delta-weak); }
+  .ty-row.cap-hide { display: none; }
+  .ty-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ty-in { width: 100%; padding: 5px 8px; font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .ty-in.bad, .ty-nl.bad { outline: 2px solid var(--danger); }
+  .ty-badge { display: flex; justify-content: center; }
+  .ty-act { display: flex; gap: 6px; justify-content: flex-end; }
+  .ty-act .ghost { padding: 4px 9px; font-size: 11.5px; }
+  /* Expanded all-fields panel for one type */
+  .ty-exp { padding: 12px 22px 14px; background: var(--panel2); border-bottom: 1px solid var(--border-soft); }
+  .ty-exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
+  .ty-fld { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
+  .ty-fld.wide { grid-column: 1 / -1; }
+  .ty-fld .ty-in, .ty-fld .ty-nl { text-transform: none; letter-spacing: normal; }
+  .ty-nl { padding: 5px 8px; font-size: 12.5px; }
+  .ty-flags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .ty-flags label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg); text-transform: none; letter-spacing: normal; cursor: pointer; }
+  @media (max-width: 900px) { .ty-head, .ty-row { grid-template-columns: minmax(140px, 1fr) 70px 70px 92px minmax(110px, auto); } .ty-head div:nth-child(4), .ty-row > div:nth-child(4), .ty-head div:nth-child(5), .ty-row > div:nth-child(5) { display: none; } }

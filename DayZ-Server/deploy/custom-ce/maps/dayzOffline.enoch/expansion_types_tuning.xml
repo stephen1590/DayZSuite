@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-    EXPANSION CE TUNING — our loot-balance overrides. GENERATED, not hand-authored.
+    EXPANSION CE TUNING — our loot-balance OVERRIDE LAYER (Enoch variant). WEB-EDITED,
+    box-authoritative (2026-07-23): the ConfigViewer types editor is the writer — dayz-ctl
+    types-write validates the structure, snapshots the outgoing version and saves it. The
+    deploy only SEEDS this file to a box that has none; Pull-Configs mirrors the box copy
+    back into the repo (seed = latest mirror). Do not hand-edit on the box — use the web UI.
 
     Registered AFTER expansion_types.xml in custom-ce.json, so each <type> here fully
     replaces the upstream entry of the same name. expansion_types.xml itself stays
-    byte-identical to the DayZ-Expansion-Missions template and keeps tracking the mod.
+    byte-identical to the DayZ-Expansion-Missions template and keeps tracking the mod —
+    never modify the base; every change lands HERE.
 
-    Blocks are COMPLETE copies of the upstream entry with only nominal/min/restock
-    changed — every category, usage, value and flag is carried through verbatim. That
-    is deliberate: it is correct whether CE replaces a duplicate type outright or
-    merges it field by field.
+    Blocks are COMPLETE copies of the upstream entry with only the tuned values changed —
+    every category, usage, value and flag is carried through verbatim (the types editor
+    stages whole blocks the same way). That is deliberate: it is correct whether CE
+    replaces a duplicate type outright or merges it field by field.
 
-    SOURCE: maps/dayzOffline.enoch/expansion_types.xml
-    Regenerate from that file after any Expansion update — these values are derived
-    from upstream nominals, so a template change makes them stale.
+    BASE: maps/dayzOffline.enoch/expansion_types.xml
+    AFTER AN EXPANSION UPDATE: diff the new upstream template against that base and review
+    each override here against the changed upstream entries. NEVER regenerate this file
+    over the web edits it now carries — regeneration died with the 2026-07-23 ownership flip.
 
-    RULES APPLIED
+    ORIGINAL RULES (2026-07-22 — the values this layer started from)
       1. min = 25% of nominal (min 1). Upstream averaged 43%, peaking at 86%. The
          nominal-to-min gap is how much loot can leave the world before CE refills;
          a narrow gap pins an item at nominal permanently. Nominals are untouched,

@@ -223,7 +223,7 @@ if (-not $Local) {
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
                    'Apply-ServerCfg.ps1',
-                   'Build-AIBandits.ps1', 'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'config-registry.json', 'host.env.example',
+                   'Build-AIBandits.ps1', 'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
@@ -479,6 +479,10 @@ $items = @(
     # (RoamingLocations) from the frozen base + 'expansion'-toggled map-points on every start. Same
     # map-points store, geography only (no factions/loadouts). Lives in the server dir.
     @{ Src = "../Build-AILocations.ps1";     Dst = Join-Path $ServerDir "Build-AILocations.ps1";     Sudo = $false; Exec = $true }
+    # Map inversion Phase 2: derives profiles/AI_Shared/map-points.generated.json from the live
+    # Expansion AI settings at every prestart (the reverse of the two builders above, which
+    # compose DRAFTS from the old authored store). Registry 'generated' - read-only in the UI.
+    @{ Src = "../Build-MapPoints.ps1";       Dst = Join-Path $ServerDir "Build-MapPoints.ps1";       Sudo = $false; Exec = $true }
     # Custom CE types (modded loot like CodeLock + the AI Bandits mod's bandit_types.xml): the
     # manifest (custom-ce.json) lists every extra types file; our own live in custom-ce/, mod ones
     # are pulled from their doc folder at prestart. Apply-CustomCE copies them into the active
@@ -496,13 +500,14 @@ $items = @(
     @{ Src = "custom-ce/expansion_types.xml";          Dst = Join-Path $ServerDir "custom-ce/expansion_types.xml";          Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/expansion_spawnabletypes.xml"; Dst = Join-Path $ServerDir "custom-ce/expansion_spawnabletypes.xml"; Sudo = $false; Exec = $false }
     @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Sudo = $false; Exec = $false }
-    # Our loot-balance tuning, registered AFTER expansion_types.xml so each <type> replaces the
-    # upstream entry (min 25% of nominal, food nominal cut, restock 1800 on non-essentials). GENERATED
-    # from the template above - regenerate after an Expansion update or the values go stale. It needs
-    # the SAME per-map split as the file it patches: 33 of the tuned types differ between the Chernarus
-    # and Enoch variants, so one shared file would restore Tier4 on Enoch and kill them there.
-    @{ Src = "custom-ce/expansion_types_tuning.xml";   Dst = Join-Path $ServerDir "custom-ce/expansion_types_tuning.xml";   Sudo = $false; Exec = $false }
-    @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types_tuning.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types_tuning.xml"; Sudo = $false; Exec = $false }
+    # The loot-balance tuning pair (expansion_types_tuning.xml root + enoch) is NOT here any more
+    # (2026-07-23): it became box-owned, WEB-EDITED content - the ConfigViewer types editor writes
+    # it via dayz-ctl types-write, so shipping it on drift would clobber every web edit. Declared
+    # in config-registry.json (web:'types', seed, mirror:'live') and seeded-if-missing below like
+    # config-overrides.json; Pull-Configs pulls the box copy back into deploy/custom-ce/ (seed =
+    # latest mirror, map-points model). It keeps the SAME per-map split as the file it patches:
+    # 33 tuned types differ between the Chernarus and Enoch variants, so one shared file would
+    # restore Tier4 on Enoch and kill them there.
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
     # Bubaku spawner composer lives in the server dir so prestart writes the fixed-path file from
     # the active map's source on every start (mirrors Build-TransferSpawns/Build-AIBandits). Engine
