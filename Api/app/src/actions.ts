@@ -833,14 +833,22 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/overrides': {
       destructive: false,
       readOnly: true,
-      describe: 'the live config-overrides.json plus its version hash. Load overrides through this and pass the version back to configs/set-overrides as baseVersion — the box then rejects a save (409) when another admin changed the file since, instead of silently overwriting their edit.',
-      schema: { response: { type: 'object', properties: { version: { type: 'string' }, content: { type: 'string' } } } },
-      async run() {
+      describe: 'the live config-overrides.json plus its version hash. Load overrides through this and pass the version back to configs/set-overrides as baseVersion — the box then rejects a save (409) when another admin changed the file since, instead of silently overwriting their edit. Pass ifVersion=<the hash you hold> for a conditional read: an unchanged doc answers { version, unchanged: true } with NO content, so the full document only travels when it actually changed.',
+      schema: {
+        query: { type: 'object', properties: { ifVersion: { type: 'string', description: 'the version hash the caller already holds a parsed copy of — matching hash skips the payload' } } },
+        response: { type: 'object', properties: { version: { type: 'string' }, content: { type: 'string' }, unchanged: { type: 'boolean' } } },
+      },
+      async run(params) {
         const r = await dayz.ctl('override-read');
         if (r.code !== 0) throw fail(502, `override-read failed: ${(r.stderr || r.stdout).trim()}`);
         // dayz-ctl's contract: line 1 = sha256 (empty if absent), rest = the document.
         const nl = r.stdout.indexOf('\n');
         const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        // Conditional read: the doc crossed 1MB on 2026-07-23 and every tab entry re-downloaded
+        // it whole. The box-local read above is cheap; the HTTP hop + browser re-parse are not —
+        // a matching hash keeps both off the wire. Empty version (no doc yet) never matches.
+        const ifVersion = typeof params.ifVersion === 'string' ? params.ifVersion.trim() : '';
+        if (ifVersion && version && ifVersion === version) return { version, unchanged: true };
         const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
         return { version, content };
       },

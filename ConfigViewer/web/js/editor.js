@@ -61,11 +61,15 @@ let overridesLoaded = false;
 // Optimistic concurrency: the version hash config-overrides.json had when we loaded it. Sent
 // back on Save so the box rejects (409) if another admin wrote in between — no silent clobber.
 let ovrBaseVersion = null;
-export function isDirty() { return JSON.stringify(overridesDoc) !== savedSnapshot || typesAnyDirty(); }
+// Overrides-doc dirtiness alone — the guard for adopting/skipping a fresh overrides pull and
+// for the Discard flow. The exported isDirty() ORs in the types editor so the header pill and
+// the beforeunload guard cover every unsaved edit, whichever editor holds it.
+function ovrDirtyOnly() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
+export function isDirty() { return ovrDirtyOnly() || typesAnyDirty(); }
 function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
 // Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
 function discardChanges() {
-  if (!isDirty()) { setGlobalMsg('No unsaved changes to discard.', false); return; }
+  if (!ovrDirtyOnly()) { setGlobalMsg('No unsaved override changes to discard.', false); return; }
   if (!window.confirm('Discard all unsaved override changes? This reverts to the last saved config-overrides.json.')) return;
   overridesDoc = JSON.parse(savedSnapshot);
   updateDirtyUi(); renderFilesNav(); renderEditor();
@@ -309,18 +313,24 @@ export async function loadFiles(preserve) {
   const cred = loadCred();
   if (!cred) return;
   try {
+    // Conditional overrides pull: we already hold a parsed doc keyed by ovrBaseVersion, so send
+    // that hash — an unchanged box doc answers { unchanged: true } with no payload instead of
+    // re-shipping the whole document (it crossed 1MB on 2026-07-23; tab re-entries and the
+    // post-save refresh were re-downloading it every time).
+    const ovrQ = (overridesLoaded && ovrBaseVersion) ? '?ifVersion=' + encodeURIComponent(ovrBaseVersion) : '';
     const [cfgR, ovrR, boxR, roR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
-      apiPost('/dayz/configs/overrides', cred),   // content + version hash (optimistic concurrency)
+      apiPost('/dayz/configs/overrides' + ovrQ, cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
       apiPost('/dayz/configs/readonly', cred).catch(() => ({ files: [] })),   // generated (read-only) globs; [] on an older API
     ]);
     configItems = cfgR.configs || [];
     boxFiles = boxR.files || [];
     roRe = (roR.files || []).map(globToRe);
-    // On a plain tab re-entry (preserve) keep unsaved edits — only reload the doc from
-    // the server on the initial load, after a save, or after a rollback.
-    if (!(preserve && isDirty())) {
+    // On a plain tab re-entry (preserve) keep unsaved override edits — only reload the doc from
+    // the server on the initial load, after a save, or after a rollback. unchanged = the box
+    // still holds exactly the doc we parsed; nothing to adopt.
+    if (!(preserve && ovrDirtyOnly()) && !ovrR.unchanged) {
       try { overridesDoc = bigParse(stripBom(ovrR.content || '{}')); ovrBaseVersion = ovrR.version ?? null; overridesLoaded = true; markClean(); }
       catch { el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">config-overrides.json is not valid JSON.</span>'; return; }
     }
@@ -1057,8 +1067,9 @@ async function saveOverrides() {
   if (save) { save.disabled = true; save.innerHTML = '<span class="wf-sp"></span>Saving…'; }
   setGlobalMsg('Saving…', false);
   try {
+    let saved;
     try {
-      await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion });
+      saved = await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion });
     } catch (err) {
       // Concurrent-edit conflict: another admin saved config-overrides.json since we loaded it.
       // Never clobber — offer to reload theirs (your unsaved edits here can be copied out first).
@@ -1076,9 +1087,14 @@ async function saveOverrides() {
           '\n\nThat usually means this tab is holding a PARTIAL document (stale session?). ' +
           'Only continue if you deliberately deleted these overrides.\n\nReplace anyway?');
         if (!ok) { setGlobalMsg('Save cancelled — the box kept its current config-overrides.json.', false); return; }
-        await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion, confirmShrink: true });
+        saved = await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion, confirmShrink: true });
       } else { throw err; }
     }
+    // Rebase in place: the box just accepted THIS document and handed back its new hash — adopt
+    // it so the tree refresh below gets 'unchanged' from the conditional pull instead of
+    // re-downloading the whole doc we are already holding.
+    if (saved && saved.version) ovrBaseVersion = saved.version;
+    markClean();
     setGlobalMsg('Saved — restart the server to apply.', false, true);
     Object.keys(fileCache).forEach((k) => delete fileCache[k]);
     await loadFiles();
