@@ -151,8 +151,12 @@ function buildRows(items, writable, doc, mission) {
     if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
     const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
     const w = wByKey.get(c.name) || wByKey.get(rel) || null;
-    row.access = MAP_STORE_SURFACES.has(c.name) ? 'lock'      // Map-tab-owned store: RO in config view
+    // c.readonly = the registry's web:'view' surfaces (custom-ce types, mods.conf, messages.xml),
+    // marked read-only by dayz-ctl's config-list. Locked like the Map-store, but its own copy so
+    // the editor says "reference file" instead of "generated at boot".
+    row.access = (MAP_STORE_SURFACES.has(c.name) || c.readonly) ? 'lock'   // Map-store or view-only: RO here
       : w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
+    if (c.readonly) row.readonly = true;
     if (w) row.writableName = w.name;
     byRel.set(rel, row); list.push(row);
   }
@@ -381,6 +385,8 @@ function editorChrome(row) {
     : '';
   const summary = row.generated
     ? '<span class="stat"><span class="dot b"></span>generated file — built at boot from map-points + the frozen base; read-only here</span>'
+    : row.readonly
+    ? '<span class="stat"><span class="dot b"></span>read-only reference file — shipped with the deploy; view only</span>'
     : locked
     ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
     : '<span class="stat d"><span class="dot d"></span><b>' + nOver + '</b> ' + (row.kind === 'xml' ? 'XPath override' + (nOver === 1 ? '' : 's') : 'overridden') + '</span>';

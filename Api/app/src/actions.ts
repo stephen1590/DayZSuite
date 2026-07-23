@@ -524,15 +524,16 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       destructive: false,
       readOnly: true,
       describe: 'list the config files available to retrieve (names for the "configs/get" action)',
-      schema: { response: { type: 'object', properties: { configs: { type: 'array', items: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, label: { type: 'string' }, path: { type: 'string' } } } } } } },
+      schema: { response: { type: 'object', properties: { configs: { type: 'array', items: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, label: { type: 'string' }, path: { type: 'string' }, readonly: { type: 'boolean' } } } } } } },
       async run() {
         const r = await dayz.ctl('config-list');
         if (r.code !== 0) throw fail(502, `config-list failed: ${(r.stderr || r.stdout).trim()}`);
         const safe = /^[A-Za-z0-9_./-]+$/;
-        // dayz-ctl emits "group<TAB>name<TAB>label<TAB>relpath" per file (single files +
+        // dayz-ctl emits "group<TAB>name<TAB>label<TAB>relpath<TAB>ro" per file (single files +
         // expanded folder contents). The relpath is the UI's dedup key across a file's
-        // read alias / folder listing / override target. Tolerate short lines from an
-        // older ctl. Drop names we couldn't serve.
+        // read alias / folder listing / override target; ro='1' marks a web:'view' surface the
+        // editor locks read-only. Tolerate short lines from an older ctl (ro absent -> false).
+        // Drop names we couldn't serve.
         const configs = r.stdout
           .split('\n')
           .map((l) => l.replace(/\r$/, ''))
@@ -540,8 +541,8 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           .map((line) => {
             const p = line.split('\t');
             return p.length >= 3
-              ? { group: p[0], name: p[1], label: p[2], path: p[3] && safe.test(p[3]) ? p[3] : p[1] }
-              : { group: 'General', name: p[0], label: p[0], path: p[0] };
+              ? { group: p[0], name: p[1], label: p[2], path: p[3] && safe.test(p[3]) ? p[3] : p[1], readonly: p[4] === '1' }
+              : { group: 'General', name: p[0], label: p[0], path: p[0], readonly: false };
           })
           .filter((c) => c.name && safe.test(c.name));
         return { configs };

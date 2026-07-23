@@ -270,8 +270,9 @@ if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried .
 # --- Per-host values: built-in defaults (the VPS) <- host.env <- explicit -Deploy* params ---
 # DEPLOY_SERVER_PASSWORD/DEPLOY_ADMIN_PASSWORD/DEPLOY_STEAM_ACCOUNT have NO built-in default
 # (unlike user/group/home) — they identify a real account/secret and must never be baked into
-# this tracked script. serverDZ.cfg/update.sh carry them only as {{...}} placeholders; see the
-# hard-fail check below.
+# this tracked script. serverDZ.cfg renders on the BOX (Apply-ServerCfg from host.env); the JOIN
+# password is fully supported and MAY also be left empty (open server), the admin password is
+# required. update.sh carries the Steam account as a {{...}} placeholder; see the guard below.
 $hv = [ordered]@{ DEPLOY_USER = 'ubuntu'; DEPLOY_GROUP = 'ubuntu'; DEPLOY_HOME = '/home/ubuntu'; DEPLOY_SERVER_PASSWORD = $null; DEPLOY_ADMIN_PASSWORD = $null; DEPLOY_STEAM_ACCOUNT = $null; DEPLOY_UPDATE_CHECK_INTERVAL = '4h' }
 # host.env lives ON THE BOX in the server dir (moved out of the retired ~/dayz-tooling,
 # 2026-07-16) — the staging dir beside this script is transient and never carries it.
@@ -282,7 +283,7 @@ if (-not (Test-Path $HostEnv)) {
 }
 if (Test-Path $HostEnv) {
     foreach ($line in Get-Content $HostEnv) {
-        if ($line -match '^\s*(DEPLOY_USER|DEPLOY_GROUP|DEPLOY_HOME|DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD|DEPLOY_STEAM_ACCOUNT|DEPLOY_UPDATE_CHECK_INTERVAL)\s*=\s*(.+?)\s*$') { $hv[$Matches[1]] = $Matches[2] }
+        if ($line -match '^\s*(DEPLOY_USER|DEPLOY_GROUP|DEPLOY_HOME|DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD|DEPLOY_STEAM_ACCOUNT|DEPLOY_UPDATE_CHECK_INTERVAL)\s*=\s*(.*?)\s*$') { $hv[$Matches[1]] = $Matches[2] }
     }
 }
 if ($DeployUser)  { $hv.DEPLOY_USER  = $DeployUser }
@@ -296,8 +297,14 @@ $DeploySteamAccount   = $hv.DEPLOY_STEAM_ACCOUNT
 # the whole auto-check (the timer is stopped/left disabled, the manual API arm still works).
 $DeployUpdateCheckInterval = $hv.DEPLOY_UPDATE_CHECK_INTERVAL
 $UpdateCheckEnabled = ($DeployUpdateCheckInterval -and $DeployUpdateCheckInterval -ne 'off')
-if (-not $DeployAdminPassword){#-not $DeployServerPassword -or -not $DeployAdminPassword) {
-    Write-Error "DEPLOY_SERVER_PASSWORD / DEPLOY_ADMIN_PASSWORD not set in $HostEnv. serverDZ.cfg's join/admin passwords are host-local secrets, never in the tracked payload. Copy host.env.example to host.env and fill both in, then re-run."
+# serverDZ.cfg is rendered ON THE BOX at prestart (Apply-ServerCfg) from host.env, NOT here - so
+# the deploy no longer bakes either password into any shipped file. An EMPTY join password is
+# valid: that is an open, no-password server. We still fast-fail on a MISSING admin password
+# because it is the admin boundary and a blank one makes Apply-ServerCfg refuse to render
+# serverDZ.cfg, which the engine can't boot without. Apply-ServerCfg re-checks this on the box;
+# this is just early feedback. (The join password is intentionally NOT guarded here anymore.)
+if (-not $DeployAdminPassword) {
+    Write-Error "DEPLOY_ADMIN_PASSWORD not set in $HostEnv. It is the admin boundary and serverDZ.cfg won't render without it. The JOIN password MAY be empty ('DEPLOY_SERVER_PASSWORD=' = open server). Fill in host.env and re-run."
     exit 2
 }
 if (-not $DeploySteamAccount) {
@@ -534,8 +541,13 @@ foreach ($i in $items) {
             Replace('{{DEPLOY_USER}}', $DeployUser).
             Replace('{{DEPLOY_GROUP}}', $DeployGroup).
             Replace('{{DEPLOY_MODLINE}}', $ModLine).
-            Replace('{{DEPLOY_SERVER_PASSWORD}}', $DeployServerPassword).
-            Replace('{{DEPLOY_ADMIN_PASSWORD}}', $DeployAdminPassword).
+            # Passwords still render here for any file that carries the placeholders. [string]
+            # coalesces $null -> "" so an EMPTY or unset join password renders `password = "";`
+            # (open server) instead of throwing - .NET Replace rejects a null second arg. A SET
+            # join password renders exactly as before. serverDZ.cfg itself now ships as a template
+            # and is (re)rendered on the box by Apply-ServerCfg; these keep the deploy path intact.
+            Replace('{{DEPLOY_SERVER_PASSWORD}}', [string]$DeployServerPassword).
+            Replace('{{DEPLOY_ADMIN_PASSWORD}}', [string]$DeployAdminPassword).
             Replace('{{DEPLOY_STEAM_ACCOUNT}}', $DeploySteamAccount).
             Replace('{{DEPLOY_UPDATE_CHECK_INTERVAL}}', $DeployUpdateCheckInterval)
         $tmp = [IO.Path]::GetTempFileName()

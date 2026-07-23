@@ -10,7 +10,7 @@ set -euo pipefail
 UNIT='__UNIT__'
 SERVER_DIR='__SERVER_DIR__'
 RCON="$SERVER_DIR/dayz-rcon.ps1"   # shipped by the DayZ deploy; talks to localhost RCon
-CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath" file allowlist (config-registry.json, DayZ-Server repo)
+CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath<TAB>group<TAB>label<TAB>ro" file allowlist (config-registry.json, DayZ-Server repo)
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
@@ -221,17 +221,20 @@ _override_generated_hits() {
 }
 
 # Emit the full set of retrievable configs, one file per line, TAB-separated:
-#   group <TAB> name <TAB> relpath <TAB> label
-# Sources: explicit files (CONFIG_MAP "name<TAB>relpath", grouped "General") and
+#   group <TAB> name <TAB> relpath <TAB> label <TAB> ro
+# Sources: explicit files (CONFIG_MAP "name<TAB>relpath<TAB>group<TAB>label<TAB>ro") and
 # every real file under each allowlisted folder (CONFIG_DIRS "group<TAB>reldir").
 # `find -type f` does NOT follow symlinks, so nothing outside a folder is listed.
-# This is the ONE authority for what may be read: a config request must name a
-# relpath this function produced, so no caller-invented path can ever escape.
+# ro='1' marks a read-only surface (web:'view'); the editor locks it. Folder files
+# are always ro='0'. This is the ONE authority for what may be read: a config request
+# must name a relpath this function produced, so no caller-invented path can ever escape.
 emit_allowed() {
   if [ -n "$CONFIG_MAP" ]; then
-    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel; do
+    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel _grp _label _ro; do
       [ -n "$_name" ] || continue
-      printf 'General\t%s\t%s\t%s\n' "$_name" "$_rel" "$_name"
+      [ -n "$_grp" ]   || _grp='General'
+      [ -n "$_label" ] || _label="$_name"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$_grp" "$_name" "$_rel" "$_label" "${_ro:-0}"
     done
   fi
   if [ -n "$CONFIG_DIRS" ]; then
@@ -261,7 +264,7 @@ emit_allowed() {
             fi
             _n=$((_n + 1))
             [ "$_n" -le 1000 ] || break
-            printf '%s\t%s\t%s\t%s\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
+            printf '%s\t%s\t%s\t%s\t0\n' "$_grp" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR"/}" "${_f#"$SERVER_DIR/$_dir"/}"
           done
         } || true
       done
@@ -563,13 +566,14 @@ case "$verb" in
     ;;
 
   config-list)
-    # Emit "group<TAB>name<TAB>label<TAB>relpath" for every retrievable config: explicit
+    # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro" for every retrievable config: explicit
     # files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
-    # a file across its read alias, folder listing and any config-overrides target. No
-    # caller input reaches this — pure enumeration of the rendered allowlist. Hard-capped
-    # at 3000 lines so the reply can never overflow the API's 1MB read buffer (retrieval
-    # still works for names past the cap — `config` matches the full set, not this list).
-    emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4"\t"$3}' | head -n 3000 || true
+    # a file across its read alias, folder listing and any config-overrides target; ro='1'
+    # tells the editor to lock the row read-only. No caller input reaches this — pure
+    # enumeration of the rendered allowlist. Hard-capped at 3000 lines so the reply can never
+    # overflow the API's 1MB read buffer (retrieval still works for names past the cap —
+    # `config` matches the full set, not this list).
+    emit_allowed | awk -F'\t' 'NF>=4{print $1"\t"$2"\t"$4"\t"$3"\t"$5}' | head -n 3000 || true
     ;;
 
   config-generated)

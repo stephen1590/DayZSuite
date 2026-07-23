@@ -95,13 +95,17 @@ if (-not (Test-Path $registryPath)) {
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {
     if ($_.dir) { [pscustomobject]@{ group = $_.group; dir = $_.dir; subfolders = $_.subfolders } }
-    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable } }
+    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view') } }
 }
 $fileEntries  = @($allConfigs | Where-Object { $_.path })
 $dirEntries   = @($allConfigs | Where-Object { $_.dir -and -not $_.path })
 foreach ($c in $fileEntries) {
     if ("$($c.name)" -notmatch '^[A-Za-z0-9_.-]+$') { throw "Api Configs: invalid file name '$($c.name)' (allowed: A-Z a-z 0-9 . _ -)." }
     if ("$($c.path)" -match '^\s*/' -or "$($c.path)" -match '\.\.') { throw "Api Configs: '$($c.name)' path must be relative to ServerDir with no '..': $($c.path)." }
+    # label + group are the optional display fields; both ride a TAB-delimited CONFIG_MAP line,
+    # so neither may carry a TAB or newline (a group with a tab would split into a phantom field).
+    if ("$($c.label)" -match "[`t`n]") { throw "Api Configs: label for '$($c.name)' must not contain tabs/newlines: '$($c.label)'." }
+    if ("$($c.group)" -match "[`t`n]") { throw "Api Configs: group for '$($c.name)' must not contain tabs/newlines: '$($c.group)'." }
 }
 foreach ($c in $dirEntries) {
     if (-not "$($c.group)".Trim()) { throw "Api Configs: folder entry for dir '$($c.dir)' needs a 'group' label." }
@@ -112,7 +116,16 @@ foreach ($c in $dirEntries) {
         if ("$s" -match "[,`t`n]") { throw "Api Configs: subfolder must not contain comma/tab/newline: '$s' (in '$($c.group)')." }
     }
 }
-$configMap  = ($fileEntries | ForEach-Object { "$($_.name)`t$($_.path)" }) -join "`n"
+# CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro". name is the API key (stable);
+# group + label are display-only (default 'General' / name) and ro='1' locks the row read-only
+# in the editor (web:'view' surfaces). dayz-ctl parses all five; config/config-target still key
+# off fields 1-2, so appending 3-5 is backward-safe.
+$configMap  = ($fileEntries | ForEach-Object {
+    $g   = if ("$($_.group)".Trim()) { "$($_.group)".Trim() } else { 'General' }
+    $lbl = if ("$($_.label)".Trim()) { "$($_.label)".Trim() } else { "$($_.name)" }
+    $ro  = if ($_.ro) { '1' } else { '0' }
+    "$($_.name)`t$($_.path)`t$g`t$lbl`t$ro"
+}) -join "`n"
 # CONFIG_DIRS: "group<TAB>reldir<TAB>subfolders". Files come from the dir root
 # (non-recursive) plus each named subfolder's root. Empty subfolders = root only.
 $configDirs = ($dirEntries | ForEach-Object {

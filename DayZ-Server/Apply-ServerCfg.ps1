@@ -76,14 +76,27 @@ try { $text = [IO.File]::ReadAllText($templatePath) }
 catch { Show-Warn "serverDZ.cfg.template is unreadable - leaving serverDZ.cfg untouched ($($_.Exception.Message))."; return }
 
 # --- 1. secrets from host.env (host-local, never echoed) -------------------------------------
+# (.*?) not (.+?): an EMPTY value must parse as "" - 'DEPLOY_SERVER_PASSWORD=' is a DELIBERATE
+# open server (password = "";), distinct from the key being absent (host.env never filled in).
+# Presence in $secrets = the operator set it; absence = the key is missing entirely.
 $secrets = @{}
 if (Test-Path $hostEnvPath) {
     foreach ($line in (Get-Content -LiteralPath $hostEnvPath)) {
-        if ($line -match '^\s*(DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD)\s*=\s*(.+?)\s*$') { $secrets[$Matches[1]] = $Matches[2] }
+        if ($line -match '^\s*(DEPLOY_SERVER_PASSWORD|DEPLOY_ADMIN_PASSWORD)\s*=\s*(.*?)\s*$') { $secrets[$Matches[1]] = $Matches[2] }
     }
 }
+# The ADMIN password is an access boundary (with SuperAdmins.txt) - it must be non-empty. The
+# JOIN password MAY be empty: an empty join is exactly how you run an open, no-password server.
+# So refuse only for a MISSING key (unconfigured host) or a blank ADMIN value - NEVER for an
+# empty join. This refusal is what looped the boot before: it left no serverDZ.cfg, and the
+# engine cannot start without one.
+if (-not $secrets.ContainsKey('DEPLOY_ADMIN_PASSWORD') -or $secrets['DEPLOY_ADMIN_PASSWORD'] -eq '') {
+    Show-Warn "DEPLOY_ADMIN_PASSWORD not set in host.env - REFUSING to render serverDZ.cfg (admin needs a password). Existing file left as-is."; return
+}
+if (-not $secrets.ContainsKey('DEPLOY_SERVER_PASSWORD')) {
+    Show-Warn "DEPLOY_SERVER_PASSWORD absent from host.env - REFUSING to render serverDZ.cfg. For an OPEN server keep the key with an empty value: 'DEPLOY_SERVER_PASSWORD='. Existing file left as-is."; return
+}
 foreach ($k in 'DEPLOY_SERVER_PASSWORD', 'DEPLOY_ADMIN_PASSWORD') {
-    if (-not $secrets[$k]) { Show-Warn "$k not set in host.env - REFUSING to render serverDZ.cfg (a placeholder must never become the live password). Existing file left as-is."; return }
     $text = $text.Replace("{{$k}}", $secrets[$k])
 }
 
