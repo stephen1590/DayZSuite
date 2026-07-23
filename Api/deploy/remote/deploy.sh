@@ -20,7 +20,13 @@ SUDO=; [ "$(id -u)" -ne 0 ] && SUDO=sudo
 export DEBIAN_FRONTEND=noninteractive
 
 echo '== prerequisites =='
-$SUDO apt-get update -qq
+# apt-get update returns non-zero if ANY configured repo's index fails to refresh - even one this
+# service does not use (e.g. the Monitoring stack's apt.grafana.com mid mirror-sync served a
+# half-synced Packages file, size mismatch, exit 100). apt still keeps the cached index ("old ones
+# used instead"), so that must not abort the whole API deploy. Our packages come from the ubuntu +
+# nodesource repos, and the apt-get install below is the REAL gate - it fails loudly if a package
+# we actually need is genuinely unavailable. So tolerate a partial update; surface it as a warning.
+$SUDO apt-get update -qq || echo '  [warn] apt-get update had partial failures (a third-party repo may be mid mirror-sync) - continuing; the install step is the real gate.'
 $SUDO apt-get install -y -qq curl ca-certificates openssl
 
 echo '== node.js =='

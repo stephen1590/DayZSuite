@@ -13,7 +13,9 @@
 
     SOURCE: expansion_types.xml
     Regenerate from that file after any Expansion update — these values are derived
-    from upstream nominals, so a template change makes them stale.
+    from upstream nominals, so a template change makes them stale. ONE EXCEPTION: the
+    HAND OVERRIDE block at the top of <types> (ExpansionLHD nominal 0) is a policy
+    choice, NOT a derived value — a regenerate must RE-APPLY it, not drop it.
 
     RULES APPLIED
       1. min = 25% of nominal (min 1). Upstream averaged 43%, peaking at 86%. The
@@ -30,6 +32,21 @@
     volume in this file. Separate decision, deliberately left alone.
 -->
 <types>
+    <!-- HAND OVERRIDE (not generated - preserve on regenerate). ExpansionLHD nominal 1 -> 0:
+         stop CE world-spawning the LHD at boot. Its DeferredInit (DayZExpansion Vehicles'
+         expansionlhd.c) throws a VM exception on every spawn - an upstream Expansion bug - so a
+         boot-spawned LHD spammed ~26 errors per start. nominal 0 = no free world LHD; the trader
+         can still sell it (market is independent of CE). Set nominal back to 1 to restore it. -->
+    <type name="ExpansionLHD">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
     <type name="Expansion_Landrover_Wheel">
         <nominal>25</nominal>
         <lifetime>2700</lifetime>
