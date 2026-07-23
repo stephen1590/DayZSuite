@@ -131,8 +131,8 @@ fi
 
 # Expansion AI roaming destinations: compose a DRAFT (AILocations.draft.json) from the frozen
 # default + map-points that opt into 'expansion'. DRAFT-ONLY - the live AILocationSettings.json is
-# hand-authored and is never written here. Runs AFTER Build-AIBandits (same map-points store,
-# different consumer). Fail-soft + `|| true`; it can never block boot.
+# hand-authored and is never written here. (Build-AIBandits above is retired 2026-07-23.)
+# Fail-soft + `|| true`; it can never block boot.
 if [ -f "$SERVER/Build-AILocations.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-AILocations.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi

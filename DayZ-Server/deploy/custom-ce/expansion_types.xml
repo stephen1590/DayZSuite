@@ -3,7 +3,7 @@
     <!-- ADDITONAL VANILLA CAR VARIANTS -->
     <!-- OFFROAD HATCHBACK -->
     <type name="OffroadHatchback_WhiteRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -13,7 +13,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="OffroadHatchback_Green">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -23,7 +23,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="OffroadHatchback_GreenRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -35,7 +35,7 @@
     <!-- HATCHBACK 2 -->
     <!-- HATCHBACK 2 - Black Rust -->
     <type name="Hatchback_02_BlackRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -46,7 +46,7 @@
     </type>
     <!-- HATCHBACK 2 - Blue Rust -->
     <type name="Hatchback_02_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -57,7 +57,7 @@
     </type>
     <!-- HATCHBACK 2 - Red -->
     <type name="Hatchback_02_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -68,7 +68,7 @@
     </type>
     <!-- HATCHBACK 2 - Red Rust -->
     <type name="Hatchback_02_RedRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -79,7 +79,7 @@
     </type>
     <!-- HATCHBACK 2 - Bandit Kitty -->
     <type name="Hatchback_02_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -89,7 +89,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Hatchback_02_Door_1_1_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -101,7 +101,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Hatchback_02_Door_1_2_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -113,7 +113,7 @@
         <usage name="Industrial"/>
     </type>
      <type name="Hatchback_02_Door_2_1_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -125,7 +125,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Hatchback_02_Door_2_2_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -137,7 +137,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Hatchback_02_Hood_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -149,7 +149,7 @@
         <usage name="Industrial"/>
     </type>
      <type name="Hatchback_02_Trunk_BanditKitty">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -162,7 +162,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Grey Rust -->
     <type name="Sedan_02_GreyRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -173,7 +173,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Red Rust -->
     <type name="Sedan_02_RedRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -184,7 +184,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Yellow -->
     <type name="Sedan_02_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -195,7 +195,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Yellow Rust -->
     <type name="Sedan_02_YellowRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -206,7 +206,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Yellow Bright -->
     <type name="Sedan_02_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -216,7 +216,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Sedan_02_Door_1_1_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -228,7 +228,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_1_2_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -240,7 +240,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_1_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -252,7 +252,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_2_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -264,7 +264,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Hood_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -276,7 +276,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Trunk_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -289,7 +289,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Blue -->
     <type name="Sedan_02_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -299,7 +299,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Sedan_02_Door_1_1_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -311,7 +311,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_1_2_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -323,7 +323,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_1_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -335,7 +335,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_2_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -347,7 +347,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Hood_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -359,7 +359,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Trunk_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -372,7 +372,7 @@
     </type>
     <!-- HATCHBACK 2 - Sedan Blue Rust -->
     <type name="Sedan_02_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -382,7 +382,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Sedan_02_Door_1_1_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -394,7 +394,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_1_2_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -406,7 +406,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_1_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -418,7 +418,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Door_2_2_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -430,7 +430,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Hood_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -442,7 +442,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Sedan_02_Trunk_BlueRust">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -455,7 +455,7 @@
     </type>
     <!-- M3S -->
     <type name="Truck_01_Covered_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -465,7 +465,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -477,7 +477,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -489,7 +489,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -501,7 +501,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_White">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -511,7 +511,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_White">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -523,7 +523,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_White">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -535,7 +535,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_White">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -547,7 +547,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -557,7 +557,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -569,7 +569,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -581,7 +581,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -593,7 +593,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_Wine">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -603,7 +603,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_Wine">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -615,7 +615,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_Wine">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -627,7 +627,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_Wine">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -639,7 +639,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_Lime">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -649,7 +649,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_Lime">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -661,7 +661,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_Lime">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -673,7 +673,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_Lime">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -685,7 +685,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -695,7 +695,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -707,7 +707,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -719,7 +719,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -731,7 +731,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Covered_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -741,7 +741,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Truck_01_Hood_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -753,7 +753,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_1_1_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -765,7 +765,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Truck_01_Door_2_1_YellowBright">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -778,7 +778,7 @@
     </type>
     <!-- HELICOPTERS -->
 	<type name="ExpansionMh6">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -788,7 +788,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Blueline">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -798,7 +798,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Digital">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -808,7 +808,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Elliptical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -818,7 +818,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Furious">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -828,7 +828,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_GrayWatcher">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -838,7 +838,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Jeans">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -848,7 +848,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -858,7 +858,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Shadow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -868,7 +868,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Sheriff">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -878,7 +878,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Speedy">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -888,7 +888,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Sunset">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -898,7 +898,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -908,7 +908,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Wasp">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -918,7 +918,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMh6_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -928,7 +928,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionHatchBird">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -938,7 +938,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUh1h">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -948,7 +948,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUh1h_Civilian">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -958,7 +958,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUh1h_Medical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -968,7 +968,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUh1h_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -978,7 +978,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUh1h_Uber">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -988,7 +988,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -998,7 +998,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin_Dahoman">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1008,7 +1008,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin_Ion">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1018,7 +1018,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin_President">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1028,7 +1028,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1038,7 +1038,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionMerlin_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1048,7 +1048,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionGyrocopter">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1075,7 +1075,7 @@
     </type>
 	<!-- BOATS -->
 	<type name="ExpansionUtilityBoat">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1085,7 +1085,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionZodiacBoat">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1095,7 +1095,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
      <type name="ExpansionZodiacBoat_Orange">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1105,7 +1105,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionZodiacBoat_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1115,7 +1115,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionZodiacBoat_Green">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1136,7 +1136,7 @@
     </type>
 	<!-- CARS -->
 	<type name="ExpansionUAZ">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1146,7 +1146,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZRoofless">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1156,7 +1156,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZCargo">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1166,7 +1166,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZCargoRoofless">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1176,7 +1176,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZ_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1186,7 +1186,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZCargo_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1196,7 +1196,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZ_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1206,7 +1206,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionUAZCargo_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1216,7 +1216,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUAZCargoRoofless_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1226,7 +1226,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUAZCargoRoofless_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1236,7 +1236,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUAZRoofless_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1246,7 +1246,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionUAZRoofless_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1256,7 +1256,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionVodnik">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1266,7 +1266,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionBus">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1276,7 +1276,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionBus_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1286,7 +1286,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionBus_Weeb">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1296,7 +1296,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionTractor">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1306,7 +1306,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionTractor_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1316,7 +1316,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionTractor_Green">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1326,7 +1326,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1336,7 +1336,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1346,7 +1346,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Orange">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1356,7 +1356,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1366,7 +1366,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1376,7 +1376,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Grey">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1386,7 +1386,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="Expansion_Landrover_Green">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -1409,7 +1409,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Ruined">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -1424,7 +1424,7 @@
         <nominal>15</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
-        <min>0</min>
+        <min>5</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1436,7 +1436,7 @@
         <nominal>15</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
-        <min>0</min>
+        <min>5</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1448,7 +1448,7 @@
         <nominal>15</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
-        <min>0</min>
+        <min>5</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1460,7 +1460,7 @@
         <nominal>15</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
-        <min>0</min>
+        <min>5</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1493,7 +1493,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Yellow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -1577,7 +1577,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Orange">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -1661,7 +1661,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Red">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -1745,7 +1745,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Blue">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -1829,7 +1829,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Grey">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -1913,7 +1913,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="Expansion_Landrover_Wheel_Green">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>10</min>
@@ -2012,7 +2012,7 @@
 		<usage name="Military"/>
     </type>
 	<type name="ExpansionAircraftBattery">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>43200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2025,28 +2025,30 @@
 		<usage name="Military"/>
     </type>
 	<type name="ExpansionIgniterPlug">
-        <nominal>10</nominal>
+        <nominal>20</nominal>
         <lifetime>43200</lifetime>
         <restock>0</restock>
-        <min>5</min>
+        <min>10</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
         <category name="tools"/>
-		<usage name="Tier4"/>
+        <usage name="Industrial"/>
+		<usage name="Military"/>
     </type>
 	<type name="ExpansionHydraulicHoses">
-        <nominal>10</nominal>
+        <nominal>20</nominal>
         <lifetime>43200</lifetime>
         <restock>0</restock>
-        <min>5</min>
+        <min>10</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
         <category name="tools"/>
-		<usage name="Tier4"/>
+        <usage name="Industrial"/>
+		<usage name="Military"/>
     </type>
 	<type name="ExpansionBusWheel">
         <nominal>5</nominal>
@@ -2175,7 +2177,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUAZDoorHood">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2235,7 +2237,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUAZDoorHood_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2247,7 +2249,7 @@
         <usage name="Industrial" />
     </type>
 	<type name="ExpansionUAZDoorDriver_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2259,7 +2261,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCoDriver_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2271,7 +2273,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCargo1_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2283,7 +2285,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCargo2_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2295,7 +2297,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUAZDoorHood_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>28800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2307,7 +2309,7 @@
         <usage name="Industrial" />
     </type>
 	<type name="ExpansionUAZDoorDriver_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2319,7 +2321,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCoDriver_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2331,7 +2333,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCargo1_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2343,7 +2345,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionUAZDoorCargo2_LightGreen">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2403,7 +2405,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_1_Civilian">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2415,7 +2417,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_2_Civilian">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2427,7 +2429,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_1_Civilian">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2439,7 +2441,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_2_Civilian">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2451,7 +2453,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_1_Medical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2463,7 +2465,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_2_Medical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2475,7 +2477,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_1_Medical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2487,7 +2489,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_2_Medical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2499,7 +2501,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_1_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2511,7 +2513,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_2_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2523,7 +2525,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_1_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2535,7 +2537,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_2_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2547,7 +2549,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_1_Uber">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2559,7 +2561,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_1_2_Uber">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2571,7 +2573,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_1_Uber">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2583,7 +2585,7 @@
         <usage name="Industrial"/>
     </type>
     <type name="ExpansionUh1hDoor_2_2_Uber">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2643,7 +2645,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Blueline">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2655,7 +2657,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Blueline">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2667,7 +2669,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Blueline">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2679,7 +2681,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Blueline">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2691,7 +2693,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Digital">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2703,7 +2705,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Digital">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2715,7 +2717,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Digital">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2727,7 +2729,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Digital">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2739,7 +2741,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Elliptical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2751,7 +2753,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Elliptical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2763,7 +2765,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Elliptical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2775,7 +2777,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Elliptical">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2787,7 +2789,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Furious">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2799,7 +2801,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Furious">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2811,7 +2813,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Furious">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2823,7 +2825,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Furious">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2835,7 +2837,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_GrayWatcher">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2847,7 +2849,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_GrayWatcher">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2859,7 +2861,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_GrayWatcher">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2871,7 +2873,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_GrayWatcher">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2883,7 +2885,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Jeans">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2895,7 +2897,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Jeans">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2907,7 +2909,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Jeans">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2919,7 +2921,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Jeans">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2931,7 +2933,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2943,7 +2945,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2955,7 +2957,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2967,7 +2969,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Resistance">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2979,7 +2981,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Shadow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -2991,7 +2993,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Shadow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3003,7 +3005,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Shadow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3015,7 +3017,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Shadow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3027,7 +3029,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Sheriff">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3039,7 +3041,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Sheriff">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3051,7 +3053,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Sheriff">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3063,7 +3065,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Sheriff">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3075,7 +3077,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Speedy">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3087,7 +3089,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Speedy">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3099,7 +3101,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Speedy">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3111,7 +3113,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Speedy">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3123,7 +3125,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Sunset">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3135,7 +3137,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Sunset">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3147,7 +3149,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Sunset">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3159,7 +3161,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Sunset">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3171,7 +3173,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3183,7 +3185,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3195,7 +3197,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3207,7 +3209,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Vrana">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3219,7 +3221,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Wasp">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3231,7 +3233,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Wasp">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3243,7 +3245,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Wasp">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3255,7 +3257,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Wasp">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3267,7 +3269,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_1_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3279,7 +3281,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_1_2_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3291,7 +3293,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_1_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3303,7 +3305,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="Expansion_Mh6_Door_2_2_Wave">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3462,7 +3464,7 @@
     </type>
 	<!-- CROSSBOWS -->
     <type name="Expansion_Crossbow">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3507,7 +3509,7 @@
         <value name="Tier4"/>
     </type>
 	<type name="Expansion_M79">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -3521,7 +3523,7 @@
         <value name="Tier4"/>
     </type>
 	<type name="ExpansionFlaregun">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3551,7 +3553,7 @@
         <value name="Tier3"/>
     </type>
 	<type name="Expansion_Taser_Black">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -3576,7 +3578,7 @@
         <value name="Tier2"/>
     </type>
 	<type name="Expansion_Longhorn">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -3736,7 +3738,7 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_M14">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4095,7 +4097,7 @@
         <usage name="Military"/>
     </type>
     <type name="Expansion_Ammo_ArrowBolt">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4140,7 +4142,7 @@
         <value name="Tier4"/>
     </type>
     <type name="Mag_Expansion_M14_20Rnd">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>800</restock>
         <min>0</min>
@@ -4155,7 +4157,7 @@
         <value name="Tier4"/>
     </type>
     <type name="Mag_Expansion_M14_10Rnd">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>800</restock>
         <min>0</min>
@@ -4254,7 +4256,7 @@
 	</type>
 	<!-- CURRENCYS -->
 	<type name="ExpansionGoldBar">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4264,7 +4266,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionSilverBar">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4274,7 +4276,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionGoldNugget">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4284,7 +4286,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 	<type name="ExpansionSilverNugget">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4294,7 +4296,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionBanknoteUSD">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4304,7 +4306,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionBanknoteEuro">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4314,7 +4316,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
     <type name="ExpansionBanknoteHryvnia">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
         <min>0</min>
@@ -4325,7 +4327,7 @@
     </type>
     <!-- OTHER MARKET ITEMS -->
     <type name="ExpansionTemporaryOwnedContainer">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <!-- NOTE: Lifetime is not controlled by CE, this is just here to prevent it from despawning before it expires -->
         <lifetime>3888000</lifetime>
         <min>0</min>
@@ -4337,7 +4339,7 @@
 	<!-- ITEM END -->
 	<!-- BASE BUILDING -->
 	<type name="WoodenLog">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4348,7 +4350,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionLumber1">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4359,7 +4361,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionLumber1_5">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4370,7 +4372,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionLumber3">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4381,7 +4383,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionFloorKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4392,7 +4394,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionWoodPillarKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4403,7 +4405,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionRampKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4414,7 +4416,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionStairKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4425,7 +4427,7 @@
         <category name="tools"/>
     </type>
 	<type name="ExpansionWallKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4450,7 +4452,7 @@
         <usage name="Hunting"/>
     </type>
     <type name="ExpansionBarrierGateKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>5</min>
@@ -4533,7 +4535,7 @@
         <usage name="Military"/>
     </type>
 	<type name="ExpansionHelipadKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>5</min>
@@ -4545,7 +4547,7 @@
         <usage name="Military"/>
     </type>
     <type name="ExpansionBarbedWireKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>5</min>
@@ -4569,10 +4571,10 @@
         <usage name="Military"/>
     </type>
 	<type name="ExpansionCodeLock">
-        <nominal>15</nominal>
+        <nominal>45</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>10</min>
+        <min>35</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -4654,7 +4656,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="1" deloot="0"/>
     </type>
     <type name="ExpansionParkingMeter">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>604800</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4665,7 +4667,7 @@
         <category name="tools"/>
     </type>
     <type name="ExpansionParkingMeterKit">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>14400</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4676,7 +4678,7 @@
         <category name="tools"/>
     </type>
     <type name="ExpansionCircuitBoard_MK1">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4687,7 +4689,7 @@
         <category name="tools"/>
     </type>
     <type name="ExpansionCircuitBoard_MK2">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4698,7 +4700,7 @@
         <category name="tools"/>
     </type>
     <type name="ExpansionCircuitBoard_MK3">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4723,7 +4725,7 @@
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="1" deloot="0"/>
     </type>
     <type name="ExpansionCarKey">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4755,7 +4757,7 @@
         <value name="Tier4"/>
     </type>
 	<type name="ExpansionBoltCutters">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4767,7 +4769,7 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionPropaneTorch">
-        <nominal>1</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>0</min>
@@ -4779,10 +4781,10 @@
         <usage name="Industrial"/>
     </type>
 	<type name="ExpansionToolBox">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>

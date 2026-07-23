@@ -18,8 +18,8 @@
            check that catches silent dead overrides (a selector typo, a removed file, an
            XML path that no longer matches). [NEW]/[OK] lines are healthy; [WARN] is not.
         6. COMPOSED ARTIFACTS: the files prestart's builders generate for the active
-           mission parse (flat DynamicAIB.json / StaticAIB.json, SpawnerBubakuV2.json,
-           transfer_spawn.json) — proof the box-side build chain produced valid output.
+           mission parse (SpawnerBubakuV2.json, transfer_spawn.json) — proof the box-side
+           build chain produced valid output. (DynamicAIB/StaticAIB dropped: BanditAI retired.)
 
     Run it after a deploy, after a restart that applied web edits, or ad-hoc. Exits 0 when
     every check passes, 1 otherwise (CI-friendly). CSV log in logs/ unless -NoLog.
@@ -109,9 +109,10 @@ if (-not $LocalOnly) {
         Where-Object { $_ -match '^DAYZ_MISSION=(.+)$' } | ForEach-Object { $Matches[1].Trim() } | Select-Object -First 1)
     if ($mission) { Show-Pass "active mission: $mission" } else { Show-Fail "could not read map.env for the active mission" }
 
+    # BanditAI retired 2026-07-23: Build-AIBandits no longer runs at prestart, so DynamicAIB.json /
+    # StaticAIB.json are no longer composed. Dropped from this check - a fresh box would never
+    # create them and this would hard-fail. (The files may still linger on an old box; that's fine.)
     foreach ($rel in @(
-        "profiles/AI_Bandits/DynamicAIB.json"
-        "profiles/AI_Bandits/StaticAIB.json"
         "profiles/SpawnerBubaku/SpawnerBubakuV2.json"
         "profiles/transfer_spawn.json"
     )) {
