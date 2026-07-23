@@ -94,7 +94,7 @@
         "model": "affine",
         "updated": "2026-07-23T22:10:10.147Z"
       },
-      "Satellite": {
+      "satellite": {
         "affine": {
           "a": 0.9994,
           "b": 0,
