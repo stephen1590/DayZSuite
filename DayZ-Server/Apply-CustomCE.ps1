@@ -68,6 +68,11 @@ foreach ($e in $entries) {
     $name = [string]$e.name
     $type = if ($e.type) { [string]$e.type } else { 'types' }
     if (-not $name -or -not $e.from) { Show-Warn "manifest entry missing name/from - skipped."; continue }
+    # "disabled": true keeps the entry documented but OUT of the CE - a mod's types file must be
+    # dropped from registration when its mod is turned off in mods.conf, or the CE loads types for
+    # classes the engine no longer has and the server SEGV-crashes on boot (bandit_types.xml when
+    # @aibandits is disabled). Disable, don't delete: flip it back when the mod returns.
+    if ($e.disabled) { Show-Info "CustomCE[$Mission]: '$name' disabled in manifest - skipped."; continue }
     # A map-tuned variant at custom-ce/maps/<mission>/<name> beats the shared 'from' for that
     # mission (e.g. Enoch defines no Tier4 - its expansion_types re-tiers those entries).
     $from = [string]$e.from

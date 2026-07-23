@@ -40,6 +40,16 @@ let mapHm = null;        // API heightmap meta for the current map (null = none 
 let mapSelPt = -1;       // selected point index into mapPts
 let mapCatFilter = new Set();  // active class/type keys ('(base)' = uncategorized); a point shows only if its key is in here
 let mapEdit = false;           // edit mode: drag markers to move, click empty to add, panel to edit fields
+
+// --- Deprecations (AI map/location settings rework, 2026-07-23) ------------------------------
+// Phase 1: the authored map-points store is being replaced by points DERIVED from the live
+// Expansion AIPatrol/AILocation settings. Its on-map layer is turned OFF here (render + new-point
+// creation) while that inversion is built - Phase 3 re-renders the derived points read-only. One
+// switch, reversible: set false to restore the old editable layer.
+const MAP_POINTS_DEPRECATED = true;
+// BanditAI is retired (its mods are already disabled in mods.conf). Stop drawing its live-position
+// layer too. Reversible.
+const BANDIT_RENDER_DEPRECATED = true;
 let mapSpawnDirty = false;     // unsaved spawn-point edits held in memory (mapData.spawns)
 let mapSpawnBaseline = null;   // JSON of the last-saved points, for Discard
 let mapLoadSeq = 0;      // async guard: stale fetches/resolves must not render
@@ -951,6 +961,7 @@ function drawSelectedWaypoints(ctx) {
   ctx.restore();
 }
 function drawMapMarkers(ctx) {
+  if (MAP_POINTS_DEPRECATED) return;   // Phase 1: authored map-points layer deprecated (render off)
   if (!mapPts.length) return;
   drawSelectedWaypoints(ctx);
   const { w, h } = mapVp();
@@ -1051,6 +1062,7 @@ async function loadPlayers() {
 // not live tracking. Spawns = red diamonds, kills = faded rings. The -serverMod route is the
 // precise-live upgrade; this is the no-mod activity view.
 function drawMapBandits(ctx) {
+  if (BANDIT_RENDER_DEPRECATED) return;   // BanditAI retired 2026-07-23
   if (!mapView || !mapLiveSel.has('NPCs')) return;
   // Live NPC coordinates only mean anything on the mission the server is actually running —
   // on any other selected map they'd plot at arbitrary spots, so they're hidden entirely
@@ -1297,6 +1309,7 @@ function markSpawnDirty() { mapSpawnDirty = true; updateMapEditUi(); }
 
 // Add a new point at a world position (edit mode, click on empty map). Auto-named unique.
 function addSpawnAt(wx, wz) {
+  if (MAP_POINTS_DEPRECATED) return;   // Phase 1: no new points on the deprecated authored layer
   const letter = mapLettersFor(mapMission)[0] || 'S';
   const taken = new Set(mapPts.map((p) => p.name).concat((mapData.spawns.points || []).map((p) => p.name)));
   let i = 1, name; do { name = letter + '_New' + i++; } while (taken.has(name));

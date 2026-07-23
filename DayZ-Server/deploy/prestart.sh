@@ -122,9 +122,12 @@ fi
 # fixed path. Compose the active map's flat config from common + maps/$TARGET NOW, before the
 # engine reads it, so a map switch can never leave another map's coords in place. Fail-soft +
 # `|| true`: a bad source can NEVER block server start; a map with no per-map file gets no bandits.
-if [ -f "$SERVER/Build-AIBandits.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Build-AIBandits.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
-fi
+#
+# DISABLED 2026-07-23 — BanditAI is retired (its mods are already commented out in mods.conf, so
+# this composed dead configs no consumer reads). Left in place, not deleted; uncomment to restore.
+# if [ -f "$SERVER/Build-AIBandits.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+#     pwsh -NoProfile -File "$SERVER/Build-AIBandits.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+# fi
 
 # Expansion AI roaming destinations: compose a DRAFT (AILocations.draft.json) from the frozen
 # default + map-points that opt into 'expansion'. DRAFT-ONLY - the live AILocationSettings.json is
