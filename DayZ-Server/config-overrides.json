@@ -92,7 +92,9 @@
             "AccuracyMax": 0.849999988079071,
             "AccuracyMin": 0.5599999940395355,
             "MaxFlankingDistance": 25,
-            "NoiseInvestigationDistanceLimit": 500
+            "NoiseInvestigationDistanceLimit": 500,
+            "LightingConfigMinNightVisibilityMeters.0": 75,
+            "LightingConfigMinNightVisibilityMeters.1": 10
         },
         "profiles/SpawnerBubaku/maps/dayzOffline.sakhal/SpawnerBubakuV2.json": {},
         "profiles/BaseBuildingPlus/BBP_Settings.json": {
