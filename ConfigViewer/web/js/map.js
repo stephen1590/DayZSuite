@@ -9,6 +9,7 @@ import { toast, setGlobalMsg, escapeHtml, attr, stripBom } from './ui.js';
 import { apiPost, rateLimited } from './api-client.js';
 import { loadCred, handle } from './auth.js';
 import { getActiveMission, setActiveMission } from './state.js';
+import { IDENTITY, isIdentity, applyAffine, invertAffine, solveCalibration } from './map-calibrate.js';
 
 let shellHooks = { syncHash: () => {}, syncHashSoon: () => {}, updateThemeToggle: () => {} };
 export function setMapShellHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -74,6 +75,25 @@ let mapPlayersTimer = null;
 let mapBandits = { positions: [], stale: false, ageSec: null };  // live bandit positions from the AIB_Tracker serverMod
 let mapCursor = null;    // world { x, z } under the pointer (null = outside)
 let mapDrawQueued = false;
+// Per-layer alignment (map-calibration.json, committed sidecar). mapCalib = { maps:{...} };
+// attached to each layer as layer.calib. The live Calibrate mode holds an in-progress affine
+// in mapCal.preview that overrides the ACTIVE layer's saved calib so alignment is visible before
+// it is persisted. layerCalib() resolves the effective affine the renderer should use.
+let mapCalib = null;          // parsed sidecar (null until first load attempt)
+let mapCalibTried = false;
+let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
+function calibFor(short, layerName) {
+  const m = mapCalib && mapCalib.maps && mapCalib.maps[short];
+  const c = m && m[layerName] && m[layerName].affine;
+  return (c && !isIdentity(c)) ? c : null;
+}
+function layerCalib(layer) {
+  if (!layer) return null;
+  // In calibrate mode the layer draws RAW so each click's assumed coord is consistent; the
+  // solved affine is applied ONLY while explicitly previewing.
+  if (mapCal && mapCal.layer === layer) return mapCal.previewing ? mapCal.preview : null;
+  return layer.calib || null;
+}
 
 function mapShort(mission) { return String(mission || '').replace(/^dayzOffline\./, ''); }
 // Class/type filter: a point's key is its category token, or '(base)' when uncategorized
@@ -364,6 +384,12 @@ async function loadMapAssets(short) {
     const man = await mR.json();
     if (seq !== mapAssetSeq) return;
     if (!Array.isArray(man.layers) || !man.layers.length || typeof man.layers[0] === 'string') { requestMapDraw(); return; }
+    // Overlay the committed calibration sidecar onto the manifest's layers (once, cached).
+    if (!mapCalibTried) {
+      mapCalibTried = true;
+      try { const cr = await fetch('map-calibration.json', { cache: 'no-cache' }); if (cr.ok) mapCalib = await cr.json(); } catch { mapCalib = null; }
+    }
+    for (const ly of man.layers) ly.calib = calibFor(short, ly.name);
     mapTiles = { man, root, layer: null, base: '', cache: new Map() };
     let want = 'satellite';
     try { want = localStorage.getItem('cfgview-maplayer') || 'satellite'; } catch { /* default */ }
@@ -435,6 +461,7 @@ function renderMap() {
   renderBuildingsFilter();
   renderMarkersFilter();
   renderLiveFilter();
+  if (mapCal) { renderCalibrate(); updateMapEditUi(); return; }
   renderMapList();
   renderMapSummary();
   renderMapDetail();
@@ -443,6 +470,8 @@ function renderMap() {
 
 // Reflect edit mode + dirty state in the head toolbar.
 function updateMapEditUi() {
+  if (el.mapCalBtn) el.mapCalBtn.classList.toggle('active', !!mapCal);
+  if (mapCal && el.mapEditSeg) el.mapEditSeg.classList.add('hidden');
   if (!el.mapEditSeg) return;
   // Derived points are READ-ONLY (Phase 3): the truth lives in the AI settings files, edited
   // via the Files tab. No Edit toggle at all until the write-back phase.
@@ -502,6 +531,104 @@ function discardSpawns() {
   mapSelPt = -1;
   setMapMission(mapMission);   // rebuild mapPts from the restored document
 }
+
+// ===================== Calibrate mode (per-layer alignment) =====================
+// Workflow: on the ACCURATE layer (e.g. Topo Old) read a landmark's world X/Z off the crosshair;
+// switch to the misaligned layer + Calibrate; CLICK that landmark (captures where the raw layer
+// places it = "assumed") and type its TRUE X/Z. 2 points solve offset+scale, 3+ a full affine.
+// Preview shows the fix live; Copy emits the block for the committed map-calibration.json. The
+// layer is drawn RAW while capturing (preview off) so every click's assumed coord is consistent.
+function round4(v) { return Math.round(v * 10000) / 10000; }
+function startCalibrate() {
+  if (mapCal) { exitCalibrate(); return; }                       // toggle off
+  if (!mapTiles || !mapTiles.layer) { toast('Load a tile layer first (pick one in the layer switch).', 'err'); return; }
+  mapEdit = false;                                               // mutually exclusive with spawn-edit
+  const layer = mapTiles.layer;
+  const short = mapShort(mapMission);
+  const saved = mapCalib && mapCalib.maps && mapCalib.maps[short] && mapCalib.maps[short][layer.name];
+  mapCal = {
+    layer, previewing: false, result: null,
+    points: (saved && Array.isArray(saved.points)) ? saved.points.map((p) => ({ assumed: p.assumed.slice(), world: p.world.slice() })) : [],
+    preview: (saved && saved.affine) || null,
+  };
+  resolveCal();
+  renderMap();
+}
+function exitCalibrate() { mapCal = null; renderMap(); }
+function addCalPoint(wx, wz) {
+  if (!mapCal || mapCal.previewing) return;                      // capture only with preview OFF (raw frame)
+  mapCal.points.push({ assumed: [Math.round(wx), Math.round(wz)], world: [Math.round(wx), Math.round(wz)] });
+  resolveCal();
+  renderMap();
+}
+function resolveCal() {
+  if (!mapCal) return;
+  mapCal.result = solveCalibration(mapCal.points);
+  mapCal.preview = mapCal.result.affine || null;
+  requestMapDraw();
+}
+function copyCalibration() {
+  if (!mapCal || !mapCal.preview || (mapCal.result && mapCal.result.error)) { toast('Solve a calibration first (need 2+ good points).', 'err'); return; }
+  const short = mapShort(mapMission), r = mapCal.result;
+  const block = {
+    affine: { a: round4(mapCal.preview.a), b: round4(mapCal.preview.b), c: round4(mapCal.preview.c), d: round4(mapCal.preview.d), e: round4(mapCal.preview.e), f: round4(mapCal.preview.f) },
+    points: mapCal.points.map((p) => ({ assumed: [round4(p.assumed[0]), round4(p.assumed[1])], world: [round4(p.world[0]), round4(p.world[1])] })),
+    rms: round4(r.rms), rotationDeg: round4(r.rotationDeg), model: r.model, updated: new Date().toISOString(),
+  };
+  const full = mapCalib && mapCalib.maps ? JSON.parse(JSON.stringify(mapCalib)) : { _readme: 'Per-layer map alignment - see map.js / map-calibrate.js.', maps: {} };
+  full.maps[short] = full.maps[short] || {};
+  full.maps[short][mapCal.layer.name] = block;
+  const text = JSON.stringify(full, null, 2);
+  // Apply in-session immediately so the fix persists after Exit, before the deploy.
+  mapCalib = full;
+  mapCal.layer.calib = block.affine;
+  navigator.clipboard.writeText(text).then(
+    () => toast('Calibration copied — paste it over web/map-calibration.json, then deploy ConfigViewer.', 'ok'),
+    () => toast('Copy failed — calibration is applied in-session; open the console to grab it.', 'err'),
+  );
+  if (window.console) window.console.log('map-calibration.json:\n' + text);
+}
+function renderCalibrate() {
+  const c = mapCal, r = c.result;
+  el.mapDetail.classList.add('hidden');
+  // Status line
+  let stat;
+  if (!r || r.error) stat = '<span class="meta">' + escapeHtml((r && r.error) || 'Click a landmark on the map, then enter its true X/Z. 2 points min.') + '</span>';
+  else stat = '<span class="stat"><b>' + r.n + '</b> points · ' + r.model + '</span>' +
+    '<span class="stat">RMS <b>' + r.rms.toFixed(1) + ' m</b></span>' +
+    '<span class="stat">max <b>' + r.maxResidual.toFixed(1) + ' m</b></span>' +
+    '<span class="stat">rotation <b>' + r.rotationDeg.toFixed(2) + '°</b>' + (Math.abs(r.rotationDeg) < 0.2 ? ' <span class="meta">(≈none — offset+scale suffices)</span>' : '') + '</span>';
+  el.mapSum.innerHTML = stat;
+  // Points list + controls in the left nav
+  const resid = (r && r.residuals) || [];
+  const rows = c.points.map((p, i) =>
+    '<div class="cal-row"><span class="cal-n">' + (i + 1) + '</span>' +
+    '<span class="cal-as mono" title="where the raw layer places this click">' + p.assumed[0].toFixed(0) + ', ' + p.assumed[1].toFixed(0) + '</span>' +
+    '<span class="cal-arrow">→</span>' +
+    '<input class="cal-w mono" data-i="' + i + '" data-ax="0" value="' + attr(p.world[0]) + '" title="true world X" inputmode="numeric">' +
+    '<input class="cal-w mono" data-i="' + i + '" data-ax="1" value="' + attr(p.world[1]) + '" title="true world Z" inputmode="numeric">' +
+    '<span class="cal-res ' + (resid[i] > 5 ? 'bad' : 'ok') + '">' + (resid[i] != null ? resid[i].toFixed(1) + 'm' : '—') + '</span>' +
+    '<button class="cal-x" data-i="' + i + '" title="remove">✕</button></div>').join('');
+  el.mapNav.innerHTML =
+    '<div class="cal-head">Calibrate: ' + escapeHtml(c.layer.label || c.layer.name) + '</div>' +
+    '<div class="cal-hint">Read a landmark\'s X/Z off the accurate layer, then click it here and type its true coords. Corners spread wins.</div>' +
+    (rows || '<div class="cal-hint">No points yet — click a known landmark on the map.</div>') +
+    '<div class="cal-btns">' +
+    '<button class="ghost' + (c.previewing ? ' active' : '') + '" id="calPrev"' + (c.preview ? '' : ' disabled') + '>' + (c.previewing ? 'Capturing…' : 'Preview fix') + '</button>' +
+    '<button class="ghost" id="calCopy"' + (c.preview ? '' : ' disabled') + '>Copy calibration</button>' +
+    '<button class="ghost" id="calClear">Clear</button>' +
+    '<button class="ghost" id="calExit">Exit</button></div>';
+  el.mapNav.querySelectorAll('.cal-w').forEach((inp) => inp.addEventListener('change', () => {
+    const v = parseFloat(inp.value);
+    if (isFinite(v)) { c.points[+inp.dataset.i].world[+inp.dataset.ax] = v; resolveCal(); renderMap(); }
+  }));
+  el.mapNav.querySelectorAll('.cal-x').forEach((b) => b.addEventListener('click', () => { c.points.splice(+b.dataset.i, 1); resolveCal(); renderMap(); }));
+  const P = $id('calPrev'); if (P) P.onclick = () => { c.previewing = !c.previewing; requestMapDraw(); renderMap(); };
+  const C = $id('calCopy'); if (C) C.onclick = copyCalibration;
+  const CL = $id('calClear'); if (CL) CL.onclick = () => { c.points = []; resolveCal(); renderMap(); };
+  const E = $id('calExit'); if (E) E.onclick = exitCalibrate;
+}
+function $id(id) { return document.getElementById(id); }
 
 // ---------- camera ----------
 function mapVp() { return { w: el.mapCanvas.clientWidth, h: el.mapCanvas.clientHeight }; }
@@ -581,19 +708,37 @@ function drawMap() {
     // level whose native resolution first meets the screen's (cap: layer maxZoom)
     const zBest = Math.max(0, Math.min(layer.maxZoom, Math.ceil(Math.log2(mapWs * mv.ppm / tileSize))));
     ctx.imageSmoothingEnabled = true;
+    // Per-layer calibration (null for an aligned layer -> the byte-identical fast path below).
+    // When present, the visible TRUE-world window is inverse-mapped to ASSUMED-world so the right
+    // tiles are culled, and each tile is drawn into its affine-transformed quad (offset/scale/rot).
+    const calib = layerCalib(layer);
+    const inv = calib ? invertAffine(calib) : null;
+    let awx0 = wx0, awx1 = wx1, awzB = wzB, awzT = wzT;
+    if (calib && inv) {
+      const cs = [[wx0, wzB], [wx1, wzB], [wx0, wzT], [wx1, wzT]].map(([x, z]) => applyAffine(inv, x, z));
+      awx0 = Math.min(cs[0][0], cs[1][0], cs[2][0], cs[3][0]);
+      awx1 = Math.max(cs[0][0], cs[1][0], cs[2][0], cs[3][0]);
+      awzB = Math.min(cs[0][1], cs[1][1], cs[2][1], cs[3][1]);
+      awzT = Math.max(cs[0][1], cs[1][1], cs[2][1], cs[3][1]);
+    }
     // draw coarse→fine: lower levels backfill while the exact tiles stream in
     for (let z = 0; z <= zBest; z++) {
       const across = 1 << z;
       const tw = mapWs / across;                       // meters per tile at this level
-      const tx0 = Math.max(0, Math.floor(wx0 / tw)), tx1 = Math.min(across - 1, Math.floor(wx1 / tw));
-      const ty0 = Math.max(0, Math.floor((mapWs - wzT) / tw)), ty1 = Math.min(across - 1, Math.floor((mapWs - wzB) / tw));
+      const tx0 = Math.max(0, Math.floor(awx0 / tw)), tx1 = Math.min(across - 1, Math.floor(awx1 / tw));
+      const ty0 = Math.max(0, Math.floor((mapWs - awzT) / tw)), ty1 = Math.min(across - 1, Math.floor((mapWs - awzB) / tw));
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
           const t = mapTile(z, tx, ty);
           if (!t.ok) continue;
-          const [sx, sy] = mapToScreen(tx * tw, mapWs - ty * tw);
-          const s = tw * mv.ppm;
-          ctx.drawImage(t.img, sx, sy, s + 0.5, s + 0.5);  // +0.5 hides subpixel seams
+          if (!calib) {
+            // ALIGNED LAYER — unchanged from before calibration existed (zero regression).
+            const [sx, sy] = mapToScreen(tx * tw, mapWs - ty * tw);
+            const s = tw * mv.ppm;
+            ctx.drawImage(t.img, sx, sy, s + 0.5, s + 0.5);  // +0.5 hides subpixel seams
+          } else {
+            drawTileAffine(ctx, t.img, tx * tw, mapWs - ty * tw, tw, calib, dpr);
+          }
         }
       }
     }
@@ -615,6 +760,22 @@ function drawMap() {
 // Tiers gate visibility by zoom: Capital/City always, villages from ~2x,
 // POIs deeper, hills/viewpoints deepest. First-come collision skipping keeps
 // the map readable (the list is tier-sorted, so big names win the space).
+// Draw one tile of a CALIBRATED layer into its affine quad. The tile occupies assumed-world
+// x in [tlx, tlx+tw] and z in [tlz-tw, tlz] (tlz = the high-z top edge). Its three corners map
+// through the calibration affine then to screen; the image is drawn under the transform that
+// carries image-space (0..W,0..H) onto that quad, so offset/scale/rotation all fall out. A tiny
+// overdraw (W+0.5) hides seams, exactly like the fast path's +0.5.
+function drawTileAffine(ctx, img, tlx, tlz, tw, m, dpr) {
+  const c00 = mapToScreen(...applyAffine(m, tlx, tlz));         // image (0,0)
+  const c10 = mapToScreen(...applyAffine(m, tlx + tw, tlz));    // image (W,0)
+  const c01 = mapToScreen(...applyAffine(m, tlx, tlz - tw));    // image (0,H)
+  const W = img.width || 256, H = img.height || 256;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.transform((c10[0] - c00[0]) / W, (c10[1] - c00[1]) / W, (c01[0] - c00[0]) / H, (c01[1] - c00[1]) / H, c00[0], c00[1]);
+  ctx.drawImage(img, 0, 0, W + 0.5, H + 0.5);
+  ctx.restore();
+}
 function drawMapLabels(ctx, w, h) {
   if (!mapLocs.length || !mapView) return;
   const TH = [0, 0, 0.10, 0.25, 0.5];                  // min px-per-meter per tier
@@ -1565,6 +1726,7 @@ export function initMap() {
   // zoom, hover tooltip, click select, right-click copy).
   el.mapSel.addEventListener('change', () => { mapTakeControl(); setMapMission(el.mapSel.value); });
   el.mapRefresh.addEventListener('click', () => { mapData = null; loadMapTab(true); });
+    if (el.mapCalBtn) el.mapCalBtn.addEventListener('click', startCalibrate);
   (() => {
     const c = el.mapCanvas;
     const touches = new Map();                            // active pointers (pinch = 2)
@@ -1644,12 +1806,16 @@ export function initMap() {
       if (moving && e.pointerId === moving.id) { moving = null; renderMap(); return; }
       if (drag && e.pointerId === drag.id) {
         if (!drag.moved && e.type === 'pointerup') {
-          const i = mapHitTest(e.offsetX, e.offsetY);
-          if (i > -1) selectMapPt(i);
-          else if (mapEdit) {
-            const w = mapToWorld(e.offsetX, e.offsetY);
-            if (e.shiftKey && mapSelPt > -1) addWaypointTo(mapSelPt, w.x, w.z);  // shift+click empty = append a waypoint to the selected point
-            else addSpawnAt(w.x, w.z);                                            // click empty = add a new point
+          if (mapCal) {                                                          // calibrate: click captures a control point
+            const w = mapToWorld(e.offsetX, e.offsetY); addCalPoint(w.x, w.z);
+          } else {
+            const i = mapHitTest(e.offsetX, e.offsetY);
+            if (i > -1) selectMapPt(i);
+            else if (mapEdit) {
+              const w = mapToWorld(e.offsetX, e.offsetY);
+              if (e.shiftKey && mapSelPt > -1) addWaypointTo(mapSelPt, w.x, w.z);  // shift+click empty = append a waypoint to the selected point
+              else addSpawnAt(w.x, w.z);                                            // click empty = add a new point
+            }
           }
         }
         drag = null;

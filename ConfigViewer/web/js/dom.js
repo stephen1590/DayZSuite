@@ -29,5 +29,5 @@ export const el = {
   mapStage: $('mapStage'), mapCanvas: $('mapCanvas'), mapEmpty: $('mapEmpty'), mapBar: $('mapBar'),
   mapLayerSeg: $('mapLayerSeg'), mapGridSeg: $('mapGridSeg'), mapDetail: $('mapDetail'), mapTip: $('mapTip'), mapFilter: $('mapFilter'),
   mapLootFilter: $('mapLootFilter'), mapSpawnFilter: $('mapSpawnFilter'), mapBuildingsFilter: $('mapBuildingsFilter'), mapMarkersFilter: $('mapMarkersFilter'), mapLiveFilter: $('mapLiveFilter'),
-  mapEditSeg: $('mapEditSeg'), mapSaveWrap: $('mapSaveWrap'), mapSaveBtn: $('mapSaveBtn'), mapDiscardBtn: $('mapDiscardBtn'),
+  mapEditSeg: $('mapEditSeg'), mapSaveWrap: $('mapSaveWrap'), mapSaveBtn: $('mapSaveBtn'), mapDiscardBtn: $('mapDiscardBtn'), mapCalBtn: $('mapCalBtn'),
 };
