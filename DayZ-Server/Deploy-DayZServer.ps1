@@ -296,7 +296,7 @@ $DeploySteamAccount   = $hv.DEPLOY_STEAM_ACCOUNT
 # the whole auto-check (the timer is stopped/left disabled, the manual API arm still works).
 $DeployUpdateCheckInterval = $hv.DEPLOY_UPDATE_CHECK_INTERVAL
 $UpdateCheckEnabled = ($DeployUpdateCheckInterval -and $DeployUpdateCheckInterval -ne 'off')
-if (-not $DeployServerPassword -or -not $DeployAdminPassword) {
+if (-not $DeployAdminPassword){#-not $DeployServerPassword -or -not $DeployAdminPassword) {
     Write-Error "DEPLOY_SERVER_PASSWORD / DEPLOY_ADMIN_PASSWORD not set in $HostEnv. serverDZ.cfg's join/admin passwords are host-local secrets, never in the tracked payload. Copy host.env.example to host.env and fill both in, then re-run."
     exit 2
 }
