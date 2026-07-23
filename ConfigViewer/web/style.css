@@ -573,6 +573,8 @@
   .ty-bar { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
   .ty-bar #tyFilter { flex: 1 1 260px; max-width: 420px; padding: 7px 10px; font-size: 13px; }
   .ty-only { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+  .ty-addbar { display: flex; align-items: center; gap: 10px; padding: 10px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); flex-wrap: wrap; }
+  .ty-addbar #tyAddInput { flex: 1 1 280px; max-width: 420px; padding: 7px 10px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   /* Master-detail: XML preview of the selected type on the LEFT (sticky), table on the RIGHT. */
   .ty-split { display: flex; align-items: flex-start; gap: 16px; padding: 12px 22px 16px; }
   .ty-main { flex: 1 1 auto; min-width: 0; overflow-x: auto; }   /* min-width:0 lets the grid shrink; scroll as a safety valve */
@@ -611,7 +613,7 @@
      overrides editor never gets this class, so its workspace-scroll is untouched. */
   #editorPage.types-mode { height: 100%; min-height: 0; }
   .types-mode .ovr-body { display: flex; flex-direction: column; min-height: 0; }
-  .types-mode .ty-bar, .types-mode .ty-note { flex: none; }
+  .types-mode .ty-bar, .types-mode .ty-addbar, .types-mode .ty-note { flex: none; }
   .types-mode .ty-split { flex: 1 1 auto; min-height: 0; align-items: stretch; }
   .types-mode .ty-preview { position: static; top: auto; max-height: none; align-self: stretch; }
   .types-mode .ty-main { min-height: 0; overflow-y: auto; }   /* the sole scroll region; .ty-head sticks to its top */

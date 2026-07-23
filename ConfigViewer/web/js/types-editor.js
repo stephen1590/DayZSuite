@@ -65,16 +65,50 @@ function effectiveEl(st, name) {
 }
 function isOverridden(st, name) { return st.edits.has(name) || (st.tunMap.has(name) && !st.removals.has(name)); }
 
+// Clone a <type> INTO the tuning document (importNode, not cloneNode): base entries live in a
+// SEPARATE DOMParser document (st.baseDoc), so a plain clone would leave the staged block owned
+// by baseDoc — and a later setChildText (st.doc.createElement + appendChild) would splice a
+// tuning-doc node under a base-doc parent. importNode adopts the copy into st.doc so every staged
+// block is single-document. (For a tunMap element, already in st.doc, it is an equivalent copy.)
+function cloneForEdit(st, src) { return st.doc.importNode(src, true); }
 // Staging: every edit works on a COMPLETE clone of the effective element (all fields carried
 // verbatim — the rule the tuning file already follows), so a partial block never exists.
 function stageEl(st, name) {
   if (st.edits.has(name)) return st.edits.get(name);
   const src = (!st.removals.has(name) && st.tunMap.get(name)) || st.baseMap.get(name);
   if (!src) return null;
-  const clone = src.cloneNode(true);
+  const clone = cloneForEdit(st, src);
   st.removals.delete(name);          // editing resurrects a reverted override
   st.edits.set(name, clone);
   return clone;
+}
+// Base types NOT yet in the override layer — the pool the "Add override" picker offers. Base-only
+// by policy: the tuning layer OVERRIDES upstream types, it does not invent them, so only names in
+// the base file are addable, and each new override is CLONED from its base entry as the template.
+function overridableBase(st) {
+  const taken = new Set([...st.edits.keys(), ...st.tunMap.keys()]);
+  return [...st.baseMap.keys()].filter((n) => !taken.has(n)).sort();
+}
+// Promote a base type into the tuning layer: refuse a name not in the base (base-only), dedup to
+// the existing override if already there, else stage a COMPLETE clone of the base entry so every
+// field starts at its real upstream value. Returns true when a row is selected to show.
+function addOverride(st, name) {
+  const n = (name || '').trim();
+  if (!n) return false;
+  if (st.edits.has(n) || (st.tunMap.has(n) && !st.removals.has(n))) {
+    st.selected = n;
+    setGlobalMsg('"' + n + '" is already overridden — selected it.', false);
+    return true;
+  }
+  if (!st.baseMap.has(n)) {
+    setGlobalMsg('"' + n + '" is not in the base file — the tuning layer only overrides base types.', true);
+    return false;
+  }
+  st.removals.delete(n);
+  st.edits.set(n, cloneForEdit(st, st.baseMap.get(n)));
+  st.selected = n;
+  setGlobalMsg('Added "' + n + '" — cloned from the base. Tune it, then Save.', false);
+  return true;
 }
 function setChildText(st, el, tag, val) {
   let c = childOf(el, tag);
@@ -162,6 +196,8 @@ async function loadState(row) {
     edits: new Map(), removals: new Set(),
     filter: '', overOnly: false, capOpen: false, expanded: new Set(),
     selected: null,   // the type whose full XML shows in the left preview panel
+    addOpen: false,   // the "Add override" picker panel is open
+    addValue: '',     // in-progress picker text — persisted so a rerender can't drop it
     baseMissing: baseDoc === null,
   };
   states.set(row.key, st);
@@ -262,14 +298,25 @@ function tableHtml(st) {
   const names = allNames(st).filter((n) => matches(st, n));
   const nOver = allNames(st).filter((n) => isOverridden(st, n)).length;
   const dirty = st.edits.size + st.removals.size;
+  const pool = overridableBase(st);            // base types addable as new overrides
+  const canAdd = pool.length > 0;
   let html = '<div class="ty-bar">' +
     '<input id="tyFilter" type="text" placeholder="Filter by classname, category, usage or tier…" spellcheck="false" autocomplete="off" value="' + attr(st.filter) + '">' +
     '<label class="ty-only"><input type="checkbox" id="tyOverOnly"' + (st.overOnly ? ' checked' : '') + '> overridden only</label>' +
     '<span class="meta">' + names.length + ' of ' + allNames(st).length + ' types · ' + nOver + ' overridden</span>' +
     '<span class="spacer"></span>' +
+    '<button type="button" class="btn-sm" id="tyAddBtn"' + (canAdd ? '' : ' disabled title="' + attr(st.baseMissing ? 'base file unavailable — cannot validate against it' : 'every base type is already overridden') + '"') + '>' + (st.addOpen ? 'Close' : '+ Add override') + '</button>' +
     (dirty ? '<button type="button" class="btn-sm" id="tyDiscard">Discard</button>' : '') +
     '<button type="button" class="btn-sm primary" id="tySave"' + (dirty ? '' : ' disabled') + '>Save ' + (dirty || '') + ' change' + (dirty === 1 ? '' : 's') + '</button>' +
     '</div>' +
+    (st.addOpen && canAdd ?
+      '<div class="ty-addbar">' +
+        '<input id="tyAddInput" list="tyAddList" type="text" placeholder="Base classname to override…" spellcheck="false" autocomplete="off" value="' + attr(st.addValue || '') + '">' +
+        '<datalist id="tyAddList">' + pool.map((n) => '<option value="' + attr(n) + '"></option>').join('') + '</datalist>' +
+        '<button type="button" class="btn-sm primary" id="tyAddGo">Add override</button>' +
+        '<button type="button" class="btn-sm" id="tyAddCancel">Cancel</button>' +
+        '<span class="meta">' + pool.length + ' base type' + (pool.length === 1 ? '' : 's') + ' not yet overridden — pick one to clone as the starting point</span>' +
+      '</div>' : '') +
     (st.baseMissing ? '<div class="ovr-note">Base file unavailable — showing the tuning file\'s own entries only. Overrides still save.</div>' : '') +
     '<div class="ty-note ovr-note">Edits stage a <b>complete</b> replacement <span class="mono">&lt;type&gt;</span> block in the tuning layer — the base file is never modified. Save rewrites the tuning file (snapshotted on the box); <b>restart to apply</b>.</div>';
   // Two columns: the XML preview of the selected type on the LEFT (sticky), the table on the RIGHT.
@@ -316,6 +363,29 @@ function wire(st, body, hooks) {
   if (only) only.onchange = () => { st.overOnly = only.checked; rerender(st, hooks); };
   const more = body.querySelector('#tyMore');
   if (more) more.onclick = () => { st.capOpen = true; rerender(st, hooks); };
+  // "Add override": toggle the base-type picker, then clone a base type into the tuning layer.
+  const addBtn = body.querySelector('#tyAddBtn');
+  if (addBtn) addBtn.onclick = () => {
+    st.addOpen = !st.addOpen;
+    if (!st.addOpen) st.addValue = '';
+    rerender(st, hooks);
+    if (st.addOpen) { const i = body.querySelector('#tyAddInput'); if (i) i.focus(); }
+  };
+  const addInput = body.querySelector('#tyAddInput');
+  if (addInput) addInput.addEventListener('input', () => { st.addValue = addInput.value; });   // survive an unrelated rerender
+  const doAdd = () => {
+    if (!addInput) return;
+    if (!addOverride(st, addInput.value)) { addInput.focus(); return; }   // refused (not in base) — keep the panel open
+    st.addOpen = false; st.addValue = ''; st.filter = '';                 // clear the filter so the new row is visible
+    rerender(st, hooks);
+    const sel = body.querySelector('.ty-row.selected');
+    if (sel) { sel.scrollIntoView({ block: 'center' }); const inp = sel.querySelector('.ty-in'); if (inp) inp.focus(); }
+  };
+  const addGo = body.querySelector('#tyAddGo');
+  if (addGo) addGo.onclick = doAdd;
+  if (addInput) addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+  const addCancel = body.querySelector('#tyAddCancel');
+  if (addCancel) addCancel.onclick = () => { st.addOpen = false; st.addValue = ''; rerender(st, hooks); };
   body.querySelectorAll('.ty-in').forEach((inp) => inp.addEventListener('change', () => commitQuick(st, inp, hooks)));
   body.querySelectorAll('.ty-nl').forEach((inp) => inp.addEventListener('change', () => {
     const name = inp.dataset.name, tag = inp.dataset.tag;
