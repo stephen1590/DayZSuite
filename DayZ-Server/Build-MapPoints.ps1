@@ -78,10 +78,15 @@ if (Test-Path $patPath) {
 
 # --- locations: RoamingLocations, all positional -------------------------------------------
 $locations = @()
+$li = -1
 foreach ($l in @($locDoc.RoamingLocations)) {
+    $li++
     if (-not $l -or -not $l.Name) { continue }
     $p = @($l.Position)
     $locations += [ordered]@{
+        # idx = position in the SOURCE file's RoamingLocations array - the stable key for the
+        # future write-back path. Name is NOT unique (the 2026-07-22 outage), so it can't key edits.
+        idx     = $li
         name    = [string]$l.Name
         x       = [double]$p[0]; y = [double]$p[1]; z = [double]$p[2]
         radius  = [double]$l.Radius
@@ -94,12 +99,17 @@ foreach ($l in @($locDoc.RoamingLocations)) {
 # Name is NOT required: the mod's stock object patrols carry an EMPTY Name and are identified
 # by ObjectClassName alone (enoch ships that way; requiring a name silently dropped all 17).
 $patrols = @(); $objectPatrols = @()
+$pi = -1
 foreach ($pt in @($patDoc.Patrols)) {
+    $pi++
     if (-not $pt) { continue }
     $objClass = [string]$pt.ObjectClassName
     if ($objClass) {
         # Spawns at every instance of the class; waypoints are offsets near origin - not a point.
         $objectPatrols += [ordered]@{
+            # idx = position in the source Patrols array (SHARED with patrols[] - one array,
+            # split two ways here), the stable key for the future write-back path.
+            idx        = $pi
             name       = if ("$($pt.Name)") { [string]$pt.Name } else { $objClass }
             objectClass = $objClass
             faction    = [string]$pt.Faction
@@ -115,6 +125,7 @@ foreach ($pt in @($patDoc.Patrols)) {
     if (-not $wps.Count) { Show-Warn "patrol '$([string]$pt.Name)' has no waypoints and no object class - not plottable, skipped."; continue }
     $first = @($wps[0])
     $patrols += [ordered]@{
+        idx       = $pi
         name      = [string]$pt.Name
         x         = [double]$first[0]; y = [double]$first[1]; z = [double]$first[2]
         faction   = [string]$pt.Faction

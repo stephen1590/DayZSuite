@@ -8,7 +8,7 @@
     rebuilds every patched file as frozen-default + override patches at prestart, then composes
     the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines + config-overrides.json
     + the AI_Bandits source tree + spawn-points + Babaku sources + the custom-CE manifest) and
-    the SAME engines the box runs at prestart (Apply-ConfigOverrides, Build-AIBandits,
+    the SAME engines the box runs at prestart (Apply-ConfigOverrides,
     Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
     from the mirrors, runs the ACTUAL build chain against it, and validates the produced artifacts.
     If it passes, the live deploy runs the identical scripts on the identical inputs — the result
@@ -24,7 +24,7 @@
       - registry seed rows WITHOUT a captured baseline (classification, StaticAIB, Babaku,
         messages) are placed from their repo seed - identical to a box that has them.
     Then per declared mission, the full prestart config chain: Apply-ConfigOverrides -Fix
-    (force-create), Build-AIBandits, Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns.
+    (force-create), Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns.
 
     Two prestart inputs are GAME-OWNED mission files (cfgeconomycore.xml, cfgplayerspawnpoints.xml)
     that a game update rewrites and prestart re-derives - so they are not mirrored. The gate stages
@@ -149,7 +149,7 @@ foreach ($m in $missions) {
 Write-Host "  staged custom-ce/ + $stagedFixtures game-file fixture(s) across $($missions.Count) mission(s)"
 
 # --- Run the REAL build chain against the staged dir ----------------------------------------
-Write-Host "`nRunning the build chain (Apply-ConfigOverrides + Build-AIBandits) against staging" -ForegroundColor Cyan
+Write-Host "`nRunning the build chain (Apply-ConfigOverrides + the prestart compilers) against staging" -ForegroundColor Cyan
 # Capture the information stream (6>&1) so the [WARN] lines are inspectable, AND keep the
 # RETURNED stats object - the authoritative counts. NEVER derive the verdict from Write-Host
 # text (2>&1 doesn't capture the host stream - that false-passed the zero-MISS check once).
@@ -196,15 +196,7 @@ if (Test-Path $aib) {
 #    validate each mission before the next runs. Each engine is guarded independently: one bad
 #    engine surfaces its own failure without masking the others.
 foreach ($m in $missions) {
-    # AI bandits: compose the flat DynamicAIB/StaticAIB from common + maps/<m>; assert they parse.
-    try { $null = & (Join-Path $PSScriptRoot "Build-AIBandits.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
-    catch { Show-Fail "Build-AIBandits threw for ${m}: $($_.Exception.Message)" }
-    foreach ($rel in @("profiles/AI_Bandits/DynamicAIB.json", "profiles/AI_Bandits/StaticAIB.json")) {
-        $p = Join-Path $StagingDir $rel
-        if (-not (Test-Path $p)) { Show-Fail "$rel not produced for $m"; continue }
-        try { $null = Get-Content -Raw $p | ConvertFrom-Json; Show-Pass "$rel composed for $m parses" }
-        catch { Show-Fail "$rel for $m - invalid JSON: $($_.Exception.Message)" }
-    }
+    # (BanditAI retired 2026-07-23; its compiler is archived - archive/Build-AIBandits.ps1.)
 
     # Expansion AI patrols: compose the AIPatrols DRAFT (frozen base + 'expansion' map-points) and
     # assert it parses. The SAME engine the box runs at prestart - proves the draft offline before any

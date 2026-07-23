@@ -223,7 +223,7 @@ if (-not $Local) {
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
                    'Apply-ServerCfg.ps1',
-                   'Build-AIBandits.ps1', 'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
+                   'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
@@ -466,12 +466,11 @@ $items = @(
     #  not shipped here; the engine above is code and ships on drift.)
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
-    @{ Src = "../Build-AIBandits.ps1";       Dst = Join-Path $ServerDir "Build-AIBandits.ps1";       Sudo = $false; Exec = $true }
     # serverDZ.cfg renderer (template + host.env secrets + server-settings.json). Lives in the
     # server dir because prestart rebuilds serverDZ.cfg on every start; the ENGINE is code, the
     # server-settings.json DOCUMENT is box-owned content seeded from config-registry.json.
     @{ Src = "../Apply-ServerCfg.ps1";       Dst = Join-Path $ServerDir "Apply-ServerCfg.ps1";       Sudo = $false; Exec = $true }
-    # Expansion AI patrol builder (twin of Build-AIBandits): prestart composes AIPatrolSettings.json
+    # Expansion AI patrol builder: prestart composes AIPatrolSettings.json
     # from the frozen base + 'expansion'-toggled map-points on every start. Same map-points store,
     # independent on/off (profiles/ExpansionMod/AIPatrols.control.json). Lives in the server dir.
     @{ Src = "../Build-AIPatrols.ps1";       Dst = Join-Path $ServerDir "Build-AIPatrols.ps1";       Sudo = $false; Exec = $true }

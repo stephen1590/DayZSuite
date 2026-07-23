@@ -50,6 +50,11 @@ const MAP_POINTS_DEPRECATED = true;
 // BanditAI is retired (its mods are already disabled in mods.conf). Stop drawing its live-position
 // layer too. Reversible.
 const BANDIT_RENDER_DEPRECATED = true;
+// Phase 3 (2026-07-23): mapData.derived = the map-points.generated.json store - points DERIVED
+// from the live Expansion AI settings by Build-MapPoints at prestart. When it exists and its
+// mission matches the viewed map, IT feeds mapPts (read-only: edit mode hidden, no creation).
+// The authored-store path below stays as the dormant fallback until Phase 4 retires it.
+function mapDerivedActive() { return !!(mapData && mapData.derived && mapData.derived.mission === mapMission); }
 let mapSpawnDirty = false;     // unsaved spawn-point edits held in memory (mapData.spawns)
 let mapSpawnBaseline = null;   // JSON of the last-saved points, for Discard
 let mapLoadSeq = 0;      // async guard: stale fetches/resolves must not render
@@ -89,18 +94,28 @@ export async function loadMapTab(force) {
   if (!mapData || force) {
     mapStageMsg('Loading spawn points…');
     try {
-      const [spawnsR, classesR, hmsR] = await Promise.all([
+      const [spawnsR, classesR, hmsR, derivedR] = await Promise.all([
         apiPost('/dayz/configs/get?name=Map-points', cred),
         apiPost('/dayz/configs/get?name=AI-Classes', cred),
         apiPost('/dayz/terrain/heightmaps', cred).catch(() => ({ maps: [] })),  // older API -> no deltas, map still plots
+        // The DERIVED store (Phase 3). Fail-soft on 404: the Api hasn't been redeployed with the
+        // Map-points-generated registry row yet, or the box hasn't restarted since Phase 2 - the
+        // summary line says which is more likely; the map itself still works.
+        apiPost('/dayz/configs/get?name=Map-points-generated', cred).catch(() => null),
       ]);
       if (seq !== mapLoadSeq) return;
       const doc = JSON.parse(stripBom(spawnsR.content || '{}'));
       const spawns = (doc && Array.isArray(doc.points)) ? doc : { version: 1, points: [] };
+      let derived = null;
+      if (derivedR && derivedR.content) {
+        try { derived = JSON.parse(stripBom(derivedR.content)); } catch { derived = null; }
+        if (derived && !Array.isArray(derived.locations)) derived = null;   // half-written / wrong shape
+      }
       mapData = {
         spawns,
         classes: JSON.parse(stripBom(classesR.content || '{}')),
         hms: hmsR.maps || [],
+        derived,
       };
       mapSpawnBaseline = JSON.stringify(spawns.points);
       mapSpawnDirty = false;
@@ -244,9 +259,34 @@ function setMapMission(mission) {
   mapHover = -1;
   mapCursor = null;
   const mine = mapLettersFor(mission);
+  if (mapDerivedActive()) {
+    // Points from the DERIVED store - each carries kind + idx (its position in the SOURCE
+    // file's array: the stable key; names are NOT unique). Read-only by construction.
+    const d = mapData.derived;
+    const locs = (d.locations || []).map((e) => ({
+      kind: 'location', cat: 'location', idx: e.idx, name: e.name,
+      x: e.x, y: e.y, z: e.z, radius: e.radius, type: e.type, enabled: e.enabled, waypoints: null,
+    }));
+    const pats = (d.patrols || []).map((e) => ({
+      kind: 'patrol', cat: 'patrol', idx: e.idx, name: e.name,
+      x: e.x, y: e.y, z: e.z, faction: e.faction, loadout: e.loadout,
+      count: e.count, countMax: e.countMax, behaviour: e.behaviour, speed: e.speed,
+      chance: e.chance, persist: e.persist,
+      // Marker IS waypoint[0]; the route continues from [1]. drawSelectedWaypoints starts its
+      // path at (p.x,p.z), so slicing avoids a doubled first leg.
+      waypoints: (e.waypoints || []).slice(1).map((w) => ({ x: w[0], y: w[1], z: w[2] })),
+    }));
+    const objs = (d.objectPatrols || []).map((e) => ({
+      kind: 'object', cat: 'object', idx: e.idx, name: e.name, objectClass: e.objectClass,
+      faction: e.faction, count: e.count, countMax: e.countMax, behaviour: e.behaviour,
+      chance: e.chance, x: null, y: null, z: null, waypoints: null,
+    }));
+    mapPts = locs.concat(pats, objs);
+  } else {
   mapPts = mapData.spawns.points
     .filter((e) => mine.includes(e.map))
     .map((e) => ({ name: e.name, map: e.map, cat: e.category || null, size: e.size || null, faction: e.faction || null, spawns: e.spawns || null, type: e.type || null, radius: (e.radius != null ? e.radius : null), patrol: e.patrol || null, waypoints: e.waypoints || null, x: e.x, y: e.y, z: e.z }));
+  }
   initMapFilter();
   mapHm = mapData.hms.find((h) => h.map === mapShort(mission)) || null;
   // Without a shipped heightmap there's no worldSize either — scale to the data.
@@ -364,14 +404,18 @@ async function resolveMapDeltas() {
   const cred = loadCred();
   if (!cred) return;
   const mission = mapMission;
+  // Object patrols carry no position (x null) - they must not enter the terrain query, and
+  // the response maps back through this index list, not by array position in mapPts.
+  const plotIdx = mapPts.map((p, i) => (p.x == null ? -1 : i)).filter((i) => i >= 0);
+  if (!plotIdx.length) return;
   try {
     const r = await apiPost('/dayz/terrain/surface-y', cred, {
       map: mapShort(mission),
-      points: mapPts.map((p) => ({ x: p.x, z: p.z })),
+      points: plotIdx.map((i) => ({ x: mapPts[i].x, z: mapPts[i].z })),
     });
     if (mission !== mapMission) return;              // user switched maps mid-flight
-    (r.points || []).forEach((rp, i) => {
-      const p = mapPts[i];
+    (r.points || []).forEach((rp, j) => {
+      const p = mapPts[plotIdx[j]];
       if (!p || rp.y === null || rp.y === undefined) return;
       p.ty = rp.y;
       p.delta = p.y - rp.y;
@@ -400,6 +444,16 @@ function renderMap() {
 // Reflect edit mode + dirty state in the head toolbar.
 function updateMapEditUi() {
   if (!el.mapEditSeg) return;
+  // Derived points are READ-ONLY (Phase 3): the truth lives in the AI settings files, edited
+  // via the Files tab. No Edit toggle at all until the write-back phase.
+  if (mapDerivedActive()) {
+    mapEdit = false;
+    el.mapEditSeg.classList.add('hidden');
+    el.mapSaveWrap.classList.add('hidden');
+    el.mapCanvas.classList.remove('editing');
+    return;
+  }
+  el.mapEditSeg.classList.remove('hidden');
   const btn = el.mapEditSeg.querySelector('button');
   if (btn) btn.classList.toggle('active', mapEdit);
   el.mapSaveWrap.classList.toggle('hidden', !mapEdit);
@@ -896,6 +950,12 @@ const SPAWN_CLASS = {
   Hermit: { shape: 'circle',   color: '#cbd5e1' },
   Sniper: { shape: 'star',     color: '#f8fafc' },
 };
+// Derived-store kinds (Phase 3). Distinct from every authored class so the two eras can
+// never be confused on screen: location = hollow ring in the tile-accent cyan, patrol =
+// filled hexagon in signal red. 'object' is list-only and needs a glyph only for its chip.
+SPAWN_CLASS.location = { shape: 'ring',    color: '#4cc9e0' };
+SPAWN_CLASS.patrol   = { shape: 'hexagon', color: '#ef6351' };
+SPAWN_CLASS.object   = { shape: 'diamond', color: '#9aa4ad' };
 const SPAWN_BASE = { shape: 'ring', color: '#94a3b8' };   // uncategorized -> base holdout (hollow)
 function spawnClassDef(cat) { return (cat && SPAWN_CLASS[cat]) || SPAWN_BASE; }
 
@@ -961,13 +1021,25 @@ function drawSelectedWaypoints(ctx) {
   ctx.restore();
 }
 function drawMapMarkers(ctx) {
-  if (MAP_POINTS_DEPRECATED) return;   // Phase 1: authored map-points layer deprecated (render off)
+  // Phase 1 turned the AUTHORED layer off; Phase 3 renders the DERIVED store through the same
+  // path. The flag still governs the authored fallback only.
+  if (MAP_POINTS_DEPRECATED && !mapDerivedActive()) return;
   if (!mapPts.length) return;
   drawSelectedWaypoints(ctx);
   const { w, h } = mapVp();
   const C = mapColors();
+  // Selected location: show its roam radius as a world-scaled ring (the location's actual
+  // meaning), like the selected patrol shows its route.
+  const selP = mapPts[mapSelPt];
+  if (selP && selP.kind === 'location' && selP.radius > 0) {
+    const [cx, cy] = mapToScreen(selP.x, selP.z);
+    ctx.beginPath(); ctx.arc(cx, cy, selP.radius * mapView.ppm, 0, Math.PI * 2);
+    ctx.strokeStyle = C.ring; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+  }
   mapPts.forEach((p, i) => {
     if (!mapVisible(p)) return;
+    if (p.x == null) return;                           // object patrols: list-only, no position
+    if (p.kind === 'location' && !p.enabled) ctx.globalAlpha = 0.45;   // disabled = dimmed, still visible
     const [sx, sy] = mapToScreen(p.x, p.z);
     if (sx < -20 || sy < -20 || sx > w + 20 || sy > h + 20) return;
     const sel = (i === mapSelPt || i === mapHover);
@@ -984,12 +1056,14 @@ function drawMapMarkers(ctx) {
       ctx.beginPath(); ctx.arc(sx, sy, r + 6, 0, Math.PI * 2);
       ctx.strokeStyle = C.ring; ctx.lineWidth = 2.5; ctx.stroke();
     }
+    ctx.globalAlpha = 1;
   });
 }
 function mapHitTest(sx, sy) {
   let best = -1, bd = 18 * 18;                         // 18px pickup radius > 7px mark
   mapPts.forEach((p, i) => {
     if (!mapVisible(p)) return;                        // can't hover/select a filtered-out point
+    if (p.x == null) return;                           // object patrols select via the list only
     const [px, py] = mapToScreen(p.x, p.z);
     const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
     if (d2 < bd) { bd = d2; best = i; }
@@ -1182,8 +1256,10 @@ function renderMapFilter() {
     '<span class="mf-label">Class</span>' +
     '<button type="button" class="mf-chip mf-all' + (allOn ? ' active' : '') + '" data-cat="*">All</button>' +
     keys.map((k) => {
-      const label = k === '(base)' ? 'Base' : k;
-      const tmpl = k === '(base)' ? 'holdout' : (cats[k] || '?');
+      const DERIVED_LABELS = { location: 'Locations', patrol: 'Patrols', object: 'Object patrols' };
+      const label = DERIVED_LABELS[k] || (k === '(base)' ? 'Base' : k);
+      const tmpl = k === 'location' ? 'AILocationSettings' : k === 'patrol' || k === 'object' ? 'AIPatrolSettings'
+        : k === '(base)' ? 'holdout' : (cats[k] || '?');
       const def = spawnClassDef(k === '(base)' ? null : k);   // '(base)' -> the base/hollow glyph
       return '<button type="button" class="mf-chip' + (mapCatFilter.has(k) ? ' active' : '') +
         '" data-cat="' + attr(k) + '" title="' + attr(label + ' → ' + tmpl) + '">' +
@@ -1200,17 +1276,37 @@ function renderMapList() {
     return Math.abs(db) - Math.abs(da);
   });
   const shown = order.length, total = mapPts.length;
-  const count = shown === total ? total + ' spawn bookmark' + (total === 1 ? '' : 's') : shown + ' of ' + total + ' shown';
+  const noun = mapDerivedActive() ? 'AI point' : 'spawn bookmark';
+  const count = shown === total ? total + ' ' + noun + (total === 1 ? '' : 's') : shown + ' of ' + total + ' shown';
   el.mapNav.innerHTML = '<div class="side-sub2">' + count + ' · worst Δ first</div>' +
     order.map((i) => {
       const p = mapPts[i], band = mapBand(p);
+      // Object patrols have no position, so no Δ - their badge names the fact instead.
+      const badge = p.kind === 'object'
+        ? '<span class="mp-badge mnull" title="No map position - spawns at every instance of ' + attr(p.objectClass) + '">obj</span>'
+        : '<span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span>';
       return '<div class="side-item mp-item' + (i === mapSelPt ? ' active' : '') + '" data-i="' + i + '" title="' + attr(p.name) + '">' +
-        '<span class="fn">' + escapeHtml(p.name) + '</span>' +
-        '<span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span></div>';
+        '<span class="fn">' + escapeHtml(p.name) + '</span>' + badge + '</div>';
     }).join('');
 }
 
 function renderMapSummary() {
+  if (mapDerivedActive()) {
+    const nLoc = mapPts.filter((p) => p.kind === 'location').length;
+    const nPat = mapPts.filter((p) => p.kind === 'patrol').length;
+    const nObj = mapPts.filter((p) => p.kind === 'object').length;
+    el.mapSum.innerHTML =
+      '<span class="stat"><b>' + nLoc + '</b> AI location' + (nLoc === 1 ? '' : 's') + '</span>' +
+      '<span class="stat"><b>' + nPat + '</b> patrol' + (nPat === 1 ? '' : 's') + '</span>' +
+      (nObj ? '<span class="stat"><b>' + nObj + '</b> object patrol' + (nObj === 1 ? '' : 's') + ' <span class="meta">(list only - they spawn at every instance of a building class)</span></span>' : '') +
+      '<span class="stat" style="margin-left:auto">derived from the live AI settings — read-only; edit the files, restart to apply</span>';
+    return;
+  }
+  // No derived store at all? Say why the AI layer is missing before falling into the legacy text.
+  if (mapData && !mapData.derived) {
+    el.mapSum.innerHTML = '<span class="meta">AI points unavailable — the box builds map-points.generated.json at its next restart (Phase 2), and the Api must expose the Map-points-generated surface. The map itself is fully browsable.</span>';
+    return;
+  }
   if (!mapPts.length) {
     el.mapSum.innerHTML = '<span class="meta">No spawn points for ' + escapeHtml(mapShort(mapMission)) +
       (mapEdit ? ' — click the map to add one.' : ' — turn on Edit and click the map to add one.') + ' The map is still browsable.</span>';
@@ -1240,6 +1336,41 @@ function renderMapDetail() {
   if (!p) return;
   const cats = (mapData.classes && mapData.classes.categories) || {};
   if (mapEdit) { el.mapDetail.innerHTML = mapEditFormHtml(p, cats); return; }
+  // Derived entries render as their SOURCE file's record, read-only - "as-if browsing
+  // AI Location / AI Patrol". idx names the entry's position in that file's array (names
+  // are not unique); the full config lives in the Files tab, restart to apply.
+  if (p.kind) {
+    const kv = (k, v) => '<span><span class="k2">' + k + '</span>' + v + '</span>';
+    const mono = (v) => '<span class="mono">' + escapeHtml(String(v)) + '</span>';
+    const srcFile = p.kind === 'location' ? 'AILocationSettings.json' : 'AIPatrolSettings.json';
+    let rows = kv('Name', '<b class="mono">' + escapeHtml(p.name) + '</b>') +
+               kv('Source', mono(srcFile + ' [' + p.idx + ']') + ' <span class="k2">read-only</span>');
+    if (p.kind === 'location') {
+      rows += kv('Roam', escapeHtml((p.type || '?') + ' · r' + p.radius)) +
+              kv('Enabled', p.enabled ? 'yes' : '<b>no</b> <span class="k2">(dimmed on map)</span>') +
+              kv('X / Z', mono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1))) +
+              kv('Y', mono(p.y.toFixed(2)));
+    } else if (p.kind === 'patrol') {
+      rows += kv('Faction', escapeHtml(p.faction || '?')) +
+              kv('Loadout', p.loadout ? escapeHtml(p.loadout) : '<span class="k2">(faction default)</span>') +
+              kv('Units', mono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
+              kv('Behaviour', escapeHtml(p.behaviour || '?') + ' · ' + escapeHtml(p.speed || '?')) +
+              kv('Chance', mono(p.chance)) +
+              kv('Persist', p.persist ? 'yes' : 'no') +
+              kv('Route', mono((p.waypoints.length + 1) + ' waypoint' + (p.waypoints.length ? 's' : '')) + ' <span class="k2">(drawn when selected)</span>') +
+              kv('X / Z', mono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1)));
+    } else {
+      rows += kv('Object class', mono(p.objectClass)) +
+              kv('Faction', escapeHtml(p.faction || '?')) +
+              kv('Units', mono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
+              kv('Behaviour', escapeHtml(p.behaviour || '?')) +
+              kv('Chance', mono(p.chance)) +
+              kv('Position', '<span class="k2">none — spawns at every instance of the class</span>');
+    }
+    if (p.delta !== undefined) rows += kv('Δ', '<span class="mp-badge ' + mapBand(p) + '">' + fmtDelta(p.delta) + '</span>');
+    el.mapDetail.innerHTML = rows;
+    return;
+  }
   const band = mapBand(p);
   const role = p.cat ? p.cat + ' → ' + (cats[p.cat] || '?') : 'base → holdout';
   el.mapDetail.innerHTML =

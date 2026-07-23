@@ -288,7 +288,7 @@ function selectRow(key) {
   ovrFilter = ''; ovrCapOpen = false;             // fresh file starts unfiltered and capped
   wfReset();                                       // fresh file: drop any whole-file draft/preview
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
-  if (row.access === 'own') { selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
+  if (row.access === 'own') { el.editorPage.classList.remove('types-mode'); selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
   ovrView = row.types ? 'types' : row.kind === 'other' ? 'file' : 'fields';
   renderFilesNav();
@@ -346,7 +346,7 @@ export async function loadFiles(preserve) {
   if (selKey && !rowByKey(selKey)) { selKey = null; selMode = null; }
   showFilesSurface();
   if (selMode === 'edit' && currentRow()) { el.edEmpty.classList.add('hidden'); el.edEditor.classList.remove('hidden'); renderEditor(); }
-  else if (selMode !== 'own') { el.edEditor.classList.add('hidden'); el.edEmpty.classList.remove('hidden'); }
+  else if (selMode !== 'own') { el.editorPage.classList.remove('types-mode'); el.edEditor.classList.add('hidden'); el.edEmpty.classList.remove('hidden'); }
   consumePendingFile();   // a #files/<key> deep link selects its file now that the tree exists
   loadVersions();
 }
@@ -463,9 +463,14 @@ async function renderEditor() {
 }
 async function renderBody(row) {
   const body = $('ovrBody'); if (!body) return;
+  // Fixed-height layout ONLY while the types TABLE shows: the top bars + XML preview stay put
+  // and the LIST is the sole scroller (types-mode CSS on #editorPage). Everything else — the
+  // overrides editor, and a types row's own 'file' view — keeps the normal workspace scroll.
+  const typesTable = !!row.types && ovrView !== 'file';
+  el.editorPage.classList.toggle('types-mode', typesTable);
   // Types rows: the table editor is its own view with its own load/save (types-editor.js).
   // The 'file' segment still falls through to the normal read-only whole-file view below.
-  if (row.types && ovrView !== 'file') {
+  if (typesTable) {
     body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading types…</span>';
     const text = await renderTypesEditor(row, body, {
       onDirty: updateDirtyUi,

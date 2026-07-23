@@ -606,9 +606,21 @@
   .ty-nl { padding: 5px 8px; font-size: 12.5px; }
   .ty-flags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
   .ty-flags label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg); text-transform: none; letter-spacing: normal; cursor: pointer; }
-  /* Narrow: stack the preview above the table (it can't sit left when there's no room). */
+  /* Fixed-height layout while the types TABLE shows (class set by editor.js on #editorPage):
+     the top bars + the XML preview stay put and the LIST is the ONLY thing that scrolls. The
+     overrides editor never gets this class, so its workspace-scroll is untouched. */
+  #editorPage.types-mode { height: 100%; min-height: 0; }
+  .types-mode .ovr-body { display: flex; flex-direction: column; min-height: 0; }
+  .types-mode .ty-bar, .types-mode .ty-note { flex: none; }
+  .types-mode .ty-split { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+  .types-mode .ty-preview { position: static; top: auto; max-height: none; align-self: stretch; }
+  .types-mode .ty-main { min-height: 0; overflow-y: auto; }   /* the sole scroll region; .ty-head sticks to its top */
+  /* Narrow: stack the preview above the table (no room to sit left). */
   @media (max-width: 1100px) {
     .ty-split { flex-direction: column; }
     .ty-preview { position: static; flex-basis: auto; width: 100%; max-height: 320px; }
+    .types-mode .ty-split { flex-direction: column; align-items: stretch; }
+    .types-mode .ty-preview { flex: 0 0 auto; width: auto; max-height: 240px; }
+    .types-mode .ty-main { flex: 1 1 auto; }
   }
   @media (max-width: 760px) { .ty-head, .ty-row { grid-template-columns: minmax(120px, 1fr) 66px 66px 88px minmax(104px, auto); } .ty-head div:nth-child(4), .ty-row > div:nth-child(4), .ty-head div:nth-child(5), .ty-row > div:nth-child(5) { display: none; } }
