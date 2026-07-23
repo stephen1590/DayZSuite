@@ -113,6 +113,6 @@
   "PunishMultispawn": 1,
   "PunishCooldown": 120,
   "PunishTimeframe": 300,
-  "CreateDeathMarker": 1,
+  "CreateDeathMarker": 0,
   "BackgroundImagePath": "DayZExpansion/SpawnSelection/GUI/textures/wood_background.edds"
 }
