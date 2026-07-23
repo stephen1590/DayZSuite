@@ -11,7 +11,7 @@
 -->
 <types>
     <type name="CodeLock">
-        <nominal>80</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
         <min>50</min>
