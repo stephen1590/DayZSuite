@@ -573,10 +573,23 @@
   .ty-bar { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
   .ty-bar #tyFilter { flex: 1 1 260px; max-width: 420px; padding: 7px 10px; font-size: 13px; }
   .ty-only { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
-  .ty-head, .ty-row { display: grid; grid-template-columns: minmax(200px, 1fr) 88px 88px 88px 88px 92px minmax(130px, auto); gap: 10px; align-items: center; padding: 5px 22px; }
+  /* Master-detail: XML preview of the selected type on the LEFT (sticky), table on the RIGHT. */
+  .ty-split { display: flex; align-items: flex-start; gap: 16px; padding: 12px 22px 16px; }
+  .ty-main { flex: 1 1 auto; min-width: 0; overflow-x: auto; }   /* min-width:0 lets the grid shrink; scroll as a safety valve */
+  .ty-preview { flex: 0 0 340px; position: sticky; top: 8px; max-height: calc(100vh - 200px); overflow: auto;
+    background: var(--pre-bg); border: 1px solid var(--border); border-radius: 8px; }
+  .ty-pv-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky; top: 0; background: var(--pre-bg); }
+  .ty-pv-head .mono { color: var(--pre-fg); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ty-pv-xml { margin: 0; padding: 12px; font-size: 12px; line-height: 1.5; color: var(--pre-fg); white-space: pre; overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .ty-pv-foot { padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.08); color: var(--faint); font-size: 11.5px; }
+  .ty-pv-empty { padding: 18px 14px; color: var(--faint); font-size: 13px; line-height: 1.5; }
+  .ty-head, .ty-row { display: grid; grid-template-columns: minmax(160px, 1fr) 82px 82px 82px 82px 88px minmax(124px, auto); gap: 10px; align-items: center; padding: 5px 4px; }
   .ty-head { position: sticky; top: 0; z-index: 2; background: var(--card); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); padding-top: 9px; padding-bottom: 7px; }
-  .ty-row { border-bottom: 1px solid var(--border-soft); }
+  .ty-row { border-bottom: 1px solid var(--border-soft); cursor: pointer; }
   .ty-row.over { background: var(--delta-weak); }
+  .ty-row.selected { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-weak); }
   .ty-row.cap-hide { display: none; }
   .ty-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ty-in { width: 100%; padding: 5px 8px; font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -585,7 +598,7 @@
   .ty-act { display: flex; gap: 6px; justify-content: flex-end; }
   .ty-act .ghost { padding: 4px 9px; font-size: 11.5px; }
   /* Expanded all-fields panel for one type */
-  .ty-exp { padding: 12px 22px 14px; background: var(--panel2); border-bottom: 1px solid var(--border-soft); }
+  .ty-exp { padding: 12px 14px 14px; background: var(--panel2); border-bottom: 1px solid var(--border-soft); }
   .ty-exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
   .ty-fld { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
   .ty-fld.wide { grid-column: 1 / -1; }
@@ -593,4 +606,9 @@
   .ty-nl { padding: 5px 8px; font-size: 12.5px; }
   .ty-flags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
   .ty-flags label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg); text-transform: none; letter-spacing: normal; cursor: pointer; }
-  @media (max-width: 900px) { .ty-head, .ty-row { grid-template-columns: minmax(140px, 1fr) 70px 70px 92px minmax(110px, auto); } .ty-head div:nth-child(4), .ty-row > div:nth-child(4), .ty-head div:nth-child(5), .ty-row > div:nth-child(5) { display: none; } }
+  /* Narrow: stack the preview above the table (it can't sit left when there's no room). */
+  @media (max-width: 1100px) {
+    .ty-split { flex-direction: column; }
+    .ty-preview { position: static; flex-basis: auto; width: 100%; max-height: 320px; }
+  }
+  @media (max-width: 760px) { .ty-head, .ty-row { grid-template-columns: minmax(120px, 1fr) 66px 66px 88px minmax(104px, auto); } .ty-head div:nth-child(4), .ty-row > div:nth-child(4), .ty-head div:nth-child(5), .ty-row > div:nth-child(5) { display: none; } }

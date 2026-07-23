@@ -10,6 +10,7 @@
 import { escapeHtml, attr, setGlobalMsg, stripBom } from './ui.js';
 import { apiPost } from './api-client.js';
 import { loadCred, handle } from './auth.js';
+import { highlight, detectLang } from './highlight.js';   // XML preview of the selected type
 
 // Which BASE surface a tuning row overlays. Hardcoded on purpose (two rows today) — promote to
 // a config-registry.json field if types surfaces multiply. Keys are registry surface names.
@@ -93,16 +94,22 @@ function setFlag(st, el, attrName, on) {
 // ===================== serialization =====================
 function escX(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escA(s) { return escX(s).replace(/"/g, '&quot;'); }
-function typeXml(el) {
-  let out = '    <type name="' + escA(el.getAttribute('name')) + '">\n';
+// raw=true emits UNescaped text/attr content for the preview: highlight() escapes for HTML
+// display itself (it tokenizes on the escaped form), so pre-escaping here would double-encode
+// an '&'. Serialization to disk uses raw=false — real XML entities. Tag delimiters (<,>) are
+// always literal in the string either way; only content/attr values differ.
+function typeXml(el, raw) {
+  const ex = raw ? String : escX;
+  const ea = raw ? String : escA;
+  let out = '    <type name="' + ea(el.getAttribute('name')) + '">\n';
   const kids = [...el.children];
   const done = new Set();
   const emit = (c) => {
     done.add(c);
-    if (c.attributes.length === 0) out += '        <' + c.tagName + '>' + escX(c.textContent.trim()) + '</' + c.tagName + '>\n';
+    if (c.attributes.length === 0) out += '        <' + c.tagName + '>' + ex(c.textContent.trim()) + '</' + c.tagName + '>\n';
     else {
       let attrs = '';
-      for (const a of c.attributes) attrs += ' ' + a.name + '="' + escA(a.value) + '"';
+      for (const a of c.attributes) attrs += ' ' + a.name + '="' + ea(a.value) + '"';
       out += '        <' + c.tagName + attrs + '/>\n';
     }
   };
@@ -154,6 +161,7 @@ async function loadState(row) {
     rootNodes: [...doc.documentElement.childNodes],
     edits: new Map(), removals: new Set(),
     filter: '', overOnly: false, capOpen: false, expanded: new Set(),
+    selected: null,   // the type whose full XML shows in the left preview panel
     baseMissing: baseDoc === null,
   };
   states.set(row.key, st);
@@ -176,7 +184,7 @@ function rowHtml(st, name, hidden) {
     : over ? '<span class="tag">override</span>'
     : tunOnly ? '<span class="tag warn">tuning-only</span>' : '';
   const open = st.expanded.has(name);
-  let html = '<div class="ty-row' + (over || staged ? ' over' : '') + (hidden ? ' cap-hide' : '') + '" data-name="' + attr(name) + '">' +
+  let html = '<div class="ty-row' + (over || staged ? ' over' : '') + (name === st.selected ? ' selected' : '') + (hidden ? ' cap-hide' : '') + '" data-name="' + attr(name) + '">' +
     '<div class="ty-name mono" title="' + attr(name) + '">' + escapeHtml(name) + '</div>' +
     QUICK.map((t) => '<div>' + quickCell(st, name, t, fieldOf(el, t)) + '</div>').join('') +
     '<div class="ty-badge">' + badge + '</div>' +
@@ -222,6 +230,34 @@ function allNames(st) {
   for (const n of st.tunMap.keys()) if (!st.baseMap.has(n)) names.push(n);
   return names;
 }
+// Left preview: the FULL <type> block for the selected row, exactly as it will serialize
+// (edits included — reads effectiveEl). Raw XML through highlight() so it renders like the
+// File view. The head tag mirrors the row badge so the source (edited/override/base) is clear.
+function previewInner(st) {
+  if (!st.selected) return '<div class="ty-pv-empty">Select a type to preview its full XML block — every field, not just the four columns.</div>';
+  const el = effectiveEl(st, st.selected);
+  if (!el) return '<div class="ty-pv-empty">This type has no current definition.</div>';
+  const staged = st.edits.has(st.selected);
+  const reverting = st.removals.has(st.selected);
+  const over = isOverridden(st, st.selected);
+  const tag = staged ? '<span class="tag cx">edited</span>'
+    : reverting ? '<span class="tag warn">reverting</span>'
+    : over ? '<span class="tag">override layer</span>'
+    : '<span class="tag warn">base file</span>';
+  const hint = over || staged
+    ? 'This block is written to the tuning file.'
+    : 'Upstream value — editing a field stages an override here.';
+  return '<div class="ty-pv-head"><span class="mono">' + escapeHtml(st.selected) + '</span>' + tag + '</div>' +
+    '<pre class="ty-pv-xml">' + highlight(typeXml(el, true), detectLang('type.xml')) + '</pre>' +
+    '<div class="ty-pv-foot">' + escapeHtml(hint) + '</div>';
+}
+// Update ONLY the preview + the selected-row highlight, no table rebuild — so selecting a row
+// (or clicking into one of its inputs) never blurs the field the user just clicked.
+function updatePreview(st, body) {
+  const pv = body.querySelector('#tyPreview');
+  if (pv) pv.innerHTML = previewInner(st);
+  body.querySelectorAll('.ty-row').forEach((r) => r.classList.toggle('selected', r.dataset.name === st.selected));
+}
 function tableHtml(st) {
   const names = allNames(st).filter((n) => matches(st, n));
   const nOver = allNames(st).filter((n) => isOverridden(st, n)).length;
@@ -236,17 +272,22 @@ function tableHtml(st) {
     '</div>' +
     (st.baseMissing ? '<div class="ovr-note">Base file unavailable — showing the tuning file\'s own entries only. Overrides still save.</div>' : '') +
     '<div class="ty-note ovr-note">Edits stage a <b>complete</b> replacement <span class="mono">&lt;type&gt;</span> block in the tuning layer — the base file is never modified. Save rewrites the tuning file (snapshotted on the box); <b>restart to apply</b>.</div>';
-  html += '<div class="ty-head"><div>Classname</div>' + QUICK.map((t) => '<div>' + t + '</div>').join('') + '<div></div><div></div></div>';
+  // Two columns: the XML preview of the selected type on the LEFT (sticky), the table on the RIGHT.
+  let table = '<div class="ty-head"><div>Classname</div>' + QUICK.map((t) => '<div>' + t + '</div>').join('') + '<div></div><div></div></div>';
   let shown = 0;
   for (const n of names) {
     const hidden = !st.filter && !st.overOnly && !st.capOpen && shown >= CAP && !st.expanded.has(n) && !st.edits.has(n);
-    html += rowHtml(st, n, hidden);
+    table += rowHtml(st, n, hidden);
     shown++;
   }
-  if (!names.length) html += '<div class="ovr-note">No types match.</div>';
+  if (!names.length) table += '<div class="ovr-note">No types match.</div>';
   if (!st.filter && !st.overOnly && !st.capOpen && names.length > CAP) {
-    html += '<div class="fld-more"><button type="button" id="tyMore" class="ghost">Show ' + (names.length - CAP) + ' more type' + (names.length - CAP === 1 ? '' : 's') + '</button></div>';
+    table += '<div class="fld-more"><button type="button" id="tyMore" class="ghost">Show ' + (names.length - CAP) + ' more type' + (names.length - CAP === 1 ? '' : 's') + '</button></div>';
   }
+  html += '<div class="ty-split">' +
+    '<div class="ty-preview" id="tyPreview">' + previewInner(st) + '</div>' +
+    '<div class="ty-main">' + table + '</div>' +
+    '</div>';
   return html;
 }
 
@@ -262,6 +303,7 @@ function commitQuick(st, inp, hooks) {
   const el = stageEl(st, name);
   if (!el) return;
   setChildText(st, el, tag, v);
+  st.selected = name;
   rerender(st, hooks);
   setGlobalMsg('Change staged — press Save, then restart to apply.', false);
 }
@@ -283,6 +325,7 @@ function wire(st, body, hooks) {
     const el = stageEl(st, name);
     if (!el) return;
     setNamelist(st, el, tag, namesArr);
+    st.selected = name;
     rerender(st, hooks);
     setGlobalMsg('Change staged — press Save, then restart to apply.', false);
   }));
@@ -290,12 +333,14 @@ function wire(st, body, hooks) {
     const el = stageEl(st, cb.dataset.name);
     if (!el) return;
     setFlag(st, el, cb.dataset.attr, cb.checked);
+    st.selected = cb.dataset.name;
     rerender(st, hooks);
     setGlobalMsg('Change staged — press Save, then restart to apply.', false);
   }));
   body.querySelectorAll('.ty-more').forEach((b) => b.addEventListener('click', () => {
     const n = b.dataset.name;
     if (st.expanded.has(n)) st.expanded.delete(n); else st.expanded.add(n);
+    st.selected = n;
     rerender(st, hooks);
   }));
   body.querySelectorAll('.ty-rev').forEach((b) => b.addEventListener('click', () => {
@@ -305,8 +350,17 @@ function wire(st, body, hooks) {
       st.edits.delete(n);
       if (st.tunMap.has(n)) st.removals.add(n);              // an unsaved brand-new override just vanishes
     }
+    st.selected = n;
     rerender(st, hooks);
     setGlobalMsg(st.removals.has(n) ? 'Override marked for removal — press Save.' : 'Kept.', false);
+  }));
+  // Select a row (fills the left preview) on interaction, WITHOUT a table rebuild - mousedown
+  // fires before focus and updatePreview only swaps the preview + the .selected class, so
+  // clicking a row's input still lands in that input. Buttons set selection in their own handlers.
+  body.querySelectorAll('.ty-row, .ty-exp').forEach((elx) => elx.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
+    const name = elx.dataset.name;
+    if (name && name !== st.selected) { st.selected = name; updatePreview(st, body); }
   }));
   const disc = body.querySelector('#tyDiscard');
   if (disc) disc.onclick = () => {
