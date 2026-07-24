@@ -8,6 +8,7 @@
 // (players), so collection is cached briefly: concurrent scrapers share one in-flight
 // collection, and Prometheus can shorten its interval without multiplying bridge calls.
 import type { DayzBridge } from './dayz.js';
+import type { PlayerLedger } from './player-ledger.js';
 import { getServerStatus } from './vpp-stats.js';
 
 const CACHE_TTL_MS = 10_000;
@@ -44,7 +45,7 @@ function render(metrics: Metric[]): string {
   return lines.join('\n') + '\n';
 }
 
-async function collect(dayz: DayzBridge): Promise<string> {
+async function collect(dayz: DayzBridge, ledger: PlayerLedger): Promise<string> {
   // The two sources fail independently (unit down ≠ RCon down); each half degrades to
   // its own *_ok 0 rather than failing the scrape, so Prometheus can alert on the
   // collectors themselves.
@@ -87,6 +88,19 @@ async function collect(dayz: DayzBridge): Promise<string> {
     }
   }
 
+  // Durable GUID tally → unique/new player gauges. Fold in only a roster we actually
+  // parsed (real GUIDs; a blank guid is a still-connecting player). Emit the counts even
+  // on a scrape where RCon didn't answer — they come from the persistent ledger, so the
+  // panels shouldn't blink to "No data" on a transient RCon blip.
+  const now = Date.now();
+  if (players.status === 'fulfilled' && players.value.count != null) {
+    const guids = players.value.players.map((p) => p.guid).filter((g) => g);
+    ledger.record(guids, now);
+  }
+  const tally = ledger.counts(now);
+  one('dayz_players_unique_24h', 'Distinct BattlEye GUIDs seen in the trailing 24h.', 'gauge', tally.unique24h);
+  one('dayz_players_new_24h', 'Distinct BattlEye GUIDs whose first-ever sighting is within the trailing 24h.', 'gauge', tally.new24h);
+
   // Server FPS — pushed by VPP's server-status webhook, not collected here. Always
   // report its age (so a dead feed is visible), but only report the FPS value while the
   // feed is fresh — a frozen number would otherwise read as live long after VPP stopped.
@@ -103,11 +117,11 @@ async function collect(dayz: DayzBridge): Promise<string> {
 }
 
 /** Cached collector: at most one bridge+RCon round per TTL, shared by concurrent scrapes. */
-export function makeMetrics(dayz: DayzBridge): () => Promise<string> {
+export function makeMetrics(dayz: DayzBridge, ledger: PlayerLedger): () => Promise<string> {
   let cached: { at: number; body: Promise<string> } | null = null;
   return () => {
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.body;
-    const entry = { at: Date.now(), body: collect(dayz) };
+    const entry = { at: Date.now(), body: collect(dayz, ledger) };
     // A failed collection must not be served for a whole TTL — drop it so the next
     // scrape retries (collect itself degrades per-source, so this is belt-and-braces).
     entry.body.catch(() => { if (cached === entry) cached = null; });

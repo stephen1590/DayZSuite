@@ -13,9 +13,9 @@ live-only performance panels.
   network. Covers everything the API's `/sysload` hand-computes, and more.
 - **Apps** - one scrape job per `ScrapeJobs` row in `deploy/deploy.config.json`.
   Today: the API's `GET /metrics` (`dayz_*` series - unit state/memory/CPU,
-  restarts, players, ping, mission, persistence/log sizes). That endpoint is
-  local-only: both nginx vhosts refuse the path and the app rejects proxied
-  requests.
+  restarts, players, ping, mission, persistence/log sizes, and unique/new player
+  counts over the trailing 24h). That endpoint is local-only: both nginx vhosts
+  refuse the path and the app rejects proxied requests.
 - **Itself** - `prometheus` and `node` jobs are built in.
 
 Retention defaults to 30 days (`RetentionTime`).

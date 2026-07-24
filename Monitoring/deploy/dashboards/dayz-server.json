@@ -130,6 +130,44 @@
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" }, "decimals": 0, "mappings": [], "noValue": "0", "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 4 },
+      "id": 20,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "dayz_players_new_24h", "refId": "A" }],
+      "title": "New players (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" }, "decimals": 0, "mappings": [], "noValue": "0", "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 4 },
+      "id": 21,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "dayz_players_unique_24h", "refId": "A" }],
+      "title": "Unique players (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "stepAfter", "lineWidth": 2, "showPoints": "never", "spanNulls": false },
@@ -140,7 +178,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 8 },
       "id": 7,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -163,7 +201,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 8 },
       "id": 8,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -186,7 +224,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 13 },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 17 },
       "id": 9,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -209,7 +247,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 13 },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 17 },
       "id": 10,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -232,7 +270,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 22 },
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 26 },
       "id": 11,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -255,7 +293,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 22 },
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 26 },
       "id": 12,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -278,7 +316,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 22 },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 26 },
       "id": 13,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -304,7 +342,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 31 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 35 },
       "id": 14,
       "options": {
         "colorMode": "value",
@@ -330,7 +368,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 31 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 35 },
       "id": 15,
       "options": {
         "colorMode": "value",
@@ -349,7 +387,7 @@
         "defaults": { "color": { "mode": "fixed", "fixedColor": "text" }, "mappings": [], "noValue": "none scheduled", "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }, "unit": "m" },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 31 },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 35 },
       "id": 16,
       "options": {
         "colorMode": "none",
@@ -375,7 +413,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 35 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 39 },
       "id": 17,
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
@@ -397,7 +435,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 35 },
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 39 },
       "id": 18,
       "options": {
         "colorMode": "value",
@@ -422,7 +460,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 35 },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 39 },
       "id": 19,
       "options": {
         "colorMode": "value",

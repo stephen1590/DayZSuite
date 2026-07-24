@@ -17,6 +17,12 @@
   // TSDB history window — this is how far back Grafana can look.
   "RetentionTime": "30d",
 
+  // Grafana is PINNED + apt-held: the deploy installs exactly this version and never
+  // lets an upgrade slip in as a side effect of a dashboard/config change. Bump this and
+  // redeploy to move Grafana deliberately. (A point release once broke mid-upgrade on
+  // the plugins-bundled move — grafana/grafana#123110.)
+  "GrafanaVersion": "13.1.1",
+
   // Alert-rule thresholds (provisioned into Grafana as code, bound to the
   // Prometheus datasource). "In-Grafana only" for now — no contact point, so
   // alerts show state on Grafana's Alerting page + dashboards but notify nowhere.

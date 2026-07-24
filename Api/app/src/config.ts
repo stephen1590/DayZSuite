@@ -33,6 +33,8 @@ export interface AppConfig {
   auditDir: string;
   /** Server-side store for derived API keys (minted via /keys/create). */
   keysFile: string;
+  /** Durable GUID tally behind the unique/new player gauges (see player-ledger.ts). */
+  playerLedgerFile: string;
   /** Per-map baked terrain grids for the surface-y action (see heightmap.ts). */
   heightmapsDir: string;
   rateLimit: { max: number; windowMs: number };
@@ -64,6 +66,7 @@ export function loadConfig(): AppConfig {
     restartWarningSeconds: Number(raw.dayz?.restartWarningSeconds ?? 15),
     auditDir: raw.auditDir ?? '/var/log/api',
     keysFile: raw.keysFile ?? '/var/lib/api/keys.json',
+    playerLedgerFile: raw.playerLedgerFile ?? '/var/lib/api/player-ledger.json',
     heightmapsDir: raw.heightmapsDir ?? '/var/lib/api/heightmaps',
     rateLimit: {
       max: Number(raw.rateLimit?.max ?? 30),

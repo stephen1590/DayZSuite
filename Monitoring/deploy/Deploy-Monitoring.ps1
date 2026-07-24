@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../common/Deploy-Helpers.ps1')
 
 $cfg = Import-DeployConfig -ServiceDeployDir $PSScriptRoot -Env $Env
-foreach ($key in @('Server', 'SshUser', 'SiteName', 'PrometheusListen', 'NodeExporterListen', 'GrafanaListen', 'RetentionTime', 'ScrapeIntervalSec')) {
+foreach ($key in @('Server', 'SshUser', 'SiteName', 'PrometheusListen', 'NodeExporterListen', 'GrafanaListen', 'GrafanaVersion', 'RetentionTime', 'ScrapeIntervalSec')) {
     if (-not $cfg[$key]) { throw "Monitoring deploy config is missing '$key'." }
 }
 if (@($cfg.Hostnames).Count -lt 1) { throw "Monitoring deploy config needs Hostnames (Grafana's public name, used for root_url)." }
@@ -100,6 +100,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'monitoring.env') -Value (
         '__PROMETHEUS_LISTEN__'    = $cfg.PrometheusListen
         '__NODE_EXPORTER_LISTEN__' = $cfg.NodeExporterListen
         '__RETENTION_TIME__'       = $cfg.RetentionTime
+        '__GRAFANA_VERSION__'      = $cfg.GrafanaVersion
         '__GRAFANA_LISTEN__'       = $cfg.GrafanaListen
         '__GRAFANA_DOMAIN__'       = @($cfg.Hostnames)[0]
     })

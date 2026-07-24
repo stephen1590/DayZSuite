@@ -25,7 +25,15 @@ fi
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
     | sudo tee /etc/apt/sources.list.d/grafana.list >/dev/null
 sudo apt-get update -qq
-sudo apt-get install -y -qq grafana
+# Grafana is PINNED + held: a stack redeploy must never pull a surprise Grafana upgrade
+# as a side effect of a dashboard/config change. A point release once broke mid-configure
+# on the plugins-bundled move (grafana/grafana#123110). The deploy is the authority —
+# unhold, install exactly GRAFANA_VERSION, re-hold. Bump GrafanaVersion in
+# deploy.config.json to move it deliberately. No --allow-downgrades: a downgrade must fail
+# loudly, not silently roll Grafana's sqlite schema back.
+sudo apt-mark unhold grafana 2>/dev/null || true
+sudo apt-get install -y -qq "grafana=${GRAFANA_VERSION}"
+sudo apt-mark hold grafana
 
 echo "== configure prometheus + node_exporter =="
 # Ubuntu's packaging reads daemon flags from ARGS in /etc/default/<unit>.

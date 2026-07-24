@@ -13,6 +13,7 @@ import type { Audit } from '../audit.js';
 import type { KeyStore } from '../keys.js';
 import { collectSystemLoad } from '../sysload.js';
 import { makeMetrics } from '../metrics.js';
+import { PlayerLedger } from '../player-ledger.js';
 import { authenticateRequest } from '../auth-request.js';
 
 interface Deps {
@@ -24,7 +25,10 @@ interface Deps {
 
 export function registerHost(app: FastifyInstance, deps: Deps): void {
   const { cfg, dayz, audit, keyStore } = deps;
-  const metrics = makeMetrics(dayz);
+  // The GUID tally behind the unique/new player gauges. Loaded once, updated on each
+  // /metrics scrape by the collector, persisted under /var/lib/api (see player-ledger.ts).
+  const playerLedger = new PlayerLedger(cfg.playerLedgerFile);
+  const metrics = makeMetrics(dayz, playerLedger);
 
   // GET /metrics — Prometheus exposition of the DayZ series (see metrics.ts). LOCAL-ONLY
   // by contract: the on-box Prometheus scrapes 127.0.0.1:<port>/metrics directly. Both
