@@ -641,3 +641,16 @@
   .cal-row .cal-x:hover { opacity: 1; color: var(--danger); }
   .cal-btns { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-top: 1px solid var(--border-soft); margin-top: 6px; }
   .cal-btns .ghost.active { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+
+  /* Phase 5: per-patrol field editor (map left nav) */
+  .pe-head { font-weight: 600; font-size: 13px; padding: 8px 10px 4px; }
+  .pe-hint { font-size: 11.5px; color: var(--muted); padding: 0 10px 8px; line-height: 1.45; }
+  .pe-f { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 4px 10px; }
+  .pe-f .pe-k { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pe-f .pe-inh { color: var(--faint); font-style: italic; }
+  .pe-f .pe-in { width: 100%; padding: 4px 6px; font-size: 12px; border-radius: 5px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pe-f textarea.pe-json { resize: vertical; }
+  .pe-f .pe-ro { font-size: 11.5px; color: var(--faint); padding: 4px 0; }
+  .pe-adv { margin: 4px 10px; }
+  .pe-adv > summary { cursor: pointer; font-size: 11.5px; color: var(--faint); padding: 4px 0; }
+  .pe-btns { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border-soft); margin-top: 6px; }

@@ -445,11 +445,32 @@ function wire(st, body, hooks) {
 function rerender(st, hooks, keepFocus) {
   const body = st._body;
   if (!body) return;
-  const active = keepFocus && document.activeElement && document.activeElement.id === 'tyFilter'
-    ? { pos: document.activeElement.selectionStart } : null;
+  // The innerHTML rebuild DESTROYS .ty-main — the sole scroller in types-mode (style.css) — so
+  // its scrollTop must be carried across the rebuild or every committed edit snaps the list to
+  // the top. Same for focus: a commit fires mid-blur and the rebuild dumps focus onto <body>.
+  const main = body.querySelector('.ty-main');
+  const scroll = main ? main.scrollTop : 0;
+  // Focus carry-over: the filter box (while typing) OR a field input. Field identity is
+  // data-name + data-tag, scoped to the row vs the expanded panel because the four QUICK tags
+  // render an input in BOTH places, so the pair alone is not unique within a row.
+  const ae = document.activeElement;
+  let active = null;
+  if (keepFocus && ae && ae.id === 'tyFilter') active = { sel: '#tyFilter', pos: ae.selectionStart };
+  else if (ae && body.contains(ae) && ae.dataset && ae.dataset.name && ae.dataset.tag) {
+    const scope = ae.closest('.ty-exp') ? '.ty-exp ' : '.ty-row ';
+    active = {
+      sel: scope + '[data-name="' + CSS.escape(ae.dataset.name) + '"][data-tag="' + ae.dataset.tag + '"]',
+      pos: ae.selectionStart,
+    };
+  }
   body.innerHTML = tableHtml(st);
   wire(st, body, hooks);
-  if (active) { const f = body.querySelector('#tyFilter'); if (f) { f.focus(); f.setSelectionRange(active.pos, active.pos); } }
+  const m2 = body.querySelector('.ty-main');
+  if (m2) m2.scrollTop = scroll;                          // browser clamps if content shrank
+  if (active) {
+    const f = body.querySelector(active.sel);
+    if (f) { f.focus({ preventScroll: true }); if (active.pos != null && f.setSelectionRange) f.setSelectionRange(active.pos, active.pos); }
+  }
   if (hooks && hooks.onDirty) hooks.onDirty();
 }
 

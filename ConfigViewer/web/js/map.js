@@ -82,6 +82,7 @@ let mapDrawQueued = false;
 let mapCalib = null;          // parsed sidecar (null until first load attempt)
 let mapCalibTried = false;
 let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
+let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
 function calibFor(short, layerName) {
   const m = mapCalib && mapCalib.maps && mapCalib.maps[short];
   const c = m && m[layerName] && m[layerName].affine;
@@ -462,6 +463,7 @@ function renderMap() {
   renderMarkersFilter();
   renderLiveFilter();
   if (mapCal) { renderCalibrate(); updateMapEditUi(); return; }
+  if (mapPatEdit) { renderPatrolEdit(); updateMapEditUi(); return; }   // Phase 5: keep the patrol/globals editor mounted across redraws
   renderMapList();
   renderMapSummary();
   renderMapDetail();
@@ -475,7 +477,7 @@ function updateMapEditUi() {
   if (!el.mapEditSeg) return;
   // Derived points are READ-ONLY (Phase 3): the truth lives in the AI settings files, edited
   // via the Files tab. No Edit toggle at all until the write-back phase.
-  if (mapDerivedActive()) {
+  if (mapDerivedActive() || MAP_POINTS_DEPRECATED) {
     mapEdit = false;
     el.mapEditSeg.classList.add('hidden');
     el.mapSaveWrap.classList.add('hidden');
@@ -500,6 +502,10 @@ function toggleMapEdit() {
 
 // Save the WHOLE document (every map's points), box-authoritative — applies at next restart.
 async function saveSpawns() {
+  // Phase 4 lock (2026-07-23): the authored map-points store is frozen - the live AI settings are
+  // the source now, and the map renders the DERIVED store read-only. The write path stays code so
+  // it can be revived, but it is refused while deprecated.
+  if (MAP_POINTS_DEPRECATED) { toast('The authored map-points store is read-only (superseded by the live AI settings). Edit those instead.', 'err'); return; }
   const cred = loadCred(); if (!cred) return;
   flushMapEdits();
   const seen = new Set();
@@ -629,6 +635,93 @@ function renderCalibrate() {
   const E = $id('calExit'); if (E) E.onclick = exitCalibrate;
 }
 function $id(id) { return document.getElementById(id); }
+
+// ===================== Phase 5: per-patrol field editor =====================
+// The map OWNS patrols. Click a patrol -> Edit fields -> this loads the mission's raw
+// AIPatrolSettings.json (configs/patrols), locates the entry by its stable idx, and edits its
+// fields directly. Core fields up front, the other ~35 under Advanced (each showing its value;
+// -1 = inheriting the global). Save merges just this entry back and writes the whole doc via
+// configs/set-patrols (unique-name validated on the box, snapshot, base= concurrency). Every
+// field the editor doesn't touch is preserved verbatim - the write is the whole doc with one
+// entry mutated in place.
+const PATROL_CORE = ['Name', 'Faction', 'Loadout', 'NumberOfAI', 'NumberOfAIMax', 'Behaviour', 'Speed', 'Chance', 'Persist'];
+async function startPatrolEdit(p) {
+  const cred = loadCred(); if (!cred) return;
+  const mission = mapMission;
+  try {
+    const r = await apiPost('/dayz/configs/patrols?mission=' + encodeURIComponent(mission), cred);
+    const doc = JSON.parse(stripBom(r.content || '{}'));
+    const arr = Array.isArray(doc.Patrols) ? doc.Patrols : [];
+    if (p.idx == null || !arr[p.idx] || typeof arr[p.idx] !== 'object') { toast('Could not locate this patrol in the live file (idx ' + p.idx + ') - reload the map.', 'err'); return; }
+    mapPatEdit = { mission, idx: p.idx, doc, version: r.version, entry: arr[p.idx] };
+    renderPatrolEdit();
+  } catch (err) { if (!handle(err)) toast('Could not load patrols: ' + err.message, 'err'); }
+}
+async function startGlobalEdit() {
+  const cred = loadCred(); if (!cred) return;
+  const mission = mapMission;
+  try {
+    const r = await apiPost('/dayz/configs/patrols?mission=' + encodeURIComponent(mission), cred);
+    const doc = JSON.parse(stripBom(r.content || '{}'));
+    mapPatEdit = { mission, idx: null, doc, version: r.version, entry: doc, isGlobal: true };
+    renderPatrolEdit();
+  } catch (err) { if (!handle(err)) toast('Could not load AI settings: ' + err.message, 'err'); }
+}
+function patrolField(k, v) {
+  if (v !== null && typeof v === 'object') {   // Units / LoadBalancingCategory / Waypoints etc.
+    if (k === 'Waypoints') return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + '</span><span class="pe-ro">' + (v.length) + ' point(s) - drag on the map</span></label>';
+    return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + '</span><textarea class="pe-in pe-json" data-k="' + attr(k) + '" rows="2" spellcheck="false">' + escapeHtml(JSON.stringify(v)) + '</textarea></label>';
+  }
+  const t = typeof v === 'number' ? 'number' : 'text';
+  const inh = (typeof v === 'number' && v < 0) ? ' <span class="pe-inh">inherits global</span>' : '';
+  return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + inh + '</span><input class="pe-in" data-k="' + attr(k) + '" type="' + t + '" value="' + attr(String(v)) + '"></label>';
+}
+function renderPatrolEdit() {
+  const e = mapPatEdit; if (!e) return;
+  const ent = e.entry;
+  // Globals mode edits the file's top-level fields but NEVER the Patrols array (that is the map's
+  // per-patrol editor) - so the config editor's "don't dump the whole array" rule holds here too.
+  const keys = Object.keys(ent).filter((k) => !(e.isGlobal && (k === 'Patrols')));
+  const core = (e.isGlobal ? keys.filter((k) => typeof ent[k] !== 'object') : PATROL_CORE.filter((k) => k in ent));
+  const adv = keys.filter((k) => !core.includes(k));
+  el.mapNav.innerHTML =
+    '<div class="pe-head">' + (e.isGlobal ? 'Global AI patrol settings' : 'Edit patrol') + '</div>' +
+    '<div class="pe-hint">Writes AIPatrolSettings.json for ' + escapeHtml(mapShort(e.mission)) + '. ' + (e.isGlobal ? 'These are the map-wide defaults; individual patrols inherit them (-1). The Patrols array is edited per-patrol on the map.' : 'Only this patrol changes; everything else is preserved.') + ' Restart to apply.</div>' +
+    core.map((k) => patrolField(k, ent[k])).join('') +
+    '<details class="pe-adv"><summary>Advanced — ' + adv.length + ' more fields</summary>' + adv.map((k) => patrolField(k, ent[k])).join('') + '</details>' +
+    '<div class="pe-btns"><button class="ghost primary" id="peSave">Save</button><button class="ghost" id="peCancel">Cancel</button></div>';
+  el.mapNav.querySelectorAll('.pe-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
+  const S = $id('peSave'); if (S) S.onclick = savePatrolEdit;
+  const C = $id('peCancel'); if (C) C.onclick = () => { mapPatEdit = null; renderMap(); };
+}
+function applyPatrolField(inp) {
+  const e = mapPatEdit; if (!e) return;
+  const k = inp.dataset.k, orig = e.entry[k];
+  let v;
+  if (inp.classList.contains('pe-json')) {
+    try { v = JSON.parse(inp.value); inp.style.outline = ''; }
+    catch { inp.style.outline = '2px solid var(--danger)'; toast(k + ': not valid JSON', 'err'); return; }
+  } else if (typeof orig === 'number') {
+    v = Number(inp.value); if (!isFinite(v)) { toast(k + ': must be a number', 'err'); return; }
+  } else { v = inp.value; }
+  e.entry[k] = v;
+}
+async function savePatrolEdit() {
+  const e = mapPatEdit; if (!e) return;
+  const cred = loadCred(); if (!cred) return;
+  const S = $id('peSave'); if (S) S.disabled = true;
+  try {
+    const content = JSON.stringify(e.doc, null, 2);
+    const r = await apiPost('/dayz/configs/set-patrols', cred, { mission: e.mission, content, baseVersion: e.version });
+    toast(r.message || 'Saved - restart to apply', 'ok');
+    mapPatEdit = null;
+    mapData = null; loadMapTab(true);   // re-derive the store so the map reflects the save
+  } catch (err) {
+    if (S) S.disabled = false;
+    if (err.status === 409) { toast('Another admin edited this file since you opened it - Cancel and reopen.', 'err'); return; }
+    if (!handle(err)) toast('Save failed: ' + err.message, 'err');
+  }
+}
 
 // ---------- camera ----------
 function mapVp() { return { w: el.mapCanvas.clientWidth, h: el.mapCanvas.clientHeight }; }
@@ -1460,7 +1553,9 @@ function renderMapSummary() {
       '<span class="stat"><b>' + nLoc + '</b> AI location' + (nLoc === 1 ? '' : 's') + '</span>' +
       '<span class="stat"><b>' + nPat + '</b> patrol' + (nPat === 1 ? '' : 's') + '</span>' +
       (nObj ? '<span class="stat"><b>' + nObj + '</b> object patrol' + (nObj === 1 ? '' : 's') + ' <span class="meta">(list only - they spawn at every instance of a building class)</span></span>' : '') +
-      '<span class="stat" style="margin-left:auto">derived from the live AI settings — read-only; edit the files, restart to apply</span>';
+      '<span class="stat"><button class="btn-sm" id="mpEditGlobals">Global settings</button></span>' +
+      '<span class="stat" style="margin-left:auto">click a patrol to edit it; locations read-only</span>';
+    const gb = $id('mpEditGlobals'); if (gb) gb.onclick = startGlobalEdit;
     return;
   }
   // No derived store at all? Say why the AI layer is missing before falling into the legacy text.
@@ -1529,7 +1624,11 @@ function renderMapDetail() {
               kv('Position', '<span class="k2">none — spawns at every instance of the class</span>');
     }
     if (p.delta !== undefined) rows += kv('Δ', '<span class="mp-badge ' + mapBand(p) + '">' + fmtDelta(p.delta) + '</span>');
+    // Phase 5: patrols/object patrols are editable field-by-field (the map owns them). Locations
+    // stay read-only here for now (they need their own write verb).
+    if (mapDerivedActive() && (p.kind === 'patrol' || p.kind === 'object')) rows += '<span><button class="btn-sm" id="mpEditPatrol">Edit fields</button></span>';
     el.mapDetail.innerHTML = rows;
+    const eb = $id('mpEditPatrol'); if (eb) eb.onclick = () => startPatrolEdit(p);
     return;
   }
   const band = mapBand(p);
