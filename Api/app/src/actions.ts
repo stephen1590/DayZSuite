@@ -752,6 +752,22 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    'configs/disabled': {
+      destructive: false,
+      readOnly: true,
+      describe: 'list config surface relpaths whose owning mod is disabled in mods.conf; the web editor drops these rows so a turned-off mod stops surfacing its config files and override-patch targets (the box-owned patches stay intact)',
+      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } } } },
+      async run() {
+        const r = await dayz.ctl('config-disabled');
+        if (r.code !== 0) throw fail(502, `config-disabled failed: ${(r.stderr || r.stdout).trim()}`);
+        const files = r.stdout
+          .split('\n')
+          .map((l) => l.replace(/\r$/, '').trim())
+          .filter(Boolean);
+        return { files };
+      },
+    },
+
     'configs/set-file': {
       destructive: false,
       readOnly: false,
@@ -795,6 +811,57 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
         const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
         return { name, version, content };
+      },
+    },
+
+    'configs/patrols': {
+      destructive: false,
+      readOnly: true,
+      describe: 'one mission\'s AIPatrolSettings.json raw, plus its version hash. The map editor loads a mission\'s patrols through this, merges one patrol\'s fields, and passes the version back to configs/set-patrols as baseVersion so a concurrent admin edit is rejected (409) instead of clobbered.',
+      schema: {
+        query: { type: 'object', required: ['mission'], properties: { mission: { type: 'string', description: 'a mission folder name, e.g. dayzOffline.sakhal' } } },
+        response: { type: 'object', properties: { mission: { type: 'string' }, version: { type: 'string' }, content: { type: 'string' } } },
+      },
+      async run(params) {
+        const mission = String(params.mission ?? '');
+        if (!/^[A-Za-z0-9_.-]+$/.test(mission)) throw fail(400, 'invalid or missing "mission"');
+        const r = await dayz.ctl('patrol-read', mission);
+        if (r.code === 2) throw fail(404, `AIPatrolSettings.json not on the box for '${mission}'`);
+        if (r.code === 3) throw fail(413, `AIPatrolSettings.json for '${mission}' is too large to retrieve`);
+        if (r.code !== 0) throw fail(502, `patrol-read failed: ${(r.stderr || r.stdout).trim()}`);
+        const nl = r.stdout.indexOf('\n');
+        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
+        return { mission, version, content };
+      },
+    },
+
+    'configs/set-patrols': {
+      destructive: false,
+      readOnly: false,
+      describe: 'replace one mission\'s AIPatrolSettings.json with a new document (the map editor computed it: the live file with one patrol\'s fields merged). The box validates JSON + a Patrols array + unique non-empty Names (name-keyed persistence would collide), snapshots first, and applies at the next restart. Pass baseVersion (from configs/patrols) for optimistic concurrency.',
+      schema: {
+        body: { type: 'object', required: ['mission', 'content'], properties: {
+          mission: { type: 'string', description: 'a mission folder name, e.g. dayzOffline.sakhal' },
+          content: { type: 'string', description: 'the complete new AIPatrolSettings.json (object root, a Patrols array, unique non-empty patrol Names)' },
+          baseVersion: { type: 'string', description: 'the version hash from configs/patrols this edit was based on — the box rejects the write with 409 if the file changed since. Omit to skip the check (last-write-wins).' },
+        } },
+        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
+      },
+      async run(params) {
+        const mission = String(params.mission ?? '');
+        if (!/^[A-Za-z0-9_.-]+$/.test(mission)) throw fail(400, 'invalid or missing "mission"');
+        if (typeof params.content !== 'string' || !params.content.trim()) throw fail(400, '"content" must be the whole AIPatrolSettings document');
+        if (params.content.length > 2097152) throw fail(413, '"content" too large (max 2MB)');
+        // Content over STDIN ('-' at $2), mission at $3, base= at $4 — patrol-write's arg order.
+        const extra: string[] = [mission];
+        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
+        const r = await dayz.ctlStdin('patrol-write', params.content, ...extra);
+        if (r.code === 2) throw fail(404, `AIPatrolSettings.json not on the box for '${mission}'`);
+        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
+        if (r.code !== 0) throw fail(502, `patrol-write failed: ${(r.stderr || r.stdout).trim()}`);
+        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+        return { message: `AIPatrolSettings for ${mission} saved (previous version snapshotted on the box); restart to apply`, version: lines.length > 1 ? lines[1] : '' };
       },
     },
 

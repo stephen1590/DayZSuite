@@ -167,6 +167,37 @@ foreach ($g in $generatedList) {
 }
 $generated = (@($generatedList | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) -join "`n")
 
+# Disabled-mod config targets -> DISABLED_TARGETS (one ServerDir-relative relpath per line). A
+# registry surface may declare "mod":"@folder"; if that @folder is NOT enabled in deploy/mods.conf
+# (the ONE mod on/off source), the surface's box path is emitted here and the web editor DROPS the
+# row entirely - a mod turned off must not surface its config files or override-patch targets. The
+# box-owned override patches stay intact (reversible); this only hides them. Cross-referenced HERE,
+# at deploy time, because mods.conf lives beside the registry in DayZ-Server and a mod toggle needs
+# a redeploy to change the unit's -mod line anyway. Absent mods.conf or no tagged rows = empty = off.
+# Enablement parse mirrors Deploy-DayZServer.ps1 (first token of every non-'#' line).
+$modsConfPath = Join-Path (Split-Path -Parent $registryPath) 'deploy/mods.conf'
+$enabledModSet = @{}
+if (Test-Path $modsConfPath) {
+    foreach ($m in @(Get-Content -LiteralPath $modsConfPath | ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') } |
+            ForEach-Object { ($_ -split '\s+')[0] })) { $enabledModSet[$m] = $true }
+} else {
+    Write-Warning "Api Configs: mods.conf not found at $modsConfPath - disabled-mod hiding is OFF (no surface will be hidden by mod state)."
+}
+foreach ($s in @($registry.surfaces | Where-Object { $_ -and $_.mod })) {
+    if ("$($s.mod)" -notmatch '^@[A-Za-z0-9_]+$') { throw "Api Configs: 'mod' for '$($s.name)' must be an @folder token (e.g. @aibandits): '$($s.mod)'." }
+    if (-not $s.box) { throw "Api Configs: 'mod' declared on '$($s.name)' but it has no 'box' path to hide." }
+}
+$disabledTargets = @($registry.surfaces |
+    Where-Object { $_ -and $_.mod -and $_.box -and -not $enabledModSet.ContainsKey("$($_.mod)") } |
+    ForEach-Object { "$($_.box)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+foreach ($t in $disabledTargets) {
+    if ("$t" -match '^\s*/' -or "$t" -match '\.\.') { throw "Api Configs: disabled-target path must be ServerDir-relative with no '..': '$t'." }
+    if ("$t" -notmatch '^[A-Za-z0-9_./-]+$') { throw "Api Configs: disabled-target path has invalid chars (allowed A-Z a-z 0-9 . _ - /): '$t'." }
+}
+$disabledTargetsRendered = ($disabledTargets -join "`n")
+if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled in mods.conf): $($disabledTargets -join ', ')`n" }
+
 # Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
 # Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
 $docs = $cfg.Docs
@@ -279,6 +310,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__IGNORE_EXT__'  = $ignoreExt
         '__WRITE_MAP__'   = $writeMap
         '__GENERATED__'   = $generated
+        '__DISABLED_TARGETS__' = $disabledTargetsRendered
         '__LOG_NOISE__'   = $logNoiseSq
         '__DOCS_ROOTS__'    = $docsRoots
         '__DOCS_EXT__'      = $docsExt

@@ -33,6 +33,7 @@ let overridesDoc = {};
 let configItems = [];     // /dayz/configs/list — now carries each file's relpath
 let boxFiles = [];        // /dayz/configs/writable [{name, path}]
 let roRe = [];            // /dayz/configs/readonly — compiled globs of generated (read-only) files
+let disabledSet = new Set(); // /dayz/configs/disabled — relpaths whose owning mod is off in mods.conf; dropped from the tree
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
@@ -146,6 +147,9 @@ const MAP_STORE_SURFACES = new Set(['Map-points']);
 // frozen base), never the output. A glob's '*' = the mission wildcard and spans '/'.
 function globToRe(g) { return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'); }
 function isGenerated(rel) { return !!rel && roRe.some((re) => re.test(rel)); }
+// A surface whose owning mod is DISABLED in mods.conf (configs/disabled): dropped from the tree
+// entirely, so a mod turned off there stops surfacing its config files and override-patch targets.
+function isDisabledMod(rel) { return !!rel && disabledSet.has(rel); }
 function buildRows(items, writable, doc, mission) {
   const list = [];
   const byRel = new Map();
@@ -215,7 +219,14 @@ function buildRows(items, writable, doc, mission) {
   // however it was created (curated listing, writable, or override-synth). This is the ONE place
   // the generated rule is enforced in the UI, so every code path above inherits it.
   for (const r of list) { if (isGenerated(r.relpath)) { r.access = 'lock'; r.generated = true; } }
-  return list;
+  // Phase 5: AIPatrolSettings.json is MAP-OWNED - patrols and globals are edited on the Map tab
+  // (direct-write, out of the override system). Read-only here so it is never override-patched
+  // and the Patrols array is never dumped as a field blob.
+  for (const r of list) { if (r.relpath && /(^|\/)mpmissions\/[^/]+\/expansion\/settings\/AIPatrolSettings\.json$/.test(r.relpath)) { r.access = 'lock'; r.mapOwned = true; } }
+  // Final drop: any row whose owning mod is disabled in mods.conf (curated row OR override-synth)
+  // is removed entirely — a turned-off mod must not surface here. Done last so every path above is
+  // covered. The box-owned patches remain on disk (reversible); re-enable the mod + redeploy the Api.
+  return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
 function activeMissionRel(mission, fileKey) { return mission ? 'mpmissions/' + mission + '/' + fileKey : null; }
 // The row's OWN layer map (what the tree badge counts): common rows count the common
@@ -318,15 +329,17 @@ export async function loadFiles(preserve) {
     // re-shipping the whole document (it crossed 1MB on 2026-07-23; tab re-entries and the
     // post-save refresh were re-downloading it every time).
     const ovrQ = (overridesLoaded && ovrBaseVersion) ? '?ifVersion=' + encodeURIComponent(ovrBaseVersion) : '';
-    const [cfgR, ovrR, boxR, roR] = await Promise.all([
+    const [cfgR, ovrR, boxR, roR, disR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
       apiPost('/dayz/configs/overrides' + ovrQ, cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
       apiPost('/dayz/configs/readonly', cred).catch(() => ({ files: [] })),   // generated (read-only) globs; [] on an older API
+      apiPost('/dayz/configs/disabled', cred).catch(() => ({ files: [] })),   // disabled-mod relpaths to drop; [] on an older API
     ]);
     configItems = cfgR.configs || [];
     boxFiles = boxR.files || [];
     roRe = (roR.files || []).map(globToRe);
+    disabledSet = new Set(disR.files || []);
     // On a plain tab re-entry (preserve) keep unsaved override edits — only reload the doc from
     // the server on the initial load, after a save, or after a rollback. unchanged = the box
     // still holds exactly the doc we parsed; nothing to adopt.
@@ -489,7 +502,9 @@ async function renderBody(row) {
   if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
   if (view === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
   if (row.access === 'lock') {
-    body.innerHTML = '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
+    body.innerHTML = row.mapOwned
+      ? '<div class="ovr-note"><b>Edited on the Map tab.</b> Patrols are edited individually on the map (click a patrol → Edit fields); the map-wide defaults via the map\'s <b>Global settings</b>. This file is read-only here so a raw edit can\'t break spawns. See the <b>File</b> view for its contents.</div>'
+      : '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
     return;
   }
   const wfNote = wholeFileOf(row) !== undefined

@@ -15,6 +15,7 @@ CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" 
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
 GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; override-write refuses to target them
+DISABLED_TARGETS='__DISABLED_TARGETS__'  # rendered relpaths of config surfaces whose owning mod is DISABLED in mods.conf (config-registry.json "mod" x deploy/mods.conf, resolved at deploy time) - the web editor DROPS these rows
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
 DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
@@ -586,6 +587,15 @@ case "$verb" in
     if [ -n "$GENERATED" ]; then printf '%s\n' "$GENERATED"; fi
     ;;
 
+  config-disabled)
+    # Emit the config surfaces whose owning mod is DISABLED in mods.conf (rendered DISABLED_TARGETS
+    # from config-registry.json 'mod' fields cross-referenced with deploy/mods.conf at deploy time),
+    # one ServerDir-relative relpath per line. The web editor DROPS any row (curated OR override-synth)
+    # matching one, so a mod turned off stops surfacing its config files and override-patch targets -
+    # the box-owned patches stay intact, just hidden. Pure enumeration of the rendered mask - no caller input.
+    if [ -n "$DISABLED_TARGETS" ]; then printf '%s\n' "$DISABLED_TARGETS"; fi
+    ;;
+
   config)
     # config <name> — print ONE allowlisted config file. The NAME must EXACTLY match
     # one emit_allowed produced (an explicit file, or a real file under an allowlisted
@@ -997,6 +1007,90 @@ for c in r:
     _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
     [ -n "$_own" ] && chown -R "$_own" "$TYPES_VERSIONS" 2>/dev/null || true
     tmp="$(mktemp "$SERVER_DIR/.types-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$file"
+    printf 'ok\n%s\n' "$(sha256sum "$file" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
+    ;;
+
+  patrol-read)
+    # patrol-read <mission> — print ONE mission's AIPatrolSettings.json: line 1 = its sha256 (the
+    # version the map editor passes back to patrol-write as base=), the rest = RAW contents (so the
+    # editor merges one patrol's fields and writes the whole doc back faithfully). Path built from a
+    # VALIDATED mission + fixed relpath. Exit 2 = not present, 3 = too large.
+    mission="$arg"
+    [ -n "$mission" ] || die "patrol-read needs a mission"
+    case "$mission" in *[!A-Za-z0-9_.-]*|*..*) die "invalid mission" ;; esac
+    rel="mpmissions/$mission/expansion/settings/AIPatrolSettings.json"
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: not present: $rel" >&2; exit 2; }
+    _sdir="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    _real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$_real" in "$_sdir"/*) ;; *) die "patrol file resolved outside the server dir" ;; esac
+    _sz="$(wc -c < "$file")"
+    [ "$_sz" -le 2097152 ] || { echo "dayz-ctl: too large ($_sz bytes): $rel" >&2; exit 3; }
+    sha256sum "$file" | awk '{print $1}'
+    cat "$file"
+    ;;
+
+  patrol-write)
+    # patrol-write <json|-> <mission> [base=<sha256>] — REPLACE one mission's AIPatrolSettings.json
+    # whole. The map editor computes the document (the live file with ONE patrol's fields merged, so
+    # the ~35 fields it doesn't show are preserved). The mod reads this live file DIRECTLY - the map
+    # inversion took it OUT of Apply-ConfigOverrides so map edits persist across restarts (patrols
+    # in the override document would be rebuilt away every boot). ARG ORDER matches every stdin write
+    # verb: document at $2 ('-'), mission at $3. The path is built from a VALIDATED mission name + a
+    # fixed relpath, NEVER from the caller. Structural validation: valid JSON, object root, a Patrols
+    # array, and NO duplicate non-empty Name (Expansion persistence is name-keyed - duplicates
+    # collide; the 2026-07-22 spawn outage). 2MB cap, base= optimistic concurrency, snapshot-first,
+    # atomic. Replace-only (a mission with no AIPatrolSettings can't be created here). Next restart.
+    mission="${3:-}"
+    [ -n "$mission" ] || die "patrol-write needs a mission"
+    case "$mission" in *[!A-Za-z0-9_.-]*|*..*) die "invalid mission" ;; esac
+    [ -d "$SERVER_DIR/mpmissions/$mission" ] || { echo "dayz-ctl: unknown mission: $mission" >&2; exit 2; }
+    rel="mpmissions/$mission/expansion/settings/AIPatrolSettings.json"
+    file="$SERVER_DIR/$rel"
+    [ -f "$file" ] || { echo "dayz-ctl: not present: $rel" >&2; exit 2; }
+    _sdir="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+    _real="$(realpath -- "$file" 2>/dev/null || printf '')"
+    case "$_real" in "$_sdir"/*) ;; *) die "patrol file resolved outside the server dir" ;; esac
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
+    [ -n "$arg" ] || die "patrol-write needs the new document"
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 2097152 ] || die "patrol-write: too large ($sz bytes)"
+    if command -v python3 >/dev/null 2>&1; then
+      printf '%s' "$arg" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+assert isinstance(d, dict), "root must be a JSON object"
+p = d.get("Patrols")
+assert isinstance(p, list), "must have a Patrols array"
+names = [e.get("Name", "") for e in p if isinstance(e, dict)]
+ne = [n for n in names if n]
+assert len(ne) == len(set(ne)), "duplicate patrol Name"
+' 2>/dev/null || die "patrol-write: invalid AIPatrolSettings (object root, Patrols array, unique non-empty Names)"
+    elif command -v jq >/dev/null 2>&1; then
+      printf '%s' "$arg" | jq -e 'type=="object" and (.Patrols|type=="array") and ((.Patrols|map(.Name)|map(select(.!=null and .!=""))) as $n | ($n|length)==($n|unique|length))' >/dev/null 2>&1 \
+        || die "patrol-write: invalid AIPatrolSettings (object root, Patrols array, unique non-empty Names)"
+    else
+      die "patrol-write: no JSON validator (python3/jq) on the box"
+    fi
+    _base='__none__'
+    for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
+    if [ "$_base" != '__none__' ]; then
+      _cur="$(sha256sum "$file" | awk '{print $1}')"
+      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    PATROL_VERSIONS="$SERVER_DIR/.patrol-versions"
+    mkdir -p "$PATROL_VERSIONS"
+    _tag="$(printf '%s' "$mission" | tr -c 'A-Za-z0-9_.-' '_')"
+    cp -p "$file" "$PATROL_VERSIONS/$_tag.$(date -u +%Y%m%dT%H%M%S%NZ).json"
+    find "$PATROL_VERSIONS" -maxdepth 1 -name "$_tag.*.json" | sort -r | tail -n +31 \
+      | while IFS= read -r _old; do rm -f "$_old"; done
+    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    [ -n "$_own" ] && chown -R "$_own" "$PATROL_VERSIONS" 2>/dev/null || true
+    tmp="$(mktemp "$SERVER_DIR/.patrol-write.XXXXXX")"
     printf '%s' "$arg" > "$tmp"
     [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
     chmod 644 "$tmp"
