@@ -83,6 +83,8 @@ let mapCalib = null;          // parsed sidecar (null until first load attempt)
 let mapCalibTried = false;
 let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
 let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
+let mapNavFilter = '';        // quick-filter text for the nav list (sticky input; survives list re-renders)
+let mapNavMode = 'group';     // nav list layout: 'group' (by kind, collapsible) | 'flat' (A-Z). Loaded from localStorage in initMap.
 function calibFor(short, layerName) {
   const m = mapCalib && mapCalib.maps && mapCalib.maps[short];
   const c = m && m[layerName] && m[layerName].affine;
@@ -463,10 +465,9 @@ function renderMap() {
   renderMarkersFilter();
   renderLiveFilter();
   if (mapCal) { renderCalibrate(); updateMapEditUi(); return; }
-  if (mapPatEdit) { renderPatrolEdit(); updateMapEditUi(); return; }   // Phase 5: keep the patrol/globals editor mounted across redraws
   renderMapList();
   renderMapSummary();
-  renderMapDetail();
+  if (!mapPatEdit) renderMapDetail();   // Phase 5: while editing, the detail panel IS the editor - don't wipe in-progress input on a redraw
   updateMapEditUi();
 }
 
@@ -645,6 +646,18 @@ function $id(id) { return document.getElementById(id); }
 // field the editor doesn't touch is preserved verbatim - the write is the whole doc with one
 // entry mutated in place.
 const PATROL_CORE = ['Name', 'Faction', 'Loadout', 'NumberOfAI', 'NumberOfAIMax', 'Behaviour', 'Speed', 'Chance', 'Persist'];
+let peLbcKeys = [];           // LoadBalancingCategories keys from the open doc - the datalist for a patrol's LoadBalancingCategory
+// In-panel editor field density: 'inline' (label+input on one row, default) or 'stacked'.
+function peDensity() { try { return localStorage.getItem('pe_density') === 'stacked' ? 'stacked' : 'inline'; } catch { return 'inline'; } }
+function applyPeDensity(d) {
+  try { localStorage.setItem('pe_density', d); } catch (_e) { /* private mode */ }
+  el.mapDetail.querySelectorAll('.pe-fields').forEach((w) => { w.classList.toggle('inline', d === 'inline'); w.classList.toggle('stacked', d === 'stacked'); });
+  const bi = $id('peDenseIn'), bs = $id('peDenseSt');
+  if (bi) bi.classList.toggle('on', d === 'inline');
+  if (bs) bs.classList.toggle('on', d === 'stacked');
+}
+// Load the mission's raw AIPatrolSettings.json and open the clicked patrol/object patrol in the
+// DETAIL PANEL (in place). The whole doc rides in mapPatEdit so a save is a per-field merge.
 async function startPatrolEdit(p) {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
@@ -653,10 +666,12 @@ async function startPatrolEdit(p) {
     const doc = JSON.parse(stripBom(r.content || '{}'));
     const arr = Array.isArray(doc.Patrols) ? doc.Patrols : [];
     if (p.idx == null || !arr[p.idx] || typeof arr[p.idx] !== 'object') { toast('Could not locate this patrol in the live file (idx ' + p.idx + ') - reload the map.', 'err'); return; }
-    mapPatEdit = { mission, idx: p.idx, doc, version: r.version, entry: arr[p.idx] };
-    renderPatrolEdit();
+    mapPatEdit = { mission, idx: p.idx, doc, version: r.version, entry: arr[p.idx], kind: (p.kind === 'object' ? 'object' : 'patrol') };
+    renderMapDetail();
   } catch (err) { if (!handle(err)) toast('Could not load patrols: ' + err.message, 'err'); }
 }
+// Map-wide defaults: the file's top-level fields, edited in the same detail-panel editor. The
+// Patrols array is NEVER dumped here (it is edited per-patrol on the map).
 async function startGlobalEdit() {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
@@ -664,41 +679,193 @@ async function startGlobalEdit() {
     const r = await apiPost('/dayz/configs/patrols?mission=' + encodeURIComponent(mission), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     mapPatEdit = { mission, idx: null, doc, version: r.version, entry: doc, isGlobal: true };
-    renderPatrolEdit();
+    renderMapDetail();
   } catch (err) { if (!handle(err)) toast('Could not load AI settings: ' + err.message, 'err'); }
 }
-function patrolField(k, v) {
-  if (v !== null && typeof v === 'object') {   // Units / LoadBalancingCategory / Waypoints etc.
-    if (k === 'Waypoints') return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + '</span><span class="pe-ro">' + (v.length) + ' point(s) - drag on the map</span></label>';
-    return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + '</span><textarea class="pe-in pe-json" data-k="' + attr(k) + '" rows="2" spellcheck="false">' + escapeHtml(JSON.stringify(v)) + '</textarea></label>';
+// One editable field. Object-valued fields (Units/LoadBalancingCategory/Waypoints) get a JSON
+// textarea; negative numbers are annotated "inherits". The label truncates - full name on hover.
+function meField(k, v) {
+  if (v !== null && typeof v === 'object') {
+    if (k === 'Waypoints') return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><span class="me-ro">' + (v.length) + ' point(s) - drag on the map</span></div>';
+    return '<div class="me-f me-wide"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><textarea class="me-in me-json" data-k="' + attr(k) + '" rows="2" spellcheck="false">' + escapeHtml(JSON.stringify(v)) + '</textarea></div>';
+  }
+  if (k === 'LoadBalancingCategory') {   // soft link to LoadBalancingCategories: a datalist (pick a defined category, or free-type)
+    return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><input class="me-in" data-k="' + attr(k) + '" list="pe-lbc-cats" value="' + attr(String(v == null ? '' : v)) + '"></div>';
   }
   const t = typeof v === 'number' ? 'number' : 'text';
-  const inh = (typeof v === 'number' && v < 0) ? ' <span class="pe-inh">inherits global</span>' : '';
-  return '<label class="pe-f"><span class="pe-k">' + escapeHtml(k) + inh + '</span><input class="pe-in" data-k="' + attr(k) + '" type="' + t + '" value="' + attr(String(v)) + '"></label>';
+  const inh = (typeof v === 'number' && v < 0) ? ' <span class="me-inh">inherits</span>' : '';
+  return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + inh + '</label><input class="me-in" data-k="' + attr(k) + '" type="' + t + '" value="' + attr(String(v)) + '"></div>';
 }
-function renderPatrolEdit() {
+// Render the field editor into el.mapDetail (replaces the readout in place). Reached from the
+// detail readout's Edit button or the summary's Global settings; Cancel restores the readout.
+function renderPatrolEditor() {
   const e = mapPatEdit; if (!e) return;
   const ent = e.entry;
-  // Globals mode edits the file's top-level fields but NEVER the Patrols array (that is the map's
-  // per-patrol editor) - so the config editor's "don't dump the whole array" rule holds here too.
-  const keys = Object.keys(ent).filter((k) => !(e.isGlobal && (k === 'Patrols')));
-  const core = (e.isGlobal ? keys.filter((k) => typeof ent[k] !== 'object') : PATROL_CORE.filter((k) => k in ent));
-  const adv = keys.filter((k) => !core.includes(k));
-  el.mapNav.innerHTML =
-    '<div class="pe-head">' + (e.isGlobal ? 'Global AI patrol settings' : 'Edit patrol') + '</div>' +
-    '<div class="pe-hint">Writes AIPatrolSettings.json for ' + escapeHtml(mapShort(e.mission)) + '. ' + (e.isGlobal ? 'These are the map-wide defaults; individual patrols inherit them (-1). The Patrols array is edited per-patrol on the map.' : 'Only this patrol changes; everything else is preserved.') + ' Restart to apply.</div>' +
-    core.map((k) => patrolField(k, ent[k])).join('') +
-    '<details class="pe-adv"><summary>Advanced — ' + adv.length + ' more fields</summary>' + adv.map((k) => patrolField(k, ent[k])).join('') + '</details>' +
-    '<div class="pe-btns"><button class="ghost primary" id="peSave">Save</button><button class="ghost" id="peCancel">Cancel</button></div>';
-  el.mapNav.querySelectorAll('.pe-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
+  const isG = !!e.isGlobal;
+  const keys = Object.keys(ent).filter((k) => !(isG && k === 'Patrols'));
+  const core = isG ? keys.filter((k) => typeof ent[k] !== 'object') : PATROL_CORE.filter((k) => k in ent);
+  const adv = keys.filter((k) => !core.includes(k) && k !== 'Waypoints' && !(isG && k === 'LoadBalancingCategories'));   // Waypoints + LBC get their own sections
+  const hasWp = !isG && Array.isArray(ent.Waypoints);
+  const hasLbc = isG && ent.LoadBalancingCategories && typeof ent.LoadBalancingCategories === 'object' && !Array.isArray(ent.LoadBalancingCategories);
+  peLbcKeys = (e.doc && e.doc.LoadBalancingCategories && typeof e.doc.LoadBalancingCategories === 'object') ? Object.keys(e.doc.LoadBalancingCategories) : [];
+  const d = peDensity();
+  const glyph = isG ? '' : spawnClassSvg(spawnClassDef(e.kind === 'object' ? 'object' : 'patrol'), 12);
+  const title = isG ? 'Global AI settings' : (e.kind === 'object' ? 'Edit object patrol' : 'Edit patrol');
+  const name = isG ? mapShort(e.mission) : (ent.Name || (e.kind === 'object' ? ent.ObjectClassName : '') || '#' + e.idx);
+  el.mapDetail.classList.remove('hidden');
+  el.mapDetail.classList.add('editing');
+  el.mapDetail.innerHTML =
+    '<div class="me-head">' + glyph + '<b>' + escapeHtml(title) + '</b> <span class="k2">' + escapeHtml(name) + '</span></div>' +
+    '<div class="me-note">' + (isG
+      ? 'Map-wide defaults; patrols inherit them (-1). The Patrols array is edited per-patrol on the map. Restart to apply.'
+      : 'Only this ' + (e.kind === 'object' ? 'object patrol' : 'patrol') + ' changes; every other field is preserved. Restart to apply.') + '</div>' +
+    '<div class="me-density"><span>Rows</span><span class="me-seg"><button type="button" id="peDenseIn" class="' + (d === 'inline' ? 'on' : '') + '">Inline</button><button type="button" id="peDenseSt" class="' + (d === 'stacked' ? 'on' : '') + '">Stacked</button></span></div>' +
+    '<div class="pe-fields ' + d + '">' + core.map((k) => meField(k, ent[k])).join('') + '</div>' +
+    (hasWp ? waypointsSectionHtml(ent.Waypoints) : '') +
+    (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '') +
+    (adv.length ? '<details class="me-adv"><summary>Advanced — ' + adv.length + ' more field' + (adv.length === 1 ? '' : 's') + '</summary><div class="pe-fields ' + d + '">' + adv.map((k) => meField(k, ent[k])).join('') + '</div></details>' : '') +
+    (!isG && peLbcKeys.length ? '<datalist id="pe-lbc-cats">' + peLbcKeys.map((k) => '<option value="' + attr(k) + '"></option>').join('') + '</datalist>' : '') +
+    '<div class="me-btns"><button type="button" class="btn-sm primary" id="peSave">Save</button><button type="button" class="btn-sm" id="peCancel">Cancel</button></div>';
+  el.mapDetail.querySelectorAll('.me-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
+  el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
+  el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });
+  wireLbc();
+  const bi = $id('peDenseIn'); if (bi) bi.onclick = () => applyPeDensity('inline');
+  const bs = $id('peDenseSt'); if (bs) bs.onclick = () => applyPeDensity('stacked');
   const S = $id('peSave'); if (S) S.onclick = savePatrolEdit;
-  const C = $id('peCancel'); if (C) C.onclick = () => { mapPatEdit = null; renderMap(); };
+  const C = $id('peCancel'); if (C) C.onclick = cancelPatrolEdit;
+}
+function cancelPatrolEdit() { mapPatEdit = null; el.mapDetail.classList.remove('editing'); renderMapDetail(); }
+// Waypoints listed in the editor (not only drawn on the map). Each raw [x,y,z] point shows as
+// editable X / Z (Y preserved); ✕ removes it. Object-patrol waypoints are offsets from the object.
+function waypointsSectionHtml(wps) {
+  const rows = wps.map((w, i) => {
+    const x = Array.isArray(w) ? w[0] : (w && w.x != null ? w.x : 0);
+    const z = Array.isArray(w) ? w[2] : (w && w.z != null ? w.z : 0);
+    return '<div class="me-wp"><span class="me-wp-n mono">' + (i + 1) + '</span>' +
+      '<input class="me-wpin mono" data-wp="' + i + '" data-ax="0" type="number" step="any" value="' + attr(String(x)) + '" title="X" aria-label="Waypoint ' + (i + 1) + ' X">' +
+      '<input class="me-wpin mono" data-wp="' + i + '" data-ax="2" type="number" step="any" value="' + attr(String(z)) + '" title="Z" aria-label="Waypoint ' + (i + 1) + ' Z">' +
+      '<button type="button" class="me-wp-del" data-wp="' + i + '" title="Delete waypoint ' + (i + 1) + '">✕</button></div>';
+  }).join('');
+  return '<div class="me-wps"><span class="k2">Waypoints (' + wps.length + ')</span>' +
+    (wps.length ? rows : '<span class="me-ro">none</span>') +
+    '<span class="me-wp-hint">X / Z per point · ✕ removes · applies on the next restart</span></div>';
+}
+function applyWaypointField(inp) {
+  const e = mapPatEdit; if (!e || !Array.isArray(e.entry.Waypoints)) return;
+  const i = +inp.dataset.wp, ax = +inp.dataset.ax;
+  const w = e.entry.Waypoints[i]; if (!Array.isArray(w)) return;
+  const v = Number(inp.value); if (!isFinite(v)) { toast('Waypoint ' + (i + 1) + ': must be a number', 'err'); return; }
+  w[ax] = v;
+}
+function deletePatrolWaypoint(i) {
+  const e = mapPatEdit; if (!e || !Array.isArray(e.entry.Waypoints)) return;
+  e.entry.Waypoints.splice(i, 1);
+  renderPatrolEditor();   // indices shift - re-render the listed section
+}
+// ===== LoadBalancingCategories: a tier table per category (global editor) =====
+// Each category is a concurrent-patrol cap that scales with player count: tiers of
+// {MinPlayers, MaxPlayers, MaxPatrols}. Add/rename/delete category + add/remove tier. Soft-linked
+// to a patrol's LoadBalancingCategory (a datalist) - not enforced; delete warns if patrols use it,
+// rename moves those references along. The tier list shape is the one hardcoded template.
+function lbcObj() { const e = mapPatEdit; return (e && e.entry && e.entry.LoadBalancingCategories && typeof e.entry.LoadBalancingCategories === 'object' && !Array.isArray(e.entry.LoadBalancingCategories)) ? e.entry.LoadBalancingCategories : null; }
+function lbcUsedCount(name) {
+  const e = mapPatEdit; if (!e || !e.doc || !Array.isArray(e.doc.Patrols)) return 0;
+  return e.doc.Patrols.filter((p) => p && p.LoadBalancingCategory === name).length;
+}
+function lbcSectionHtml(lbc) {
+  const catHtml = (name) => {
+    const tiers = Array.isArray(lbc[name]) ? lbc[name] : [];
+    const used = lbcUsedCount(name);
+    const summary = tiers.length === 1 ? 'cap ' + (tiers[0] && tiers[0].MaxPatrols != null ? tiers[0].MaxPatrols : '?') : tiers.length + ' tiers';
+    const num = (t, f, dflt) => attr(String(t && t[f] != null ? t[f] : dflt));
+    const rows = tiers.map((t, i) =>
+      '<div class="lbc-tr">' +
+        '<span class="lbc-ix mono">' + i + '</span>' +
+        '<input class="lbc-in mono" data-cat="' + attr(name) + '" data-ti="' + i + '" data-f="MinPlayers" type="number" step="1" value="' + num(t, 'MinPlayers', 0) + '" aria-label="tier ' + i + ' min players">' +
+        '<input class="lbc-in mono" data-cat="' + attr(name) + '" data-ti="' + i + '" data-f="MaxPlayers" type="number" step="1" value="' + num(t, 'MaxPlayers', 255) + '" aria-label="tier ' + i + ' max players">' +
+        '<input class="lbc-in mono" data-cat="' + attr(name) + '" data-ti="' + i + '" data-f="MaxPatrols" type="number" step="1" value="' + num(t, 'MaxPatrols', 0) + '" aria-label="tier ' + i + ' max patrols">' +
+        '<button type="button" class="lbc-tdel" data-cat="' + attr(name) + '" data-ti="' + i + '" title="Remove tier ' + i + '">✕</button>' +
+      '</div>').join('');
+    return '<details class="lbc-cat" data-cat="' + attr(name) + '">' +
+      '<summary><span class="lbc-cn mono">' + escapeHtml(name) + '</span>' + (used ? '<span class="lbc-used" title="patrols using this category">' + used + ' used</span>' : '') + '<span class="lbc-cs">' + escapeHtml(summary) + '</span></summary>' +
+      '<div class="lbc-body">' +
+        '<div class="lbc-crow"><input class="lbc-name mono" data-cat="' + attr(name) + '" value="' + attr(name) + '" aria-label="category name" spellcheck="false"><button type="button" class="lbc-cdel" data-cat="' + attr(name) + '">Delete</button></div>' +
+        '<div class="lbc-th"><span>#</span><span>Min players</span><span>Max players</span><span>Max patrols</span><span></span></div>' +
+        rows +
+        '<button type="button" class="lbc-tadd" data-cat="' + attr(name) + '">+ add tier</button>' +
+      '</div></details>';
+  };
+  return '<div class="lbc-wrap"><div class="k2" style="padding:2px 0 4px">Load balancing — per category</div>' +
+    '<div class="lbc-list">' + Object.keys(lbc).map(catHtml).join('') + '</div>' +
+    '<div class="lbc-add"><input class="lbc-newname" placeholder="New category name…" aria-label="new category name" spellcheck="false"><button type="button" class="lbc-newadd">+ Add</button></div></div>';
+}
+function renderLbcSection() {
+  const e = mapPatEdit; if (!e || !e.isGlobal) return;
+  const wrap = el.mapDetail.querySelector('.lbc-wrap'); if (!wrap || !e.entry.LoadBalancingCategories) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = lbcSectionHtml(e.entry.LoadBalancingCategories);
+  wrap.replaceWith(tmp.firstElementChild);
+  wireLbc();
+}
+function wireLbc() {
+  const root = el.mapDetail.querySelector('.lbc-wrap'); if (!root) return;
+  root.querySelectorAll('.lbc-in').forEach((inp) => inp.addEventListener('change', () => applyLbcTier(inp)));
+  root.querySelectorAll('.lbc-tadd').forEach((b) => { b.onclick = () => lbcAddTier(b.dataset.cat); });
+  root.querySelectorAll('.lbc-tdel').forEach((b) => { b.onclick = () => lbcDelTier(b.dataset.cat, +b.dataset.ti); });
+  root.querySelectorAll('.lbc-cdel').forEach((b) => { b.onclick = () => lbcDelCat(b.dataset.cat); });
+  root.querySelectorAll('.lbc-name').forEach((inp) => inp.addEventListener('change', () => lbcRenameCat(inp.dataset.cat, inp.value)));
+  const addBtn = root.querySelector('.lbc-newadd'), addInp = root.querySelector('.lbc-newname');
+  if (addBtn && addInp) addBtn.onclick = () => lbcAddCat(addInp.value);
+}
+function applyLbcTier(inp) {
+  const lbc = lbcObj(); if (!lbc) return;
+  const cat = inp.dataset.cat, ti = +inp.dataset.ti, f = inp.dataset.f;
+  const arr = lbc[cat]; if (!Array.isArray(arr) || !arr[ti] || typeof arr[ti] !== 'object') return;
+  const v = Number(inp.value); if (!isFinite(v)) { toast(f + ': must be a number', 'err'); return; }
+  arr[ti][f] = v;
+}
+function lbcAddTier(cat) {
+  const lbc = lbcObj(); if (!lbc || !Array.isArray(lbc[cat])) return;
+  lbc[cat].push({ MinPlayers: 0, MaxPlayers: 255, MaxPatrols: 10 });
+  renderLbcSection();
+}
+function lbcDelTier(cat, ti) {
+  const lbc = lbcObj(); if (!lbc || !Array.isArray(lbc[cat])) return;
+  lbc[cat].splice(ti, 1);
+  renderLbcSection();
+}
+function lbcDelCat(name) {
+  const lbc = lbcObj(); if (!lbc || !(name in lbc)) return;
+  const used = lbcUsedCount(name);
+  if (used > 0 && !confirm(used + ' patrol(s) reference "' + name + '". Delete the category anyway? They will fall back to Global.')) return;
+  delete lbc[name];
+  renderLbcSection();
+}
+function lbcAddCat(rawName) {
+  const lbc = lbcObj(); if (!lbc) return;
+  const name = String(rawName || '').trim();
+  if (!name) { toast('Enter a category name', 'err'); return; }
+  if (name in lbc) { toast('Category "' + name + '" already exists', 'err'); return; }
+  lbc[name] = [{ MinPlayers: 0, MaxPlayers: 255, MaxPatrols: 10 }];
+  renderLbcSection();
+}
+function lbcRenameCat(oldName, rawNew) {
+  const lbc = lbcObj(); if (!lbc || !(oldName in lbc)) return;
+  const nn = String(rawNew || '').trim();
+  if (!nn || nn === oldName) { renderLbcSection(); return; }
+  if (nn in lbc) { toast('Category "' + nn + '" already exists', 'err'); renderLbcSection(); return; }
+  const rebuilt = {};   // preserve key order, rename the one key
+  Object.keys(lbc).forEach((k) => { rebuilt[k === oldName ? nn : k] = lbc[k]; });
+  mapPatEdit.entry.LoadBalancingCategories = rebuilt;
+  const doc = mapPatEdit.doc;   // move patrol references along so a rename never orphans them
+  if (doc && Array.isArray(doc.Patrols)) doc.Patrols.forEach((p) => { if (p && p.LoadBalancingCategory === oldName) p.LoadBalancingCategory = nn; });
+  renderLbcSection();
 }
 function applyPatrolField(inp) {
   const e = mapPatEdit; if (!e) return;
   const k = inp.dataset.k, orig = e.entry[k];
   let v;
-  if (inp.classList.contains('pe-json')) {
+  if (inp.classList.contains('me-json')) {
     try { v = JSON.parse(inp.value); inp.style.outline = ''; }
     catch { inp.style.outline = '2px solid var(--danger)'; toast(k + ': not valid JSON', 'err'); return; }
   } else if (typeof orig === 'number') {
@@ -715,6 +882,7 @@ async function savePatrolEdit() {
     const r = await apiPost('/dayz/configs/set-patrols', cred, { mission: e.mission, content, baseVersion: e.version });
     toast(r.message || 'Saved - restart to apply', 'ok');
     mapPatEdit = null;
+    el.mapDetail.classList.remove('editing');
     mapData = null; loadMapTab(true);   // re-derive the store so the map reflects the save
   } catch (err) {
     if (S) S.disabled = false;
@@ -1521,27 +1689,76 @@ function renderMapFilter() {
     }).join('');
 }
 
-function renderMapList() {
-  const order = mapPts.map((p, i) => i).filter((i) => mapVisible(mapPts[i])).sort((a, b) => {
-    const da = mapPts[a].delta, db = mapPts[b].delta;
-    if (da === undefined && db === undefined) return mapPts[a].name.localeCompare(mapPts[b].name);
-    if (da === undefined) return 1;
-    if (db === undefined) return -1;
-    return Math.abs(db) - Math.abs(da);
-  });
-  const shown = order.length, total = mapPts.length;
+// The nav list body: A-Z by name, narrowed by the quick filter. Rebuilt on its own so typing in
+// the (sticky) filter doesn't lose focus - only this inner list re-renders, not the input.
+function navName(p) { return p.name || p.objectClass || ''; }
+function navGroup(p) {
+  if (p.kind === 'patrol') return 'Patrols';
+  if (p.kind === 'object') return 'Object patrols';
+  if (p.kind === 'location') return 'Locations';
+  return 'Spawn points';
+}
+const NAV_GROUP_ORDER = ['Patrols', 'Object patrols', 'Locations', 'Spawn points'];   // regular patrols first
+let mapNavGroups = null;   // in-memory {group: open} cache (persisted); read by the map draw, so no localStorage per frame
+function loadNavGroups() { if (mapNavGroups) return; try { mapNavGroups = JSON.parse(localStorage.getItem('mapNavGroups') || '{}') || {}; } catch (_e) { mapNavGroups = {}; } }
+function navGroupOpen(name) { loadNavGroups(); return typeof mapNavGroups[name] === 'boolean' ? mapNavGroups[name] : (name === 'Patrols'); }
+function setNavGroupOpen(name, open) { loadNavGroups(); mapNavGroups[name] = open; try { localStorage.setItem('mapNavGroups', JSON.stringify(mapNavGroups)); } catch (_e) { /* private mode */ } }
+
+function mapNavItemHtml(i) {
+  const p = mapPts[i], band = mapBand(p);
+  // Object patrols have no position, so no Δ - their badge names the fact instead.
+  const badge = p.kind === 'object'
+    ? '<span class="mp-badge mnull" title="No map position - spawns at every instance of ' + attr(p.objectClass) + '">obj</span>'
+    : '<span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span>';
+  return '<div class="side-item mp-item' + (i === mapSelPt ? ' active' : '') + '" data-i="' + i + '" title="' + attr(navName(p)) + '">' +
+    spawnClassSvg(spawnClassDef(p.kind || p.cat)) +
+    '<span class="fn">' + escapeHtml(navName(p)) + '</span>' + badge + '</div>';
+}
+function mapListBodyHtml() {
+  const q = mapNavFilter.trim().toLowerCase();
+  const visible = mapPts.map((p, i) => i).filter((i) => mapVisible(mapPts[i]));
+  const matched = visible.filter((i) => !q || navName(mapPts[i]).toLowerCase().includes(q));
+  const az = (a, b) => navName(mapPts[a]).localeCompare(navName(mapPts[b]), undefined, { sensitivity: 'base' });
+  const total = mapPts.length;
   const noun = mapDerivedActive() ? 'AI point' : 'spawn bookmark';
-  const count = shown === total ? total + ' ' + noun + (total === 1 ? '' : 's') : shown + ' of ' + total + ' shown';
-  el.mapNav.innerHTML = '<div class="side-sub2">' + count + ' · worst Δ first</div>' +
-    order.map((i) => {
-      const p = mapPts[i], band = mapBand(p);
-      // Object patrols have no position, so no Δ - their badge names the fact instead.
-      const badge = p.kind === 'object'
-        ? '<span class="mp-badge mnull" title="No map position - spawns at every instance of ' + attr(p.objectClass) + '">obj</span>'
-        : '<span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span>';
-      return '<div class="side-item mp-item' + (i === mapSelPt ? ' active' : '') + '" data-i="' + i + '" title="' + attr(p.name) + '">' +
-        '<span class="fn">' + escapeHtml(p.name) + '</span>' + badge + '</div>';
-    }).join('');
+  const count = q ? matched.length + ' of ' + visible.length + ' match'
+    : (visible.length === total ? total + ' ' + noun + (total === 1 ? '' : 's') : visible.length + ' of ' + total + ' shown');
+  if (mapNavMode === 'group') {
+    const byG = {}; matched.forEach((i) => { const g = navGroup(mapPts[i]); (byG[g] = byG[g] || []).push(i); });
+    let body = '', any = false;
+    NAV_GROUP_ORDER.forEach((g) => {
+      const arr = byG[g]; if (!arr || !arr.length) return;
+      any = true; arr.sort(az);
+      const open = q ? true : navGroupOpen(g);   // an active filter forces matching groups open
+      body += '<details class="side-grp mp-grp"' + (open ? ' open' : '') + ' data-g="' + attr(g) + '">' +
+        '<summary>' + escapeHtml(g) + '<span class="side-count">' + arr.length + '</span></summary>' +
+        arr.map(mapNavItemHtml).join('') + '</details>';
+    });
+    return '<div class="side-sub2">' + count + '</div>' + (any ? body : '<div class="mp-empty">no matches</div>');
+  }
+  const order = matched.slice().sort(az);
+  return '<div class="side-sub2">' + count + (q ? '' : ' · A–Z') + '</div>' + (order.map(mapNavItemHtml).join('') || '<div class="mp-empty">no matches</div>');
+}
+function renderMapList() {
+  el.mapNav.innerHTML =
+    '<div class="mp-filterbar">' +
+      '<input class="mp-filter" type="search" placeholder="Filter by name…" value="' + attr(mapNavFilter) + '" spellcheck="false" aria-label="Filter the list by name">' +
+      '<span class="mp-grpseg"><button type="button" data-mode="group" class="' + (mapNavMode === 'group' ? 'on' : '') + '">Grouped</button><button type="button" data-mode="flat" class="' + (mapNavMode === 'flat' ? 'on' : '') + '">A–Z</button></span>' +
+    '</div>' +
+    '<div class="mp-list">' + mapListBodyHtml() + '</div>';
+  const lst = el.mapNav.querySelector('.mp-list');
+  const f = el.mapNav.querySelector('.mp-filter');
+  if (f) f.addEventListener('input', () => { mapNavFilter = f.value; if (lst) lst.innerHTML = mapListBodyHtml(); });
+  el.mapNav.querySelectorAll('.mp-grpseg button').forEach((b) => b.addEventListener('click', () => {
+    mapNavMode = b.dataset.mode; try { localStorage.setItem('mapNavMode', mapNavMode); } catch (_e) { /* private mode */ }
+    el.mapNav.querySelectorAll('.mp-grpseg button').forEach((x) => x.classList.toggle('on', x.dataset.mode === mapNavMode));
+    if (lst) lst.innerHTML = mapListBodyHtml();   // list-only: grouping never touches the map (that is the map-rail filter's job)
+  }));
+  if (lst) lst.addEventListener('toggle', (e) => {
+    const d = e.target; if (!d.classList || !d.classList.contains('mp-grp')) return;
+    if (mapNavFilter.trim()) return;   // don't persist the filter-forced-open state
+    setNavGroupOpen(d.dataset.g, d.open);   // nav-only collapse state; the map is unaffected
+  }, true);
 }
 
 function renderMapSummary() {
@@ -1586,6 +1803,7 @@ function renderMapSummary() {
 }
 
 function renderMapDetail() {
+  if (mapPatEdit) { renderPatrolEditor(); return; }   // Phase 5: patrol/object/global editor lives in this panel, in place
   const p = mapPts[mapSelPt];
   el.mapDetail.classList.toggle('hidden', !p);
   el.mapDetail.classList.toggle('editing', !!p && mapEdit);
@@ -1819,6 +2037,44 @@ export function mapHashFrag() {
 // Unsaved spawn edits? — the shell's beforeunload guard asks.
 export function mapIsDirty() { return mapSpawnDirty; }
 
+// Draggable panel seams: the sidebar (grid column), the detail panel + tools rail (flex-basis).
+// Widths persist in localStorage and clamp to a min/max; the map stage (flex:1) absorbs the slack,
+// and a ResizeObserver re-fits the canvas. CSS disables the seams on the <760px single-column layout.
+function setupPanelResizers() {
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const getW = (k) => { try { return +localStorage.getItem(k) || 0; } catch (_e) { return 0; } };
+  const setW = (k, v) => { try { localStorage.setItem(k, Math.round(v)); } catch (_e) { /* private mode */ } };
+  const app = el.app, sidebar = document.getElementById('sidebar'), rail = document.getElementById('mapRail');
+  const wire = (sel, opts) => {
+    const h = document.querySelector(sel); if (!h) return;
+    const saved = getW(opts.key); if (saved) opts.apply(clamp(saved, opts.min, opts.max));
+    h.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try { h.setPointerCapture(e.pointerId); } catch (_e) { /* ignore */ }
+      h.classList.add('drag'); document.body.classList.add('resizing');
+      const x0 = e.clientX, w0 = opts.cur();
+      const move = (ev) => { let dx = ev.clientX - x0; if (opts.side === 'left') dx = -dx; opts.apply(clamp(w0 + dx, opts.min, opts.max)); };
+      const up = () => {
+        try { h.releasePointerCapture(e.pointerId); } catch (_e) { /* ignore */ }
+        h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+        h.classList.remove('drag'); document.body.classList.remove('resizing');
+        setW(opts.key, opts.cur());
+      };
+      h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+    });
+  };
+  if (app && sidebar) wire('.rz-side', { key: 'rz_side', min: 180, max: 460, side: 'right',
+    cur: () => sidebar.getBoundingClientRect().width, apply: (w) => { app.style.gridTemplateColumns = w + 'px 1fr'; } });
+  wire('.rz-detail', { key: 'rz_detail', min: 220, max: 620, side: 'right',
+    cur: () => el.mapDetail.getBoundingClientRect().width, apply: (w) => { el.mapDetail.style.flexBasis = w + 'px'; } });
+  if (rail) wire('.rz-rail', { key: 'rz_rail', min: 120, max: 400, side: 'left',
+    cur: () => rail.getBoundingClientRect().width, apply: (w) => { rail.style.flexBasis = w + 'px'; } });
+  if (window.ResizeObserver && el.mapStage) {
+    const ro = new ResizeObserver(() => { if (!el.maptab.classList.contains('hidden')) requestMapDraw(); });
+    ro.observe(el.mapStage);
+  }
+}
+
 export function initMap() {
 
   // Map tab: selector, refresh, and the canvas camera (drag pan, wheel/pinch
@@ -1956,6 +2212,8 @@ export function initMap() {
   el.mapLayerSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-layer]'); if (b) setMapLayer(b.dataset.layer); });
   el.mapGridSeg.addEventListener('click', (e) => { const b = e.target.closest('button[data-grid]'); if (b) setMapGrid(b.dataset.grid); });
   setMapGrid(mapGrid);   // mark the persisted choice active
+  try { mapNavMode = localStorage.getItem('mapNavMode') || 'group'; } catch (_e) { /* private mode */ }
+  setupPanelResizers();
   el.mapLootFilter.addEventListener('click', (e) => {
     const b = e.target.closest('.mf-chip'); if (!b) return;
     toggleOverlay(mapLootSel, 'cfgview-maploot', b.dataset.loot, mapLoot ? mapLoot.present : []);
