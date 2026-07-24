@@ -1,0 +1,29 @@
+{
+  "_readme": "Spawn classification, maintained BY HAND. Maps the tokens on each spawn-points.json point to real values; Build-AIBandits.ps1 composes a group per point at prestart. categories: a point's 'category' -> a template name that MUST exist in common/DynamicAIB.common.json groupTemplates. sizes: a point's OPTIONAL 'size' letter -> member-count override (omit to use the template's default count; add DENSITY by adding more points). maps: the point's 'map' letter -> mission folder. A point with NO category becomes a base 'holdout' group. Snipers use the per-map snipers[] spec, NOT this file. Edit spawn-points.json itself in the ConfigViewer Map tab (Edit mode) or by hand; this file only defines the token vocabulary. (VPP is deprecated: Sync-VPPCoordinates.ps1 is a one-shot importer, not part of the deploy.)",
+  "sizes": {
+    "XS": 1,
+    "S": 2,
+    "M": 2,
+    "L": 3,
+    "XL": 3,
+    "XXL": 3
+  },
+  "categories": {
+    "Mil": "raider_heavy",
+    "MilH": "raider_heavy",
+    "Scav": "scavenger",
+    "Desp": "desperate",
+    "Hold": "holdout",
+    "Guard": "guard_patrol",
+    "Air": "airfield_m4",
+    "AKM": "patrol_akm",
+    "Road": "roadblock",
+    "Hermit" : "hermit",
+    "Sniper": "sniper"
+  },
+  "maps": {
+    "S": "dayzOffline.sakhal",
+    "C": "dayzOffline.chernarusplus",
+    "E": "dayzOffline.enoch"
+  }
+}

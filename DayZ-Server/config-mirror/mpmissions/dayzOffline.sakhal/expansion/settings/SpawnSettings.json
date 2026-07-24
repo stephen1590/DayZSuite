@@ -60,16 +60,6 @@
         "ClassName": "BandageDressing",
         "Quantity": -1,
         "Attachments": []
-      },
-      {
-        "ClassName": "Heatpack",
-        "Quantity": -1,
-        "Attachments": []
-      },
-      {
-        "ClassName": "Heatpack",
-        "Quantity": -1,
-        "Attachments": []
       }
     ],
     "PantsGear": [
@@ -91,17 +81,17 @@
     "PrimaryWeapon": {},
     "SecondaryWeapon": {}
   },
-  "UseLoadouts": 0,
+  "UseLoadouts": 1,
   "MaleLoadouts": [
     {
-      "Loadout": "PlayerSurvivorLoadout",
-      "Chance": 1.0
+      "Loadout": "FreshSpawnLoadout",
+      "Chance": 1
     }
   ],
   "FemaleLoadouts": [
     {
-      "Loadout": "PlayerSurvivorLoadout",
-      "Chance": 1.0
+      "Loadout": "FreshSpawnLoadout",
+      "Chance": 1
     }
   ],
   "SpawnHealthValue": 100.0,
