@@ -4,34 +4,39 @@ Mods here load via **`-serverMod`**, not `-mod`. That means the server runs them
 **never advertises, requires, or ships them to clients** - players join exactly as they
 do now and never download anything. Use this for backend/admin logic only.
 
-## CustomServerMods (ex-AIB_Tracker)
+## CustomServerMods
 
 The grab-bag server-only mod - backend features that can't be expressed as config, one
-small hook per feature. Renamed from AIB_Tracker 2026-07-17 when it outgrew "tracker";
-class/method names from the tracker era (`AIB_Tracker`, `AIB_TrackerTick`) and the output
-path are unchanged, so every downstream consumer (dayz-ctl, API, map overlay) still works.
+small hook per feature. (The tracker was `AIB_Tracker` until 2026-07-24; renamed to
+`LiveTracker` once it tracked eAI + players + the world clock, not just the now-retired AI
+Bandits. Output moved from `profiles/AI_Bandits/live_positions.json` to `profiles/LiveTracker/`.)
 
-### Feature: live AI position export
+### Feature: live position export
 
-Exports **live AI positions** (AI Bandits + ExpansionAI) for the Config UI map overlay.
-Neither `@aibandits` nor Expansion logs active NPC positions (verified against the live
-RPT), so this is the only way to get them. It:
+Exports live map data for the Config UI overlays, on a 20s `MissionServer` tick
+(`LiveTracker.c` → `LiveTrackerTick`), into `profiles/LiveTracker/`:
 
-- hooks two AI base classes via `EEInit`/`EEDelete` into one live registry (`AIB_Tracker.c`):
-  - `InfectedBanditBase` (`extends DayZInfected`, `@aibandits`) — tagged `type: "bandit"`,
+- **`ai.json`** — living NPCs `[{x,z,type,age}]`. Hooks two AI base classes via
+  `EEInit`/`EEDelete` into one live registry:
   - `eAIBase` (`extends PlayerBase`, bundled in `@expansion/scripts.pbo` — what
     `ExpansionAIPatrol` / Missions / Quests spawn) — tagged `type: "eai"`,
-- every 20s writes living NPCs to `profiles/AI_Bandits/live_positions.json` as
-  `[{x,z,type,age}]` — `age` = seconds alive this session (game clock, resets on restart).
+  - `InfectedBanditBase` (`extends DayZInfected`, `@aibandits`) — tagged `type: "bandit"`,
+    in the split-off `bandits` addon, dormant unless `@aibandits` loads (bandits retired).
+  `age` = seconds alive this session (game clock, resets on restart).
+- **`players.json`** — connected players `[{x,z}]`, ANONYMIZED. Uses `GetGame().GetPlayers()`
+  (the live roster, the same call the vanilla admin log uses), so it is 20s-fresh — this
+  REPLACES the minutes-lagged `.ADM` scrape the player overlay used to depend on. NO id/name/
+  GUID is ever written, so `{x,z}` is genuinely all that leaves the box.
+- **`time.json`** — the in-game world clock `[{year,month,day,hour,minute}]` from
+  `GetGame().GetWorld().GetDate()`. Feeds the API's `world-time` stat (the day/night `hour`).
 
-`x`/`z` are unchanged from the original schema, so every existing consumer keeps working;
-`type`/`age` are additive. The API reads that file; the map draws the dots. Anonymised is
-moot (NPCs), and no client ever sees the mod.
+The API reads these (`dayz-ctl live-ai` / `live-players` / `world-time` → `Api/app/src/actions.ts`
+`bandits` / `positions` / `world-time`); the map draws the dots. No client ever sees the mod.
 
-> **Reaching the map:** `dayz-ctl bandit-live` inlines the file verbatim, but the API's
-> `bandits` response schema (`Api/app/src/actions.ts`) only serialises fields it declares —
-> so `type`/`age` are declared there too (regenerate `openapi.json` with `npm run spec`).
-> Colouring bandit vs eAI differently on the overlay is a separate UI change, not yet done.
+> **Note:** `dayz-ctl live-ai` inlines `ai.json` verbatim, but the API's `bandits` response
+> schema (`Api/app/src/actions.ts`) only serialises fields it declares — so `type`/`age` are
+> declared there too (regenerate `openapi.json` with `npm run spec`). Colouring eAI vs bandit
+> differently on the overlay is a separate UI change, not yet done.
 
 ### Feature: fresh-spawn flu buff
 
@@ -83,10 +88,12 @@ and harmless: `Arma 3 Tools not found` (nothing to binarize) and `INVALID-PBOPRE
 
 ### Test (prove it works before wiring the UI)
 
-Get a player near a bandit camp so a group spawns, then on the box:
+Get a player near an eAI patrol so a group spawns, then on the box:
 
 ```sh
-cat profiles/AI_Bandits/live_positions.json    # should be [{"x":..,"z":..,"type":..,"age":..}, ...]
+cat profiles/LiveTracker/ai.json        # [{"x":..,"z":..,"type":..,"age":..}, ...]
+cat profiles/LiveTracker/players.json   # [{"x":..,"z":..}, ...]  (you, anonymized)
+cat profiles/LiveTracker/time.json      # [{"year":..,"month":..,"day":..,"hour":..,"minute":..}]
 ```
 
 **If it stays `[]` with AI up:** a `modded class` didn't apply - almost always a

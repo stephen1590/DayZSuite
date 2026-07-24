@@ -1,0 +1,328 @@
+<title>Scale-Ready — Project Tracker</title>
+<style>
+  :root{
+    --ink:#0f1519; --slab:#161d24; --slab2:#1b232b; --rail:#121920;
+    --line:#273039; --line-soft:#1d252d;
+    --text:#e7edf2; --mute:#8b98a4; --faint:#5f6b76;
+    --accent:#58b0cc; --accent-weak:rgba(88,176,204,.14); --accent-line:rgba(88,176,204,.42);
+    --done:#54b98a; --wip:#d9a441; --blocked:#e8636b; --todo:#6b7a89; --risk:#e8636b;
+    --done-weak:rgba(84,185,138,.14); --wip-weak:rgba(217,164,65,.14);
+    --blocked-weak:rgba(232,99,107,.15); --todo-weak:rgba(107,122,137,.14);
+  }
+  @media (prefers-color-scheme: light){:root{
+    --ink:#eef2f5; --slab:#ffffff; --slab2:#f3f6f8; --rail:#f6f8fa;
+    --line:#d4dbe2; --line-soft:#e6ebef;
+    --text:#182028; --mute:#57636e; --faint:#8492a0;
+    --accent:#1f7d99; --accent-weak:rgba(31,125,153,.11); --accent-line:rgba(31,125,153,.4);
+    --done:#1f8a52; --wip:#a8791c; --blocked:#c73742; --todo:#64727f; --risk:#c73742;
+    --done-weak:rgba(31,138,82,.12); --wip-weak:rgba(168,121,28,.13);
+    --blocked-weak:rgba(199,55,66,.12); --todo-weak:rgba(100,114,127,.12);
+  }}
+  :root[data-theme="light"]{
+    --ink:#eef2f5; --slab:#ffffff; --slab2:#f3f6f8; --rail:#f6f8fa;
+    --line:#d4dbe2; --line-soft:#e6ebef;
+    --text:#182028; --mute:#57636e; --faint:#8492a0;
+    --accent:#1f7d99; --accent-weak:rgba(31,125,153,.11); --accent-line:rgba(31,125,153,.4);
+    --done:#1f8a52; --wip:#a8791c; --blocked:#c73742; --todo:#64727f; --risk:#c73742;
+    --done-weak:rgba(31,138,82,.12); --wip-weak:rgba(168,121,28,.13);
+    --blocked-weak:rgba(199,55,66,.12); --todo-weak:rgba(100,114,127,.12);
+  }
+  :root[data-theme="dark"]{
+    --ink:#0f1519; --slab:#161d24; --slab2:#1b232b; --rail:#121920;
+    --line:#273039; --line-soft:#1d252d;
+    --text:#e7edf2; --mute:#8b98a4; --faint:#5f6b76;
+    --accent:#58b0cc; --accent-weak:rgba(88,176,204,.14); --accent-line:rgba(88,176,204,.42);
+    --done:#54b98a; --wip:#d9a441; --blocked:#e8636b; --todo:#6b7a89; --risk:#e8636b;
+    --done-weak:rgba(84,185,138,.14); --wip-weak:rgba(217,164,65,.14);
+    --blocked-weak:rgba(232,99,107,.15); --todo-weak:rgba(107,122,137,.14);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;line-height:1.5;padding:34px 20px 72px;-webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .wrap{max-width:900px;margin:0 auto}
+  a{color:var(--accent)}
+
+  /* header */
+  .eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:34px;line-height:1.05;letter-spacing:-.02em;margin:0 0 8px;text-wrap:balance;font-weight:800}
+  .thesis{font-size:15.5px;color:var(--mute);margin:0;max-width:60ch;text-wrap:pretty}
+  .thesis b{color:var(--text);font-weight:600}
+
+  /* rollup */
+  .rollup{margin:22px 0 4px;border:1px solid var(--line);background:var(--slab);border-radius:12px;padding:14px 16px}
+  .rollup-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .rollup-n{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
+    font-size:13px;color:var(--mute)}
+  .rollup-n b{color:var(--text);font-size:15px}
+  .bar{height:9px;border-radius:999px;background:var(--todo-weak);display:flex;overflow:hidden;border:1px solid var(--line-soft)}
+  .bar i{display:block;height:100%}
+  .counts{display:flex;gap:14px;flex-wrap:wrap;margin-top:11px;font-size:12px;color:var(--mute)}
+  .counts span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:3px;flex:none}
+
+  /* section headings */
+  .sech{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;text-transform:uppercase;
+    letter-spacing:.14em;color:var(--faint);margin:34px 0 12px;display:flex;align-items:center;gap:10px}
+  .sech::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+
+  /* walls */
+  .walls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:640px){.walls{grid-template-columns:1fr}}
+  .wall{border:1px solid var(--line);background:var(--slab);border-radius:12px;padding:15px 16px;position:relative}
+  .wall h3{margin:0 0 4px;font-size:15px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+  .wall p{margin:8px 0 0;font-size:13px;color:var(--mute)}
+  .wall .fix{margin-top:11px;font-size:12px;color:var(--faint);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .wall .fix b{color:var(--accent);font-weight:600}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10.5px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:5px;white-space:nowrap;
+    border:1px solid var(--line);color:var(--mute);background:var(--slab2)}
+  .chip.risk-high{color:var(--blocked);background:var(--blocked-weak);border-color:color-mix(in srgb,var(--blocked) 42%,transparent)}
+  .chip.risk-scale{color:var(--wip);background:var(--wip-weak);border-color:color-mix(in srgb,var(--wip) 42%,transparent)}
+  .chip.ws{color:var(--accent);background:var(--accent-weak);border-color:var(--accent-line)}
+  .st{display:inline-flex;align-items:center;gap:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:999px;text-transform:uppercase}
+  .st.todo{color:var(--todo);background:var(--todo-weak);border:1px solid color-mix(in srgb,var(--todo) 34%,transparent)}
+  .st.wip{color:var(--wip);background:var(--wip-weak);border:1px solid color-mix(in srgb,var(--wip) 40%,transparent)}
+  .st.blocked{color:var(--blocked);background:var(--blocked-weak);border:1px solid color-mix(in srgb,var(--blocked) 40%,transparent)}
+  .st.done{color:var(--done);background:var(--done-weak);border:1px solid color-mix(in srgb,var(--done) 40%,transparent)}
+
+  /* legends */
+  .legends{display:flex;gap:26px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin:2px 0}
+  .legends .grp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .legends .lbl{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--faint)}
+
+  /* phases */
+  details.phase{border:1px solid var(--line);background:var(--slab);border-radius:12px;margin:12px 0;overflow:hidden}
+  details.phase>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;
+    padding:13px 16px;user-select:none}
+  details.phase>summary::-webkit-details-marker{display:none}
+  details.phase>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .pcode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;
+    color:var(--accent);background:var(--accent-weak);border:1px solid var(--accent-line);
+    border-radius:6px;padding:3px 8px;flex:none}
+  .ptitle{font-weight:650;font-size:14.5px;letter-spacing:-.01em}
+  .pmeta{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--faint)}
+  .caret{color:var(--faint);font-size:11px;transition:transform .15s}
+  details.phase[open] .caret{transform:rotate(90deg)}
+  @media (prefers-reduced-motion:reduce){.caret{transition:none}}
+
+  .tasks{border-top:1px solid var(--line-soft)}
+  .task{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:start;
+    padding:12px 16px;border-bottom:1px solid var(--line-soft)}
+  .task:last-child{border-bottom:none}
+  .task.flag{border-left:3px solid var(--risk);background:linear-gradient(90deg,var(--blocked-weak),transparent 60%)}
+  .tid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;color:var(--text);padding-top:1px}
+  .tbody .tt{font-size:13.5px;line-height:1.45}
+  .tbody .td{margin-top:4px;font-size:11.5px;color:var(--faint);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;display:flex;gap:12px;flex-wrap:wrap}
+  .tbody .note{margin-top:5px;font-size:12px;color:var(--blocked)}
+  .tmeta{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+  .tmeta .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  @media (max-width:600px){
+    .task{grid-template-columns:44px 1fr}
+    .tmeta{grid-column:2;align-items:flex-start;margin-top:4px}
+    .tmeta .row{justify-content:flex-start}
+  }
+
+  /* callout */
+  .callout{margin-top:14px;border:1px solid var(--accent-line);background:var(--accent-weak);
+    border-radius:12px;padding:15px 17px}
+  .callout h4{margin:0 0 6px;font-size:13.5px;color:var(--accent);letter-spacing:.01em}
+  .callout p{margin:0;font-size:13px;color:var(--text);opacity:.92}
+  .callout code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    background:var(--slab2);border:1px solid var(--line-soft);border-radius:4px;padding:1px 5px}
+
+  .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line-soft);
+    font-size:12px;color:var(--faint);display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between}
+  .foot .mono{font-size:11px}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">GameServices · ConfigViewer · Remediation</p>
+  <h1>Scale-Ready</h1>
+  <p class="thesis">Remove the two structural walls the 2026-07-24 audit found, so the codebase scales. The code is <b>not slop</b> — it's honest and cleanly layered. The problem is <b>missing abstraction and a duplicated engine</b>, and both are fixable one reversible step at a time.</p>
+
+  <div class="rollup">
+    <div class="rollup-top">
+      <div class="rollup-n"><b>0</b> / 15 tasks complete</div>
+      <div class="rollup-n">Phase 0 · kickoff · updated 2026-07-24</div>
+    </div>
+    <div class="bar" role="img" aria-label="0 of 15 complete">
+      <i style="width:100%;background:var(--todo-weak)"></i>
+    </div>
+    <div class="counts">
+      <span><i class="dot" style="background:var(--done)"></i>0 done</span>
+      <span><i class="dot" style="background:var(--wip)"></i>0 in progress</span>
+      <span><i class="dot" style="background:var(--blocked)"></i>0 blocked</span>
+      <span><i class="dot" style="background:var(--todo)"></i>15 to do</span>
+    </div>
+  </div>
+
+  <div class="sech">The two walls</div>
+  <div class="walls">
+    <div class="wall">
+      <h3>Wall 1 — Duplicated override engine <span class="chip risk-high">HIGH RISK</span></h3>
+      <p>Override logic is written twice in two languages — TypeScript in the Api, PowerShell on the box — synced only by comments, using two different XPath engines. A selector can resolve to a different node on the box and write your edit to the <b>wrong place, silently.</b></p>
+      <p class="fix">FIX → <b>Workstream A</b> · retire it (two-copy model)</p>
+    </div>
+    <div class="wall">
+      <h3>Wall 2 — Un-abstracted UI render <span class="chip risk-scale">SCALING</span></h3>
+      <p>Build-string → <span class="mono">innerHTML</span> → <span class="mono">querySelectorAll</span> → <span class="mono">addEventListener</span>, copy-pasted 13+ times. Two god-files: <span class="mono">editor.js</span> (1199 lines), <span class="mono">map.js</span> (2064). Fine at 6 tabs; breaks near 10.</p>
+      <p class="fix">FIX → <b>Workstream B</b> · json-ui + view split</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <h4>Parallel work — json-ui</h4>
+    <p>Another effort is building <code>json-ui</code>: a generic, no-build JSON-editor package (<code>mountEditor(el, value, {onChange})</code>, host owns the save). It replaces the bespoke field/tree editors — the densest slice of Wall 2 — and it <b>is</b> the two-copy editor: edit the whole doc, host saves the whole file, no delta. It does not cover the general view chrome (Wall 2b), which stays a separate call. Full alignment in <code>UI-ABSTRACTION-CONTRACT.md</code>.</p>
+  </div>
+
+  <div class="sech">Workstreams &amp; status keys</div>
+  <div class="legends">
+    <div class="grp"><span class="lbl">Streams</span>
+      <span class="chip ws">A · override engine → two-copy</span>
+      <span class="chip ws">B · UI abstraction + split</span>
+      <span class="chip ws">C · foundations</span>
+      <span class="chip ws">D · deferred</span>
+    </div>
+    <div class="grp"><span class="lbl">Status</span>
+      <span class="st todo">To do</span><span class="st wip">WIP</span>
+      <span class="st blocked">Blocked</span><span class="st done">Done</span>
+    </div>
+  </div>
+
+  <div class="sech">Task board — by phase</div>
+
+  <details class="phase" open>
+    <summary><span class="pcode">P0</span><span class="ptitle">Foundations</span><span class="pmeta">4 tasks · no prod risk</span><span class="caret">▶</span></summary>
+    <div class="tasks">
+      <div class="task">
+        <div class="tid">C1</div>
+        <div class="tbody"><div class="tt">Prettier + config — one format-only commit</div>
+          <div class="td"><span>deploy: none</span><span>reversible</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">C</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">C2</div>
+        <div class="tbody"><div class="tt">Naming / code-style rule in CLAUDE.md</div>
+          <div class="td"><span>deploy: none</span><span>reversible</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">C</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">C3</div>
+        <div class="tbody"><div class="tt">TYPES_BASE → registry field (removes a known future crash)</div>
+          <div class="td"><span>deps: —</span><span>deploy: ConfigViewer</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">C</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">C4</div>
+        <div class="tbody"><div class="tt">Conformance-test scaffold (every surface wired across tiers)</div>
+          <div class="td"><span>deps: —</span><span>deploy: none</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">C</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase" open>
+    <summary><span class="pcode">P1</span><span class="ptitle">Two-copy foundation + primitive + the pilot</span><span class="pmeta">4 tasks · the convergence</span><span class="caret">▶</span></summary>
+    <div class="tasks">
+      <div class="task">
+        <div class="tid">A0</div>
+        <div class="tbody"><div class="tt">Classify 21 surfaces A/B; add <span class="mono">category</span> to the registry</div>
+          <div class="td"><span>deps: C4</span><span>deploy: none (data)</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">A</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">B0</div>
+        <div class="tbody"><div class="tt">Sign the alignment contract with the json-ui effort</div>
+          <div class="td"><span>deps: —</span><span>deploy: none</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">B</span><span class="chip">joint</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">B1</div>
+        <div class="tbody"><div class="tt">Build json-ui standalone + one reference consumer</div>
+          <div class="td"><span>deps: B0</span><span>deploy: ConfigViewer</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">B</span><span class="chip">ui-chat</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">A1</div>
+        <div class="tbody"><div class="tt">Pilot: one owned file edited whole via json-ui, host-owned save</div>
+          <div class="td"><span>deps: A0, B1</span><span>deploy: ConfigViewer (+Api?)</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">A</span><span class="chip ws">B</span><span class="chip">joint</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase" open>
+    <summary><span class="pcode">P2</span><span class="ptitle">Roll out both walls</span><span class="pmeta">3 tasks · parallel</span><span class="caret">▶</span></summary>
+    <div class="tasks">
+      <div class="task">
+        <div class="tid">A2</div>
+        <div class="tbody"><div class="tt">Migrate owned files one at a time — loadouts / airdrop first</div>
+          <div class="td"><span>deps: A1</span><span>deploy: per file</span><span>reversible</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">A</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">B3</div>
+        <div class="tbody"><div class="tt">Roll json-ui across remaining editors; decide Wall 2b (view chrome)</div>
+          <div class="td"><span>deps: B1, A1</span><span>deploy: ConfigViewer</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">B</span><span class="chip">joint</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">B4</div>
+        <div class="tbody"><div class="tt">Split the god-files (editor.js, map.js) into single-purpose modules</div>
+          <div class="td"><span>deps: B3</span><span>deploy: ConfigViewer</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">B</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase" open>
+    <summary><span class="pcode">P3</span><span class="ptitle">Delete the old engine + harden</span><span class="pmeta">3 tasks · point of no return</span><span class="caret">▶</span></summary>
+    <div class="tasks">
+      <div class="task flag">
+        <div class="tid">A3</div>
+        <div class="tbody"><div class="tt">Delete the delta engine (override-diff*, config-overrides.json, selector apply)</div>
+          <div class="td"><span>deps: A2 = 100%</span><span>deploy: Api + ConfigViewer + DayZ</span></div>
+          <div class="note">Irreversible except via git — the HIGH silent-drift risk is removed exactly here. Gated on every A2 file being migrated first.</div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">A</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">A4</div>
+        <div class="tbody"><div class="tt">Reconcile-on-update (3-way) + conformance gate fail-closed</div>
+          <div class="td"><span>deps: A3, C4</span><span>deploy: DayZ</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">A</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+      <div class="task">
+        <div class="tid">B5</div>
+        <div class="tbody"><div class="tt">Scale smoke test — a new tab costs ~80 lines, not ~200</div>
+          <div class="td"><span>deps: B3, B4</span><span>deploy: none</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip ws">B</span><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="phase">
+    <summary><span class="pcode">P4</span><span class="ptitle">Verify — Definition of Done</span><span class="pmeta">gate</span><span class="caret">▶</span></summary>
+    <div class="tasks">
+      <div class="task">
+        <div class="tid">DoD</div>
+        <div class="tbody"><div class="tt">No delta engine · no XPath apply on the box · every surface two-copy or computed · zero copies of the old render dance · god-files split · gates green · a new view costs ~80 lines</div>
+          <div class="td"><span>deps: all</span></div></div>
+        <div class="tmeta"><div class="row"><span class="chip">plan</span></div><div class="row"><span class="st todo">To do</span></div></div>
+      </div>
+    </div>
+  </details>
+
+  <div class="foot">
+    <span>Canonical status lives in <span class="mono">Scale-Ready/PROGRESS.md</span> — this board mirrors it.</span>
+    <span class="mono">v1 · 2026-07-24</span>
+  </div>
+</div>

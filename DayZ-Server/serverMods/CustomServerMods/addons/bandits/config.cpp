@@ -6,7 +6,7 @@
 // (2026-07-23, @aibandits disabled while this hook was welded into the core) cannot happen.
 //
 // Load order matters: requiredAddons names AI_Bandits (owns InfectedBanditBase) AND
-// CustomServerMods (owns AIB_Tracker, which InfectedBanditBase.c calls). Both must compile
+// CustomServerMods (owns LiveTracker, which InfectedBanditBase.c calls). Both must compile
 // first — the engine merges every -serverMod's 4_World into one module in requiredAddons order.
 //
 // TO RE-ENABLE BANDIT TRACKING when @aibandits returns:

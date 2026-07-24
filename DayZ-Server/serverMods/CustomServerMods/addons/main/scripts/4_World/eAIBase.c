@@ -1,4 +1,4 @@
-// ExpansionAI (eAI) hook — registers every Expansion AI into AIB_Tracker.
+// ExpansionAI (eAI) hook — registers every Expansion AI into LiveTracker.
 //
 // eAIBase is DayZ-Expansion's AI entity (extends PlayerBase, NOT DayZInfected — a different
 // tree from the bandits). It's defined in @expansion/addons/scripts.pbo (CfgPatches
@@ -16,12 +16,12 @@ modded class eAIBase
     {
         super.EEInit();
         if (GetGame() && GetGame().IsServer())
-            AIB_Tracker.Register(this, "eai");
+            LiveTracker.Register(this, "eai");
     }
 
     override void EEDelete(EntityAI parent)
     {
-        AIB_Tracker.Unregister(this);
+        LiveTracker.Unregister(this);
         super.EEDelete(parent);
     }
 }

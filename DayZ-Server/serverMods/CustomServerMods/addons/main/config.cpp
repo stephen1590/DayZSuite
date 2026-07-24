@@ -1,12 +1,14 @@
-// CustomServerMods (ex-AIB_Tracker) — OUR server-only mod for backend logic that can't be
-// expressed as config: live AI position export + fresh-spawn survival buff. Grows one small
-// feature at a time; class/method names from the tracker era are kept (AIB_Tracker etc.).
+// CustomServerMods — OUR server-only mod for backend logic that can't be expressed as
+// config: live position export + fresh-spawn survival buff. Grows one small feature at a time.
 //
 // Loaded via -serverMod ONLY: it is never sent to, required by, or downloaded by clients.
 //
-// Feature 1 — AI position export: hooks the AI entity classes and, on a server timer, writes
-// the living NPCs' [{x,z,type,age}] positions to $profile:AI_Bandits/live_positions.json —
-// which the API reads and the Config UI map overlays, exactly like the anonymised player layer.
+// Feature 1 — live export (LiveTracker.c): on a 20s server timer, writes to $profile:LiveTracker/
+//   - ai.json      living NPCs [{x,z,type,age}] (eai; bandit when @aibandits is on)
+//   - players.json connected players [{x,z}], ANONYMIZED (no id/name/GUID leaves the box)
+//   - time.json    the in-game world clock [{year,month,day,hour,minute}]
+// The API reads these and the Config UI map overlays them. (Renamed from AIB_Tracker 2026-07-24
+// — it tracks eAI + players + the clock, not just AI Bandits, which are retired.)
 // This CORE addon tracks the ExpansionAI tree ONLY, so it depends on @expansion, NEVER on
 // @aibandits — it loads and runs with bandits fully disabled:
 //   - ExpansionAI   eAIBase            (extends PlayerBase)      type "eai"     — bundled in

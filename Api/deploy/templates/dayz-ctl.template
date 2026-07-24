@@ -553,19 +553,42 @@ case "$verb" in
     { grep -aE 'SPAWN:|KILLED:' "$file" || true; } | tail -n "$n"
     ;;
 
-  bandit-live)
-    # bandit-live — the live bandit snapshot the AIB_Tracker -serverMod writes to
-    # profiles/AI_Bandits/live_positions.json every 20s (even with zero bandits, so the file's
-    # MTIME is a liveness heartbeat). One JSON envelope on stdout:
-    #   {"ageSec": <now - mtime, seconds>, "positions": <file contents: [{"x":..,"z":..}, ...]>}
+  live-ai)
+    # live-ai — living NPC snapshot the CustomServerMods LiveTracker serverMod writes to
+    # profiles/LiveTracker/ai.json every 20s (even with zero NPCs, so the file MTIME is a
+    # liveness heartbeat). One JSON envelope on stdout:
+    #   {"ageSec": <now - mtime, seconds>, "positions": <file contents: [{"x":..,"z":..,"type":..,"age":..}, ...]>}
     # ageSec lets the API reject a frozen file (server/mod down) instead of plotting ghosts —
     # the file is never copied (read in-place here), so mtime is trustworthy. A read landing
     # mid-write may embed partial JSON; the API treats an unparseable envelope as transient.
     # Exit 2 = file absent (mod not loaded, or server booted <20s ago) — caller treats as "none".
-    f="$SERVER_DIR/profiles/AI_Bandits/live_positions.json"
-    [ -f "$f" ] || { echo "dayz-ctl: no live_positions.json (AIB_Tracker serverMod not loaded yet?)" >&2; exit 2; }
+    f="$SERVER_DIR/profiles/LiveTracker/ai.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no ai.json (LiveTracker serverMod not loaded yet?)" >&2; exit 2; }
     age=$(( $(date +%s) - $(stat -c %Y "$f") ))
     printf '{"ageSec":%d,"positions":%s}\n' "$age" "$(cat "$f")"
+    ;;
+
+  live-players)
+    # live-players — connected players ANONYMIZED to [{x,z}], same LiveTracker file family
+    # (profiles/LiveTracker/players.json, rewritten every 20s). REPLACES the old .ADM scrape:
+    # 20s-fresh instead of the admin log's minutes-scale cadence. Envelope adds "at" (HH:MM:SS
+    # box-clock of the last write) for the map's freshness hint. Same ageSec/exit-2 contract.
+    f="$SERVER_DIR/profiles/LiveTracker/players.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no players.json (LiveTracker serverMod not loaded yet?)" >&2; exit 2; }
+    mt=$(stat -c %Y "$f")
+    age=$(( $(date +%s) - mt ))
+    printf '{"ageSec":%d,"at":"%s","positions":%s}\n' "$age" "$(date -d @"$mt" +%H:%M:%S)" "$(cat "$f")"
+    ;;
+
+  world-time)
+    # world-time — the in-game world clock LiveTracker writes to profiles/LiveTracker/time.json
+    # as a one-element array [{year,month,day,hour,minute}] every 20s. Envelope on stdout:
+    #   {"ageSec": <now - mtime, seconds>, "clock": <file contents>}
+    # ageSec lets the API flag a stale/frozen clock. Exit 2 = file absent (mod not loaded yet).
+    f="$SERVER_DIR/profiles/LiveTracker/time.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no time.json (LiveTracker serverMod not loaded yet?)" >&2; exit 2; }
+    age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+    printf '{"ageSec":%d,"clock":%s}\n' "$age" "$(cat "$f")"
     ;;
 
   config-list)

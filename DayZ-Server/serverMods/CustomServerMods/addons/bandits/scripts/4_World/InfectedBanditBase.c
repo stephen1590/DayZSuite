@@ -1,4 +1,5 @@
-// AI Bandits hook — registers every bandit into AIB_Tracker (registry lives in AIB_Tracker.c).
+// AI Bandits hook — registers every bandit into LiveTracker (registry lives in LiveTracker.c,
+// in the main addon). Dormant unless @aibandits is loaded (bandits are retired as of 2026-07-23).
 //
 // InfectedBanditBase extends DayZInfected (confirmed by unpacking @aibandits), and
 // BanditAI_Base extends InfectedBanditBase — so hooking the BASE catches every bandit
@@ -11,12 +12,12 @@ modded class InfectedBanditBase
     {
         super.EEInit();
         if (GetGame() && GetGame().IsServer())
-            AIB_Tracker.Register(this, "bandit");
+            LiveTracker.Register(this, "bandit");
     }
 
     override void EEDelete(EntityAI parent)
     {
-        AIB_Tracker.Unregister(this);
+        LiveTracker.Unregister(this);
         super.EEDelete(parent);
     }
 }

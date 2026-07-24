@@ -313,44 +313,37 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     positions: {
       destructive: false,
       readOnly: true,
-      describe: 'live player map positions, ANONYMIZED to [{x,z}] only — parsed from the newest .ADM (needs adminLogPlayerList for a full roster)',
+      describe: 'live player map positions, ANONYMIZED to [{x,z}] only — from the CustomServerMods LiveTracker serverMod (profiles/LiveTracker/players.json, rewritten every 20s from the live player roster, replacing the old minutes-lagged .ADM scrape). stale (>60s = server/mod down) or missing returns none rather than a frozen snapshot.',
       schema: {
         response: { type: 'object', properties: {
           players: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, z: { type: 'number' } } } },
           count: { type: 'integer' },
-          at: { type: 'string', nullable: true },   // server-clock HH:MM:SS of the freshest fix, for a staleness hint
+          at: { type: 'string', nullable: true },   // box-clock HH:MM:SS of the freshest snapshot, for a staleness hint
         } },
       },
       async run() {
-        // Tail the newest ADM via log-read (source 'adm', @newest file, tail mode: start 0).
-        // Contract: line 1 = path, line 2 = totals header, rest = "N:text" — strip the numbers.
-        const r = await dayz.ctl('log-read', 'adm', '@newest', '0', '500');
-        if (r.code === 2) throw fail(404, 'no .ADM log found (server not started, or -adminlog off)');
-        if (r.code !== 0) throw fail(502, `log read failed: ${(r.stderr || r.stdout).trim()}`);
-        const tail = r.stdout.split('\n').slice(2).map((l) => l.replace(/^\d+:/, ''));
-        // Walk the .ADM chronologically, keeping each connected player's LATEST fix. Works off
-        // event lines today (hits/connects); once adminLogPlayerList is on, the periodic roster
-        // uses the SAME "Player "..." (id=... pos=<x, z, elev>)" shape and is simply the newest.
-        // The id is used ONLY as a dedup/connection key and is NEVER returned — {x,z} is all that leaves.
-        const RE = /^(\d\d:\d\d:\d\d) \| Player "[^"]*" \(id=([^\s)]+) pos=<([-\d.]+),\s*([-\d.]+),\s*[-\d.]+>\)(.*)$/;
-        const live = new Map(); // id -> { x, z, at }
-        let at = null;
-        for (const raw of tail) {
-          const m = RE.exec(raw.replace(/\r$/, ''));
-          if (!m) continue;
-          const [, ts, id, xs, zs, rest] = m;
-          if (/disconnected/.test(rest)) { live.delete(id); continue; }   // left the server — drop the pin
-          live.set(id, { x: Number(xs), z: Number(zs), at: ts });
-          at = ts;   // lines are chronological, so the last match is the freshest
-        }
-        return { players: [...live.values()].map((p) => ({ x: p.x, z: p.z })), count: live.size, at };
+        // Read the LiveTracker player snapshot (a 20s heartbeat file). Same freshness contract as
+        // the AI overlay: once the file passes the staleness window, drop positions rather than
+        // plot ghosts from a dead server/mod. Coords are already {x,z} (mod writes p[0]/p[2]) — no
+        // transform. The mod NEVER writes any id/name/GUID, so {x,z} is genuinely all there is.
+        const STALE_SEC = 60;   // 3 missed 20s writes
+        const r = await dayz.ctl('live-players');
+        if (r.code === 2) return { players: [], count: 0, at: null };   // mod not loaded yet (fresh boot)
+        if (r.code !== 0) throw fail(502, `live-players failed: ${(r.stderr || r.stdout).trim()}`);
+        let env: { ageSec?: number; at?: string; positions?: Array<{ x: number; z: number }> };
+        try { env = JSON.parse(r.stdout); }
+        catch { throw fail(503, 'players.json unreadable (torn mid-write) — retry'); }   // caller keeps last-known
+        const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
+        const stale = ageSec === null || ageSec > STALE_SEC;
+        const players = (!stale && Array.isArray(env.positions)) ? env.positions.map((p) => ({ x: p.x, z: p.z })) : [];
+        return { players, count: players.length, at: stale ? null : (env.at ?? null) };
       },
     },
 
     bandits: {
       destructive: false,
       readOnly: true,
-      describe: 'live AI positions [{x,z,type,age}] from the AIB_Tracker serverMod (profiles/AI_Bandits/live_positions.json, rewritten every 20s). type = "bandit" (AI Bandits) | "eai" (ExpansionAI); age = seconds that NPC has been alive this session (game clock, resets on restart). ageSec = seconds since the last FILE write; stale = older than the 60s freshness window (3 missed writes = server/mod down). stale and missing both return NO positions, so the map never plots a frozen snapshot.',
+      describe: 'live AI positions [{x,z,type,age}] from the CustomServerMods LiveTracker serverMod (profiles/LiveTracker/ai.json, rewritten every 20s). type = "eai" (ExpansionAI) | "bandit" (AI Bandits, only when @aibandits is loaded — retired); age = seconds that NPC has been alive this session (game clock, resets on restart). ageSec = seconds since the last FILE write; stale = older than the 60s freshness window (3 missed writes = server/mod down). stale and missing both return NO positions, so the map never plots a frozen snapshot.',
       schema: {
         response: { type: 'object', properties: {
           positions: { type: 'array', items: { type: 'object', properties: {
@@ -370,16 +363,50 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         // window we drop the positions and flag stale rather than plot a snapshot from a dead
         // server/mod. The coords are already {x,z} (the mod writes p[0]/p[2]) — no transform.
         const STALE_SEC = 60;   // 3 missed 20s writes
-        const r = await dayz.ctl('bandit-live');
+        const r = await dayz.ctl('live-ai');
         if (r.code === 2) return { positions: [], count: 0, ageSec: null, stale: false, missing: true };
-        if (r.code !== 0) throw fail(502, `bandit-live failed: ${(r.stderr || r.stdout).trim()}`);
+        if (r.code !== 0) throw fail(502, `live-ai failed: ${(r.stderr || r.stdout).trim()}`);
         let env: { ageSec?: number; positions?: Array<{ x: number; z: number; type?: string; age?: number }> };
         try { env = JSON.parse(r.stdout); }
-        catch { throw fail(503, 'live_positions.json unreadable (torn mid-write) — retry'); }   // caller keeps last-known
+        catch { throw fail(503, 'ai.json unreadable (torn mid-write) — retry'); }   // caller keeps last-known
         const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
         const stale = ageSec === null || ageSec > STALE_SEC;
         const positions = (!stale && Array.isArray(env.positions)) ? env.positions : [];
         return { positions, count: positions.length, ageSec, stale, missing: false };
+      },
+    },
+
+    'world-time': {
+      destructive: false,
+      readOnly: true,
+      describe: 'the in-game world clock {year,month,day,hour,minute} from the CustomServerMods LiveTracker serverMod (profiles/LiveTracker/time.json, rewritten every 20s). ageSec = seconds since the last write; stale (>60s) flags a dead server/mod and nulls the fields; missing = mod not loaded yet (fresh boot). hour is the number that drives the day/night cycle (serverTimeAcceleration).',
+      schema: {
+        response: { type: 'object', properties: {
+          year: { type: 'integer', nullable: true },
+          month: { type: 'integer', nullable: true },
+          day: { type: 'integer', nullable: true },
+          hour: { type: 'integer', nullable: true },
+          minute: { type: 'integer', nullable: true },
+          ageSec: { type: 'integer', nullable: true },
+          stale: { type: 'boolean' },
+          missing: { type: 'boolean' },
+        } },
+      },
+      async run() {
+        // Same freshness contract as the position overlays: a stale file (server/mod down) nulls
+        // the clock rather than reporting a frozen time. The mod writes a one-element array.
+        const STALE_SEC = 60;
+        const r = await dayz.ctl('world-time');
+        if (r.code === 2) return { year: null, month: null, day: null, hour: null, minute: null, ageSec: null, stale: false, missing: true };
+        if (r.code !== 0) throw fail(502, `world-time failed: ${(r.stderr || r.stdout).trim()}`);
+        let env: { ageSec?: number; clock?: Array<{ year: number; month: number; day: number; hour: number; minute: number }> };
+        try { env = JSON.parse(r.stdout); }
+        catch { throw fail(503, 'time.json unreadable (torn mid-write) — retry'); }
+        const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
+        const stale = ageSec === null || ageSec > STALE_SEC;
+        const c = Array.isArray(env.clock) && env.clock.length ? env.clock[0] : null;
+        if (!c || stale) return { year: null, month: null, day: null, hour: null, minute: null, ageSec, stale, missing: false };
+        return { year: c.year, month: c.month, day: c.day, hour: c.hour, minute: c.minute, ageSec, stale, missing: false };
       },
     },
 

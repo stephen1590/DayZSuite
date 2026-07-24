@@ -27,8 +27,8 @@ ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
 # -serverMod loads OUR server-only mods (semicolon-separated), SERVER-ONLY — never advertised
 # to or downloaded by clients — OUR artifacts (built by HEMTT, shipped by Deploy-DayZServer.ps1),
 # NOT workshop items. So they live OUTSIDE mods.conf and the -mod chain, as fixed names here:
-#   @custom_server_mods - ex-@aib_tracker: live AI positions for the map overlay
-#                         (profiles/AI_Bandits/live_positions.json) + fresh-spawn flu buff
+#   @custom_server_mods - CustomServerMods (LiveTracker): live AI + player positions + the
+#                         world clock for the map overlay (profiles/LiveTracker/) + fresh-spawn flu buff
 #   @transfer_spawn - relocates migrated characters to the new map's own spawn points on a
 #                     map switch (reads profiles/transfer_spawn.json; see serverMods/TransferSpawn)
 ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -serverMod=@custom_server_mods -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck

@@ -103,6 +103,8 @@ Each file opens with three views, chosen top-right:
 
 To override a field: find it, type the new value, and it is staged. To drop an override: click its remove control - the field reverts to default.
 
+Each field also shows the game's own one-line description of what it does, and a few fields display a friendlier name than the raw config key (the whitelist is labelled **Allowlist**, for example). The filter still matches the real key, so searching "whitelist" finds it.
+
 **Per-map files** carry a layer choice: apply your override to **this mission only** or to **all missions**.
 
 **Saving:**
@@ -120,6 +122,8 @@ Use **Discard** to throw away unsaved changes. Use **Version history** at the bo
 
 **Read-only files** - `ro` rows are reference or auto-built files (the mod load order, broadcast messages, the active map, and files the server rebuilds at boot). The editor locks them so you cannot save an edit that the server would just overwrite.
 
+**Disabled mods** - if a mod is switched off on the server, its config surfaces are hidden from this list automatically, so you only see config that is actually in play.
+
 #### The day / night cycle
 
 The **Server Settings** file has a dedicated panel for the day/night cycle - the one setting that is hard to reason about as raw numbers.
@@ -130,6 +134,8 @@ The **Server Settings** file has a dedicated panel for the day/night cycle - the
 - **Night acceleration (Y)** - speeds night up further. Higher means shorter nights.
 
 The bar underneath shows what the two sliders actually buy in real time: how long daylight lasts, how long night lasts, the full cycle length, and how many cycles fit in one restart window. **Reset to default** clears both. Like every config change, it applies at the next restart.
+
+**Dark night rotation** - the Server Settings file also carries a `rotateDarkNights` toggle. When it is on, alternate sessions (roughly four hours each) run darker than normal and then back, so nights are not always the same brightness. It is off by default, and when off the lighting is exactly as configured.
 
 ### Server Files - tuning loot
 
@@ -160,16 +166,28 @@ The upstream item list is read-only reference; the tuning file is the one you ed
 
 ### Map
 
-The Map tab draws the world with the AI and loot economy laid over it.
+The Map tab draws the world with the AI and loot economy laid over it, and it is where you edit AI patrols.
 
 ![The Map tab - tile layers, marker filters, and AI points](/images/config-ui/08-map.png)
 
+**Browsing:**
+
 - **Tile layers** (top-right) switch the base map - satellite or topographic, older or higher-resolution rips.
 - **Filters** toggle what is drawn: AI **locations**, **patrols**, and **object patrols**; loot categories; spawn points; buildings; and event markers. Each shows a count.
-- The left list names the AI points.
+- The left list names the AI points. Selecting one highlights it, and for a patrol it draws the route.
 - **Calibrate** aligns a tile layer that does not sit perfectly on the world grid: mark a landmark on the layer, type its true coordinates, and repeat for a few points. A readout shows how well the alignment fits. **Preview** checks it before you keep it.
 
-The AI points shown here are read-only - they are derived from the live AI settings. Edit those in Server Files, then restart.
+#### Editing patrols
+
+The Map tab owns the AI patrols. Click a patrol to open its editor.
+
+- **Core fields** cover the everyday knobs - faction, loadout, unit count, behaviour, speed, and spawn chance.
+- **Advanced** exposes the full set of patrol fields. A field left at `-1` **inherits the global default** for that setting.
+- **Global settings** (top of the panel) edits the map-wide patrol defaults that every `-1` field falls back to.
+- **Save** writes the patrol back to the live AI file and keeps every field you did not touch. Like all config, it applies at the next restart.
+
+> [!NOTE]
+> Because the Map tab owns patrols, `AIPatrolSettings.json` is **read-only in the Server Files editor** - edit patrols here, not there. **AI locations are view-only** on the map for now; a location editor is a later addition.
 
 ### Logs
 

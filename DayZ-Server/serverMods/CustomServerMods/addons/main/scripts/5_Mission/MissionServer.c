@@ -28,18 +28,23 @@ modded class MissionServer
     override void OnInit()
     {
         super.OnInit();
+        // The snapshot files live in their own profile dir. JsonSaveFile does NOT create
+        // parent dirs, so make it once at boot or every write silently no-ops on a fresh box.
+        MakeDirectory("$profile:LiveTracker");
         // 20s repeating. Use the call queue, NOT Timer.Run(this,"name"): as of game build
         // 24041098 the engine rejects a modded MissionServer as the 'Managed' arg to Timer.Run
         // ("Types 'MissionServer@…' and 'Managed' are unrelated"), which corrupts the whole
         // modded MissionServer chain and cascades Expansion into "Bad type" — mission scripts
         // then fail to load and player connect stays disabled. CallLater takes a direct method
         // reference and sidesteps the conversion.
-        GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(AIB_TrackerTick, 20000, true);
+        GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(LiveTrackerTick, 20000, true);
     }
 
-    void AIB_TrackerTick()
+    void LiveTrackerTick()
     {
-        AIB_Tracker.WriteSnapshot("$profile:AI_Bandits/live_positions.json");
+        LiveTracker.WriteAiSnapshot("$profile:LiveTracker/ai.json");
+        LiveTracker.WritePlayerSnapshot("$profile:LiveTracker/players.json");
+        LiveTracker.WriteTimeSnapshot("$profile:LiveTracker/time.json");
     }
 
     // NB the 1.29 signature RETURNS the new PlayerBase (void here = "Overloaded function
