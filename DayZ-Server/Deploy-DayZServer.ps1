@@ -116,18 +116,10 @@ if (-not $Local) {
         Write-Host "--- mirror pulls skipped (prod-only; env=$Env) ---`n"
     }
 
-    # Spawn points: the live box is authoritative for AI-bandit spawn locations (the web Map
-    # editor writes map-points.json at runtime via the API). Pull it DOWN into the repo
-    # mirror — committed backup + fresh-box seed; the deploy below only ever SEEDS it to a
-    # box that has none. Report-only unless -Fix; the sync validates JSON and snapshots the
-    # mirror before overwriting.
-    $spawnSync = Join-Path $PSScriptRoot "Sync-SpawnPoints.ps1"
-    if ($Env -eq 'prod' -and (Test-Path $spawnSync)) {
-        Write-Host "--- spawn points (pull-before-push: box authoritative) ---"
-        if ($Fix) { & $spawnSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
-        else      { & $spawnSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
-        Write-Host ""
-    }
+    # Spawn-point mirror-pull RETIRED in Phase 4 (2026-07-23): map-points.json is now a frozen,
+    # read-only legacy store (the live AI settings are the source), so there is nothing changing
+    # on the box to pull. Sync-SpawnPoints.ps1 is archived; the committed mirror stays as the
+    # frozen reference. (Was: pull box map-points.json down before pushing.)
 
     # Config overrides: the live box is authoritative (the web editor writes the document at
     # runtime). Pull the box's config-overrides.json DOWN into the repo MIRROR — the committed
@@ -223,7 +215,7 @@ if (-not $Local) {
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
                    'Apply-ServerCfg.ps1',
-                   'Build-AILocations.ps1', 'Build-AIPatrols.ps1', 'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
+                   'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
@@ -473,11 +465,6 @@ $items = @(
     # Expansion AI patrol builder: prestart composes AIPatrolSettings.json
     # from the frozen base + 'expansion'-toggled map-points on every start. Same map-points store,
     # independent on/off (profiles/ExpansionMod/AIPatrols.control.json). Lives in the server dir.
-    @{ Src = "../Build-AIPatrols.ps1";       Dst = Join-Path $ServerDir "Build-AIPatrols.ps1";       Sudo = $false; Exec = $true }
-    # Expansion AI location builder (twin of Build-AIPatrols): prestart composes AILocationSettings.json
-    # (RoamingLocations) from the frozen base + 'expansion'-toggled map-points on every start. Same
-    # map-points store, geography only (no factions/loadouts). Lives in the server dir.
-    @{ Src = "../Build-AILocations.ps1";     Dst = Join-Path $ServerDir "Build-AILocations.ps1";     Sudo = $false; Exec = $true }
     # Map inversion Phase 2: derives profiles/AI_Shared/map-points.generated.json from the live
     # Expansion AI settings at every prestart (the reverse of the two builders above, which
     # compose DRAFTS from the old authored store). Registry 'generated' - read-only in the UI.
@@ -508,11 +495,10 @@ $items = @(
     # 33 tuned types differ between the Chernarus and Enoch variants, so one shared file would
     # restore Tier4 on Enoch and kill them there.
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
-    # Bubaku spawner composer lives in the server dir so prestart writes the fixed-path file from
-    # the active map's source on every start (mirrors Build-TransferSpawns/Build-AIBandits). Engine
-    # is CODE (ships on drift); the per-map SOURCES are box-owned content — seeded from
-    # config-registry.json below.
-    @{ Src = "Build-BabakuSpawns.ps1"; Dst = Join-Path $ServerDir "Build-BabakuSpawns.ps1"; Sudo = $false; Exec = $false }
+    # Bubaku spawner composer RETIRED 2026-07-24 (@babaku disabled in mods.conf; prestart call
+    # commented out). No longer shipped - Build-BabakuSpawns.ps1 stays in the repo, reversible.
+    # Restore this $items row alongside the prestart + Test-Configs un-comment when @babaku returns.
+    # @{ Src = "Build-BabakuSpawns.ps1"; Dst = Join-Path $ServerDir "Build-BabakuSpawns.ps1"; Sudo = $false; Exec = $false }
     @{ Src = "dayz-server.service"; Dst = $UnitPath;                            Sudo = $true;  Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.service"; Dst = "/etc/systemd/system/dayz-logarchive.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.timer";   Dst = "/etc/systemd/system/dayz-logarchive.timer";   Sudo = $true; Exec = $false }

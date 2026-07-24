@@ -1,9 +1,12 @@
 {
     "_readme": "The web-editable slice of serverDZ.cfg. Apply-ServerCfg.ps1 renders serverDZ.cfg at EVERY prestart from serverDZ.cfg.template + host.env (the two passwords) + this file, so a value changed in the web editor lands on the next restart with no deploy. ONLY the keys below may be set - the renderer's allowlist is closed, so anything else here is ignored with a warning. Everything NOT listed (password, passwordAdmin, verifySignatures, shardId, instanceId, guaranteedUpdates, serverTime, storageAutoFix, vppDisablePassword, adminLogPlayerList, loginQueue*, class Missions) stays owned by the template because changing it breaks server identity, persistence, or the boot itself: instanceId/shardId select the storage folder (a change reads as a full wipe), verifySignatures is a security control, and the active map comes from map.env, not the Missions class. Values are validated by type and range; a bad one is skipped with a warning and the template default stands. serverTimeAcceleration/serverNightTimeAcceleration drive the day/night cycle - see the Server tab's cycle sliders, or docs/SETUP.md for the math.",
     "_labels": {
-        "enableWhitelist": "enableAllowList"
+        "enableWhitelist": "enableAllowList",
+        "rotateDarkNights": "Rotate Dark Nights"
     },
+    "_controls": ["rotateDarkNights"],
     "_help": {
+        "rotateDarkNights": "When 1, flips lightingConfig (darker vs brighter night) on EVERY reboot, so alternate 4-hour sessions run darker then normal. When 0, lightingConfig is used exactly as set below. This is a control, not a serverDZ.cfg field - it steers lightingConfig, it is never written to the cfg itself.",
         "hostname": "Server name",
         "description": "Description of the server. Gets displayed to users in client server browser.",
         "maxPlayers": "Maximum amount of players",
@@ -32,5 +35,6 @@
     "lightingConfig": 0,
     "serverTimeAcceleration": 5,
     "serverNightTimeAcceleration": 4,
-    "serverTimePersistent": 1
+    "serverTimePersistent": 1,
+    "rotateDarkNights": 0
 }

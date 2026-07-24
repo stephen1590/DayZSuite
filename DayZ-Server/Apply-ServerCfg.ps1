@@ -109,11 +109,38 @@ if (Test-Path $settingsPath) {
     Show-Warn "no server-settings.json under $ServerDir - template defaults stand."
 }
 
+# --- 2a. controls: server-settings keys that STEER the render but are not serverDZ.cfg fields ---
+# Declared in _controls so the toggle loop skips them (no "not allowlisted" warning) and the gate
+# excludes them from its cfg-toggle checks. Today: rotateDarkNights.
+$controls = @()
+if ($settings -and $settings.PSObject.Properties['_controls']) { $controls = @($settings._controls | ForEach-Object { [string]$_ }) }
+
+# Rotating darker nights: when rotateDarkNights=1, flip lightingConfig (0 brighter <-> 1 darker)
+# on every prestart from a small box-local state file (.night-rotation), so alternate 4-hour
+# sessions run darker then normal. The flip OVERRIDES the authored lightingConfig. When 0 (or
+# absent/invalid), lightingConfig is rendered exactly as authored and the state is left alone.
+if ($settings) {
+    $rv = 0
+    $rotate = ($settings.PSObject.Properties['rotateDarkNights'] -and
+               [int]::TryParse([string]$settings.rotateDarkNights, [ref]$rv) -and $rv -eq 1)
+    if ($rotate) {
+        $stateFile = Join-Path $ServerDir '.night-rotation'
+        $prev = -1
+        if (Test-Path $stateFile) { $pv = 0; if ([int]::TryParse((Get-Content -Raw -LiteralPath $stateFile).Trim(), [ref]$pv)) { $prev = $pv } }
+        $next = if ($prev -eq 1) { 0 } else { 1 }                    # first boot (no/invalid state) -> darker (1)
+        if ($settings.PSObject.Properties['lightingConfig']) { $settings.lightingConfig = $next }
+        else { $settings | Add-Member -NotePropertyName lightingConfig -NotePropertyValue $next }
+        Show-Info "ServerCfg: rotateDarkNights ON - lightingConfig $(if ($prev -lt 0) { '(first boot)' } else { $prev }) -> $next this boot$(if (-not $Fix) { ' (report-only, state not advanced)' })."
+        if ($Fix) { Set-Content -LiteralPath $stateFile -Value $next -Encoding utf8 -NoNewline }
+    }
+}
+
 $applied = @(); $skipped = @()
 if ($settings) {
     foreach ($prop in $settings.PSObject.Properties) {
         $key = $prop.Name
         if ($key.StartsWith('_')) { continue }                       # _readme and friends
+        if ($controls -contains $key) { continue }                   # controls steer the render, not cfg fields
         if (-not $ALLOWED.Contains($key)) { $skipped += $key; Show-Warn "'$key' is not an allowlisted serverDZ.cfg toggle - ignored."; continue }
 
         $rule = $ALLOWED[$key]

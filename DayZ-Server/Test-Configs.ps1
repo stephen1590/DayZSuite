@@ -9,7 +9,7 @@
     the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines + config-overrides.json
     + the AI_Bandits source tree + spawn-points + Babaku sources + the custom-CE manifest) and
     the SAME engines the box runs at prestart (Apply-ConfigOverrides,
-    Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
+    Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
     from the mirrors, runs the ACTUAL build chain against it, and validates the produced artifacts.
     If it passes, the live deploy runs the identical scripts on the identical inputs — the result
     is already known.
@@ -24,7 +24,7 @@
       - registry seed rows WITHOUT a captured baseline (classification, StaticAIB, Babaku,
         messages) are placed from their repo seed - identical to a box that has them.
     Then per declared mission, the full prestart config chain: Apply-ConfigOverrides -Fix
-    (force-create), Build-BabakuSpawns, Apply-CustomCE, Build-TransferSpawns.
+    (force-create), Apply-CustomCE, Build-TransferSpawns.
 
     Two prestart inputs are GAME-OWNED mission files (cfgeconomycore.xml, cfgplayerspawnpoints.xml)
     that a game update rewrites and prestart re-derives - so they are not mirrored. The gate stages
@@ -198,48 +198,12 @@ if (Test-Path $aib) {
 foreach ($m in $missions) {
     # (BanditAI retired 2026-07-23; its compiler is archived - archive/Build-AIBandits.ps1.)
 
-    # Expansion AI patrols: compose the AIPatrols DRAFT (frozen base + 'expansion' map-points) and
-    # assert it parses. The SAME engine the box runs at prestart - proves the draft offline before any
-    # restart. Only asserts on missions that actually produce it (no frozen base and no 'expansion'
-    # points writes no draft by design - not a failure). The LIVE AIPatrolSettings.json is hand-
-    # authored and must be unchanged by this: asserted below.
-    $patLive    = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
-    $patLiveWas = if (Test-Path $patLive) { (Get-FileHash -LiteralPath $patLive -Algorithm SHA256).Hash } else { $null }
-    try { $null = & (Join-Path $PSScriptRoot "Build-AIPatrols.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
-    catch { Show-Fail "Build-AIPatrols threw for ${m}: $($_.Exception.Message)" }
-    $patLiveNow = if (Test-Path $patLive) { (Get-FileHash -LiteralPath $patLive -Algorithm SHA256).Hash } else { $null }
-    if ($patLiveWas -ne $patLiveNow) { Show-Fail "Build-AIPatrols MODIFIED the live AIPatrolSettings.json for $m - it must only write the draft" }
-    else { Show-Pass "Build-AIPatrols left the live AIPatrolSettings.json untouched for $m" }
-    $patRel = "mpmissions/$m/expansion/settings/AIPatrols.draft.json"
-    $patP   = Join-Path $StagingDir $patRel
-    if (Test-Path $patP) {
-        try {
-            $pd = Get-Content -Raw $patP | ConvertFrom-Json
-            Show-Pass "$patRel composed for $m parses ($(@($pd.Patrols).Count) patrol(s), Enabled=$($pd.Enabled))"
-            # Object patrols with persistence abort the mod's ENTIRE AIPatrol load - assert the guard neutralized them.
-            $badObj = @($pd.Patrols | Where-Object { $_.PSObject.Properties['ObjectClassName'] -and [string]$_.ObjectClassName -and $_.PSObject.Properties['Persist'] -and [int]$_.Persist -ne 0 })
-            if ($badObj.Count) { Show-Fail "$patRel for $m - $($badObj.Count) object patrol(s) still carry Persist!=0 (would abort the mod's AIPatrol load): $(($badObj | ForEach-Object { $_.Name }) -join ', ')" }
-            else { Show-Pass "$patRel for $m - object patrols carry no illegal persistence" }
-        } catch { Show-Fail "$patRel for $m - invalid JSON: $($_.Exception.Message)" }
-    }
-
-    # Expansion AI locations: compose the AILocations DRAFT (frozen base + 'expansion' map-points) and
-    # assert it parses - twin of Build-AIPatrols, same live-file-untouched assertion.
-    $locLive    = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AILocationSettings.json"
-    $locLiveWas = if (Test-Path $locLive) { (Get-FileHash -LiteralPath $locLive -Algorithm SHA256).Hash } else { $null }
-    try { $null = & (Join-Path $PSScriptRoot "Build-AILocations.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
-    catch { Show-Fail "Build-AILocations threw for ${m}: $($_.Exception.Message)" }
-    $locLiveNow = if (Test-Path $locLive) { (Get-FileHash -LiteralPath $locLive -Algorithm SHA256).Hash } else { $null }
-    if ($locLiveWas -ne $locLiveNow) { Show-Fail "Build-AILocations MODIFIED the live AILocationSettings.json for $m - it must only write the draft" }
-    else { Show-Pass "Build-AILocations left the live AILocationSettings.json untouched for $m" }
-    $locRel = "mpmissions/$m/expansion/settings/AILocations.draft.json"
-    $locP   = Join-Path $StagingDir $locRel
-    if (Test-Path $locP) {
-        try {
-            $ld = Get-Content -Raw $locP | ConvertFrom-Json
-            Show-Pass "$locRel composed for $m parses ($(@($ld.RoamingLocations).Count) location(s))"
-        } catch { Show-Fail "$locRel for $m - invalid JSON: $($_.Exception.Message)" }
-    }
+    # The old draft builders (Build-AIPatrols / Build-AILocations) that composed *.draft.json from
+    # the frozen authored map-points are RETIRED (Phase 4, 2026-07-23, archive/) - the drafts had
+    # no runtime consumer (the mod reads the LIVE *Settings.json). Only the live-file paths remain,
+    # for the Build-MapPoints derivation below to read (staged from config-mirror, mirror:live).
+    $patLive = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
+    $locLive = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AILocationSettings.json"
 
     # Map inversion Phase 2: Build-MapPoints derives the Map tab's store FROM the live AI
     # settings (the reverse direction of the two draft builders above). Assert the store
@@ -269,18 +233,8 @@ foreach ($m in $missions) {
         }
     }
 
-    # Bubaku: fixed-path spawner file from the active map's source (or empty-valid fallback).
-    try { $null = & (Join-Path $deployDir "Build-BabakuSpawns.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
-    catch { Show-Fail "Build-BabakuSpawns threw for ${m}: $($_.Exception.Message)" }
-    $bab = Join-Path $StagingDir "profiles/SpawnerBubaku/SpawnerBubakuV2.json"
-    if (-not (Test-Path $bab)) { Show-Fail "SpawnerBubakuV2.json not produced for $m" }
-    else {
-        try {
-            $bd = Get-Content -Raw $bab | ConvertFrom-Json
-            if ($null -eq $bd.BubakLocations) { Show-Fail "Bubaku for $m - built file has no BubakLocations array" }
-            else { Show-Pass "Bubaku composed for $m parses ($(@($bd.BubakLocations).Count) location(s))" }
-        } catch { Show-Fail "Bubaku for $m - invalid JSON: $($_.Exception.Message)" }
-    }
+    # Bubaku composer RETIRED 2026-07-24 (@babaku disabled in mods.conf) - its prestart step is
+    # commented out, so the gate no longer exercises it. Restore alongside the prestart un-comment.
 
     # Custom CE: register <ce folder="custom"> into the (fixture) mission cfgeconomycore.xml.
     try { $null = & (Join-Path $PSScriptRoot "Apply-CustomCE.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
@@ -362,14 +316,23 @@ if ((Test-Path $serverCfgScript) -and (Test-Path $stagedTpl)) {
         $settingsFile = Join-Path $StagingDir "server-settings.json"
         if (Test-Path $settingsFile) {
             $want = (Get-Content -Raw -LiteralPath $settingsFile | ConvertFrom-Json)
+            # CONTROLS steer the render but are not cfg fields (e.g. rotateDarkNights flips
+            # lightingConfig from box state) - exclude them from every cfg-toggle assertion. And
+            # when rotateDarkNights is ON, lightingConfig is a MANAGED value (not the authored one),
+            # so it too is exempt from the applied-value check.
+            $controls = @()
+            if ($want.PSObject.Properties['_controls']) { $controls = @($want._controls | ForEach-Object { [string]$_ }) }
+            $rotating = ($want.PSObject.Properties['rotateDarkNights'] -and [int]$want.rotateDarkNights -eq 1)
             $missed = @()
             foreach ($p in $want.PSObject.Properties) {
                 if ($p.Name.StartsWith('_')) { continue }
+                if ($controls -contains $p.Name) { continue }
+                if ($rotating -and $p.Name -eq 'lightingConfig') { continue }   # managed by rotation
                 $lit = if ($p.Value -is [string]) { '"' + $p.Value + '"' } else { "$($p.Value)" }
                 if ($cfgText -notmatch ('(?m)^\s*' + [regex]::Escape($p.Name) + '\s*=\s*' + [regex]::Escape($lit) + '\s*;')) { $missed += $p.Name }
             }
             if ($missed.Count) { Show-Fail "server-settings.json key(s) did not reach serverDZ.cfg: $($missed -join ', ')" }
-            else { Show-Pass "all $(@($want.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) server-settings.json toggle(s) applied to serverDZ.cfg" }
+            else { Show-Pass "all $(@($want.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') -and $controls -notcontains $_.Name }).Count) server-settings.json toggle(s) applied to serverDZ.cfg" }
 
             # The web editor's comment column is the cfg's OWN trailing // comment, copied into
             # server-settings.json's _help. Assert it still matches the template, so editing a
@@ -381,6 +344,7 @@ if ((Test-Path $serverCfgScript) -and (Test-Path $stagedTpl)) {
             $helpBad = @()
             foreach ($p in $want.PSObject.Properties) {
                 if ($p.Name.StartsWith('_')) { continue }
+                if ($controls -contains $p.Name) { continue }        # controls have no template comment - their _help is free text
                 $m = [regex]::Match($tplText, '(?m)^[ \t]*' + [regex]::Escape($p.Name) + '[ \t]*=.*?;[ \t]*//[ \t]*(.*)$')
                 if (-not $m.Success) { $helpBad += "$($p.Name): no // comment in the template"; continue }
                 $want2 = $m.Groups[1].Value.Trim()

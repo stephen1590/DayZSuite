@@ -10,7 +10,6 @@
     This runs every mirror pull in sequence:
 
       Sync-ConfigOverrides.ps1   config-overrides.json        (the overrides document)
-      Sync-SpawnPoints.ps1       deploy/profiles/AI_Shared/map-points.json
       Sync-ConfigDefaults.ps1    config-defaults/**           (frozen <stem>.defaults<ext> baselines)
       (inline)                   config-mirror/**             (LIVE files of registry folder rows
                                                                tagged "mirror":"live" - mission
@@ -53,7 +52,6 @@ param(
 
 $syncs = @(
     "Sync-ConfigOverrides.ps1"
-    "Sync-SpawnPoints.ps1"
     "Sync-ConfigDefaults.ps1"
 )
 

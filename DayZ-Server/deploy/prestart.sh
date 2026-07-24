@@ -116,15 +116,15 @@ if [ ! -f "$SERVER/serverDZ.cfg" ]; then
     echo "prestart: FATAL - serverDZ.cfg is missing and Apply-ServerCfg could not render it (check host.env: DEPLOY_ADMIN_PASSWORD must be non-empty; DEPLOY_SERVER_PASSWORD= empty is fine = open server). The engine cannot start without it - this boot WILL fail and systemd will keep retrying." >&2
 fi
 
-# Bubaku (SpawnerBubaku) reads ONE fixed path but its spawn coords are map-specific. Compose the
-# fixed file from the ACTIVE map's source so a map switch can never leave the previous map's
-# spawns; a map with no source (or a corrupt one) gets an empty-but-valid file (spawns nothing).
-# Runs AFTER Apply-ConfigOverrides so a UI override on the per-map source rides along. The SAME
-# engine runs in Test-Configs offline, so the gate proves this output before deploy. Fail-soft +
-# `|| true`: can never block boot.
-if [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
-fi
+# Bubaku (SpawnerBubaku) composer RETIRED 2026-07-24: @babaku is disabled in mods.conf (it hung off
+# the BanditAI cluster - all co-disabled), so composing its fixed-path spawn file every boot was dead
+# work the unloaded mod never reads. Build-BabakuSpawns.ps1 + the per-map SpawnerBubaku sources stay
+# in the repo (reversible, like the AI_Bandits tree). To restore: re-enable @babaku in mods.conf,
+# un-comment the two lines below, its Test-Configs gate step, and its Deploy-DayZServer $items ship.
+# The stale copy on the box is inert - remove whenever.
+#if [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+#    pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+#fi
 
 # AI bandit configs (DynamicAIB/StaticAIB) are RAW per-map world coords, but the mod reads one
 # fixed path. Compose the active map's flat config from common + maps/$TARGET NOW, before the
@@ -134,22 +134,10 @@ fi
 # BanditAI retired 2026-07-23; its compiler lives in archive/Build-AIBandits.ps1 (repo), with
 # restore instructions in archive/README.md. The stale copy on the box is inert - remove whenever.
 
-# Expansion AI roaming destinations: compose a DRAFT (AILocations.draft.json) from the frozen
-# default + map-points that opt into 'expansion'. DRAFT-ONLY - the live AILocationSettings.json is
-# hand-authored and is never written here. (Build-AIBandits above is retired 2026-07-23.)
-# Fail-soft + `|| true`; it can never block boot.
-if [ -f "$SERVER/Build-AILocations.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Build-AILocations.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
-fi
-
-# Expansion AI SPAWNS: compose a DRAFT (AIPatrols.draft.json) from the frozen base + map-points that
-# opt into 'expansion'. DRAFT-ONLY since 2026-07-21 - the live AIPatrolSettings.json is hand-authored,
-# unlocked in the web editor, and is NEVER written here. The draft exists so you can see what
-# map-points would produce without the builder taking the file back. Independent master switch lives
-# in profiles/ExpansionMod/AIPatrols.control.json (enabled). Fail-soft + `|| true`.
-if [ -f "$SERVER/Build-AIPatrols.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Build-AIPatrols.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
-fi
+# Expansion AI draft builders (Build-AILocations / Build-AIPatrols) RETIRED 2026-07-23 (Phase 4,
+# archive/). They composed *.draft.json PREVIEWS from the frozen authored map-points.json; nothing
+# ever read the drafts (the mod reads the live AILocation/AIPatrolSettings.json). The inversion runs
+# the other way now - Build-MapPoints below derives the map store FROM those live files.
 
 # Map inversion Phase 2 (2026-07-23): derive the Map tab's point store FROM the active
 # mission's live AILocationSettings/AIPatrolSettings (the web-edited truth). Writes
