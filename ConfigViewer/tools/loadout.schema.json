@@ -1,0 +1,122 @@
+{
+    "$schema": "http://json-schema.org/draft-06/schema#",
+    "$ref": "#/definitions/LoadoutSchema",
+    "definitions": {
+        "Health": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "Min": {
+                    "type": "number"
+                },
+                "Max": {
+                    "type": "integer"
+                },
+                "Zone": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "Max",
+                "Min",
+                "Zone"
+            ],
+            "title": "Health"
+        },
+        "InventoryAttachment": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "SlotName": {
+                    "type": "string"
+                },
+                "Items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LoadoutSchema"
+                    }
+                }
+            },
+            "required": [
+                "Items",
+                "SlotName"
+            ],
+            "title": "InventoryAttachment"
+        },
+        "LoadoutSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "ClassName": {
+                    "type": "string"
+                },
+                "Include": {
+                    "type": "string"
+                },
+                "Chance": {
+                    "type": "number"
+                },
+                "Quantity": {
+                    "$ref": "#/definitions/Quantity"
+                },
+                "Health": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Health"
+                    }
+                },
+                "InventoryAttachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/InventoryAttachment"
+                    }
+                },
+                "InventoryCargo": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LoadoutSchema"
+                    }
+                },
+                "ConstructionPartsBuilt": {
+                    "type": "array",
+                    "items": {}
+                },
+                "Sets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LoadoutSchema"
+                    }
+                }
+            },
+            "required": [
+                "Chance",
+                "ClassName",
+                "ConstructionPartsBuilt",
+                "Health",
+                "Include",
+                "InventoryAttachments",
+                "InventoryCargo",
+                "Quantity",
+                "Sets"
+            ],
+            "title": "LoadoutSchema"
+        },
+        "Quantity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "Min": {
+                    "type": "number"
+                },
+                "Max": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "Max",
+                "Min"
+            ],
+            "title": "Quantity"
+        }
+    }
+}

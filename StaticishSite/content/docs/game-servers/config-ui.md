@@ -181,6 +181,8 @@ The Map tab draws the world with the AI and loot economy laid over it, and it is
 
 The Map tab owns the AI patrols. Click a patrol to open its editor.
 
+![The patrol editor - core fields (faction, loadout, counts, behaviour, speed), the waypoint, and the Advanced expander](/images/config-ui/08b-patrol-editor.png)
+
 - **Core fields** cover the everyday knobs - faction, loadout, unit count, behaviour, speed, and spawn chance.
 - **Advanced** exposes the full set of patrol fields. A field left at `-1` **inherits the global default** for that setting.
 - **Global settings** (top of the panel) edits the map-wide patrol defaults that every `-1` field falls back to.

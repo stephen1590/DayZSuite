@@ -49,6 +49,8 @@ param(
     [switch]$NoLog,
     [switch]$Force,                                         # deploy even with players online / unverifiable count
     [switch]$SkipConfigTest,                                # bypass the offline pre-deploy config gate (emergency only)
+    [switch]$SkipProdSync,                                  # staging only: skip the prod-parity gate (prod unreachable / offline)
+    [int]$MaxProdSyncAgeHours = 24,                         # staging gate: refuse if the last prod->staging sync is older than this
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
     [ValidateSet('staging','prod')]
     [string]$Env = 'staging',                               # which box: staging is the DEFAULT, prod must be explicit (STAGING-PLAN.md). Picks deployer.<env>.env; ignored under -Local
@@ -106,6 +108,24 @@ if (-not $Local) {
         $dirty  = git -C $PSScriptRoot status --porcelain
         if ($branch -ne 'main') { Write-Error "prod deploy refused: branch is '$branch', not main. Merge to main first, or rehearse on staging (bare run = -Env staging)."; exit 5 }
         if ($dirty)             { Write-Error "prod deploy refused: working tree is dirty. Commit or stash first - prod runs reviewed commits only. Uncommitted:`n$($dirty -join "`n")"; exit 5 }
+    }
+
+    # STAGING PROD-PARITY GATE (Sync-StagingFromProd.ps1): a staging test must start from prod's
+    # LIVE config or it validates against a stale seed. A -Fix to staging refuses unless a fresh
+    # prod->staging sync marker (.prod-sync) is on the box. -SkipProdSync overrides (prod offline).
+    if ($Env -eq 'staging' -and $Fix -and -not $SkipProdSync) {
+        $marker   = (ssh -o ConnectTimeout=10 $RemoteTarget "cat servers/dayz-server/.prod-sync 2>/dev/null" 2>$null | Out-String)
+        $syncedAt = if ($marker -match 'synced_at=(\S+)') { $Matches[1] } else { $null }
+        if (-not $syncedAt) {
+            Write-Error "staging deploy refused: config is not seeded from prod (no .prod-sync marker). Run ./Sync-StagingFromProd.ps1 -Fix first so staging starts from prod parity (STAGING-PLAN.md), or pass -SkipProdSync to override."
+            exit 6
+        }
+        $ageH = ([datetime]::UtcNow - [datetimeoffset]::Parse($syncedAt).UtcDateTime).TotalHours
+        if ($ageH -gt $MaxProdSyncAgeHours) {
+            Write-Error ("staging deploy refused: last prod->staging sync was {0:N1}h ago (max {1}h). Re-run ./Sync-StagingFromProd.ps1 -Fix, or pass -SkipProdSync." -f $ageH, $MaxProdSyncAgeHours)
+            exit 6
+        }
+        Write-Host ("--- prod-parity OK: staging synced from prod {0:N1}h ago ---`n" -f $ageH) -ForegroundColor Green
     }
 
     # MIRROR PULLS + AUTO-COMMIT ARE PROD-ONLY (STAGING-PLAN.md deviation table): the repo
@@ -194,7 +214,8 @@ if (-not $Local) {
     # The server-only PBOs ship as artifacts — fail fast HERE (with the build command)
     # rather than confusing the remote leg with a path that never left this machine.
     foreach ($pbo in 'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
-                     'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
+                     'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo',
+                     'serverMods/FlyingDutchman/.hemttout/build/addons/FlyingDutchman_main.pbo') {
         if (-not (Test-Path (Join-Path $PSScriptRoot $pbo))) {
             Write-Error "server-only PBO not built: $pbo`nBuild it first:  cd '$(Split-Path (Split-Path (Split-Path (Join-Path $PSScriptRoot $pbo))))'; hemtt build"
             exit 4
@@ -218,7 +239,8 @@ if (-not $Local) {
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
-                   'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo') {
+                   'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo',
+                   'serverMods/FlyingDutchman/.hemttout/build/addons/FlyingDutchman_main.pbo') {
         if (Test-Path (Join-Path $PSScriptRoot $f)) { $payload.Add($f) }
     }
     # Directories shipped WHOLE to the box's deploy-stage. The seed steps later in this script run
@@ -379,6 +401,23 @@ if ($trackerNewest -and $trackerNewest.LastWriteTimeUtc -gt (Get-Item $trackerPb
     Write-Warning "CustomServerMods source ($($trackerNewest.Name)) is newer than its PBO — run 'hemtt build' in $trackerSrcDir to repack before deploying it."
 }
 
+# Third server-only mod (-serverMod=…;@flying_dutchman): OUR FlyingDutchman PBO — the coastal
+# patrol ship. Same rules: HEMTT artifact, pre-built, guarded, shipped as an $items entry below.
+# DORMANT unless the box has the profiles/FlyingDutchman/enable marker (runtime switch) — the
+# identical PBO is safe on prod.
+$dutchSrcDir = Join-Path $PSScriptRoot "serverMods/FlyingDutchman"
+$dutchPbo    = Join-Path $dutchSrcDir ".hemttout/build/addons/FlyingDutchman_main.pbo"
+if (-not (Test-Path $dutchPbo)) {
+    Write-Error "Server-only FlyingDutchman PBO not built: $dutchPbo`nBuild it first:  cd '$dutchSrcDir'; hemtt build"
+    if (-not $NoLog) { Stop-Transcript | Out-Null }
+    exit 4
+}
+$dutchNewest = Get-ChildItem (Join-Path $dutchSrcDir "addons") -Recurse -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if ($dutchNewest -and $dutchNewest.LastWriteTimeUtc -gt (Get-Item $dutchPbo).LastWriteTimeUtc) {
+    Write-Warning "FlyingDutchman source ($($dutchNewest.Name)) is newer than its PBO — run 'hemtt build' in $dutchSrcDir to repack before deploying it."
+}
+
 # Second server-only mod (-serverMod=…;@transfer_spawn): OUR TransferSpawn PBO — relocates
 # migrated characters to the new map's own spawn points on a map switch. Same rules as the
 # tracker: HEMTT artifact, must be pre-built, guarded here, shipped as an $items entry below.
@@ -413,6 +452,11 @@ $items = @(
     # Second server-only PBO -> @transfer_spawn/addons (matches -serverMod=…;@transfer_spawn).
     @{ Src = "../serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo"
        Dst = Join-Path $ServerDir "@transfer_spawn/addons/TransferSpawn_main.pbo"; Sudo = $false; Exec = $false }
+    # Third server-only PBO -> @flying_dutchman/addons (matches -serverMod=…;@flying_dutchman).
+    # Ships everywhere but wakes ONLY where the operator touched profiles/FlyingDutchman/enable —
+    # a per-box runtime marker, so prod stays dormant with the identical artifact.
+    @{ Src = "../serverMods/FlyingDutchman/.hemttout/build/addons/FlyingDutchman_main.pbo"
+       Dst = Join-Path $ServerDir "@flying_dutchman/addons/FlyingDutchman_main.pbo"; Sudo = $false; Exec = $false }
     @{ Src = "prestart.sh";         Dst = Join-Path $ServerDir "prestart.sh";  Sudo = $false; Exec = $true  }
     # The ONE home of the default mission. The real map.env is runtime state, seeded from
     # this below only when missing; prestart.sh also self-heals a deleted map.env from it.

@@ -580,6 +580,21 @@ case "$verb" in
     printf '{"ageSec":%d,"at":"%s","positions":%s}\n' "$age" "$(date -d @"$mt" +%H:%M:%S)" "$(cat "$f")"
     ;;
 
+  live-ship)
+    # live-ship — the patrol-ship snapshot the FlyingDutchman serverMod writes to
+    # profiles/FlyingDutchman/ship.json every ~20s ([{x,z,state}]; [] while no ship is
+    # alive, so the mtime is a heartbeat). Same envelope + exit contract as live-ai.
+    # Exit 2 = file absent — the mod ships DORMANT, so this is the normal state until enabled.
+    f="$SERVER_DIR/profiles/FlyingDutchman/ship.json"
+    [ -f "$f" ] || { echo "dayz-ctl: no ship.json (FlyingDutchman not enabled)" >&2; exit 2; }
+    age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+    # route.json (patrol loop) + ferry.json (shore boarding pads) ride along for the map, each
+    # defaulting to [] when absent so the envelope shape is stable.
+    rt="$SERVER_DIR/profiles/FlyingDutchman/route.json"; [ -f "$rt" ] && route="$(cat "$rt")" || route="[]"
+    dk="$SERVER_DIR/profiles/FlyingDutchman/ferry.json"; [ -f "$dk" ] && docks="$(cat "$dk")" || docks="[]"
+    printf '{"ageSec":%d,"positions":%s,"route":%s,"docks":%s}\n' "$age" "$(cat "$f")" "$route" "$docks"
+    ;;
+
   world-time)
     # world-time — the in-game world clock LiveTracker writes to profiles/LiveTracker/time.json
     # as a one-element array [{year,month,day,hour,minute}] every 20s. Envelope on stdout:

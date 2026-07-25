@@ -7,6 +7,7 @@
 import { el } from './dom.js';
 import { toast, setGlobalMsg, escapeHtml, attr, stripBom } from './ui.js';
 import { apiPost, rateLimited } from './api-client.js';
+import { mountJsonEditor, inferSchema } from './json-editor-ui.js';   // opt-in structured editor for a patrol entry (a patrol is small - no JSON-map pane needed, and the detail panel is narrow)
 import { loadCred, handle } from './auth.js';
 import { getActiveMission, setActiveMission } from './state.js';
 import { IDENTITY, isIdentity, applyAffine, invertAffine, solveCalibration } from './map-calibrate.js';
@@ -73,6 +74,7 @@ let mapPlayers = [];     // live player positions [{x,z}] (anonymized) — the o
 let mapPlayersAt = null; // server-clock HH:MM:SS of the freshest fix (staleness hint)
 let mapPlayersTimer = null;
 let mapBandits = { positions: [], stale: false, ageSec: null };  // live bandit positions from the AIB_Tracker serverMod
+let mapShip = { positions: [], route: [], docks: [], stale: false, ageSec: null };  // the Flying Dutchman patrol ship (/dayz/ship, position + patrol loop + shore boarding pad(s))
 let mapCursor = null;    // world { x, z } under the pointer (null = outside)
 let mapDrawQueued = false;
 // Per-layer alignment (map-calibration.json, committed sidecar). mapCalib = { maps:{...} };
@@ -83,6 +85,8 @@ let mapCalib = null;          // parsed sidecar (null until first load attempt)
 let mapCalibTried = false;
 let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
 let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
+let mapPatJson = false;       // patrol editor mode: false = bespoke Fields, true = json-editor navigator (opt-in toggle)
+let mapPatNav = null;         // the mounted navigator handle in JSON mode (getDoc() at save time)
 let mapNavFilter = '';        // quick-filter text for the nav list (sticky input; survives list re-renders)
 let mapNavMode = 'group';     // nav list layout: 'group' (by kind, collapsible) | 'flat' (A-Z). Loaded from localStorage in initMap.
 function calibFor(short, layerName) {
@@ -714,28 +718,44 @@ function renderPatrolEditor() {
   const name = isG ? mapShort(e.mission) : (ent.Name || (e.kind === 'object' ? ent.ObjectClassName : '') || '#' + e.idx);
   el.mapDetail.classList.remove('hidden');
   el.mapDetail.classList.add('editing');
+  // Mode toggle: bespoke Fields (default) vs the json-editor navigator on this whole entry (opt-in).
+  const modeSeg = '<div class="me-density"><span>Mode</span><span class="me-seg">'
+    + '<button type="button" id="peModeFields" class="' + (mapPatJson ? '' : 'on') + '">Fields</button>'
+    + '<button type="button" id="peModeJson" class="' + (mapPatJson ? 'on' : '') + '">JSON editor</button></span></div>';
+  const fieldsBody =
+    '<div class="me-density"><span>Rows</span><span class="me-seg"><button type="button" id="peDenseIn" class="' + (d === 'inline' ? 'on' : '') + '">Inline</button><button type="button" id="peDenseSt" class="' + (d === 'stacked' ? 'on' : '') + '">Stacked</button></span></div>'
+    + '<div class="pe-fields ' + d + '">' + core.map((k) => meField(k, ent[k])).join('') + '</div>'
+    + (hasWp ? waypointsSectionHtml(ent.Waypoints) : '')
+    + (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '')
+    + (adv.length ? '<details class="me-adv"><summary>Advanced — ' + adv.length + ' more field' + (adv.length === 1 ? '' : 's') + '</summary><div class="pe-fields ' + d + '">' + adv.map((k) => meField(k, ent[k])).join('') + '</div></details>' : '')
+    + (!isG && peLbcKeys.length ? '<datalist id="pe-lbc-cats">' + peLbcKeys.map((k) => '<option value="' + attr(k) + '"></option>').join('') + '</datalist>' : '');
   el.mapDetail.innerHTML =
     '<div class="me-head">' + glyph + '<b>' + escapeHtml(title) + '</b> <span class="k2">' + escapeHtml(name) + '</span></div>' +
     '<div class="me-note">' + (isG
       ? 'Map-wide defaults; patrols inherit them (-1). The Patrols array is edited per-patrol on the map. Restart to apply.'
       : 'Only this ' + (e.kind === 'object' ? 'object patrol' : 'patrol') + ' changes; every other field is preserved. Restart to apply.') + '</div>' +
-    '<div class="me-density"><span>Rows</span><span class="me-seg"><button type="button" id="peDenseIn" class="' + (d === 'inline' ? 'on' : '') + '">Inline</button><button type="button" id="peDenseSt" class="' + (d === 'stacked' ? 'on' : '') + '">Stacked</button></span></div>' +
-    '<div class="pe-fields ' + d + '">' + core.map((k) => meField(k, ent[k])).join('') + '</div>' +
-    (hasWp ? waypointsSectionHtml(ent.Waypoints) : '') +
-    (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '') +
-    (adv.length ? '<details class="me-adv"><summary>Advanced — ' + adv.length + ' more field' + (adv.length === 1 ? '' : 's') + '</summary><div class="pe-fields ' + d + '">' + adv.map((k) => meField(k, ent[k])).join('') + '</div></details>' : '') +
-    (!isG && peLbcKeys.length ? '<datalist id="pe-lbc-cats">' + peLbcKeys.map((k) => '<option value="' + attr(k) + '"></option>').join('') + '</datalist>' : '') +
+    modeSeg +
+    (mapPatJson ? '<div id="peJsonHost" class="pe-jsonhost"></div>' : fieldsBody) +
     '<div class="me-btns"><button type="button" class="btn-sm primary" id="peSave">Save</button><button type="button" class="btn-sm" id="peCancel">Cancel</button></div>';
-  el.mapDetail.querySelectorAll('.me-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
-  el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
-  el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });
-  wireLbc();
-  const bi = $id('peDenseIn'); if (bi) bi.onclick = () => applyPeDensity('inline');
-  const bs = $id('peDenseSt'); if (bs) bs.onclick = () => applyPeDensity('stacked');
+  const modeF = $id('peModeFields'); if (modeF) modeF.onclick = () => { if (mapPatJson) { mapPatJson = false; mapPatNav = null; renderPatrolEditor(); } };
+  const modeJ = $id('peModeJson'); if (modeJ) modeJ.onclick = () => { if (!mapPatJson) { mapPatJson = true; renderPatrolEditor(); } };
+  if (mapPatJson) {
+    // Navigate/edit the entry with the shared json-editor navigator. It edits `ent` (a reference
+    // into e.doc.Patrols[idx]) in place; save also syncs getDoc() back in case the root was replaced.
+    mapPatNav = null;
+    mountJsonEditor($id('peJsonHost'), { schema: inferSchema(ent), startval: ent, pathbar: false, density: 'stacked', collapseLargeOver: 400 }).then((h) => { if (mapPatEdit === e && mapPatJson) mapPatNav = h; else h.destroy(); });
+  } else {
+    el.mapDetail.querySelectorAll('.me-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
+    el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
+    el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });
+    wireLbc();
+    const bi = $id('peDenseIn'); if (bi) bi.onclick = () => applyPeDensity('inline');
+    const bs = $id('peDenseSt'); if (bs) bs.onclick = () => applyPeDensity('stacked');
+  }
   const S = $id('peSave'); if (S) S.onclick = savePatrolEdit;
   const C = $id('peCancel'); if (C) C.onclick = cancelPatrolEdit;
 }
-function cancelPatrolEdit() { mapPatEdit = null; el.mapDetail.classList.remove('editing'); renderMapDetail(); }
+function cancelPatrolEdit() { mapPatEdit = null; mapPatNav = null; el.mapDetail.classList.remove('editing'); renderMapDetail(); }
 // Waypoints listed in the editor (not only drawn on the map). Each raw [x,y,z] point shows as
 // editable X / Z (Y preserved); ✕ removes it. Object-patrol waypoints are offsets from the object.
 function waypointsSectionHtml(wps) {
@@ -878,10 +898,12 @@ async function savePatrolEdit() {
   const cred = loadCred(); if (!cred) return;
   const S = $id('peSave'); if (S) S.disabled = true;
   try {
+    // JSON mode: fold the navigator's edited entry back into the whole doc (covers a root replace).
+    if (mapPatJson && mapPatNav) { const ed = mapPatNav.getValue(); if (e.isGlobal) e.doc = ed; else if (e.doc && Array.isArray(e.doc.Patrols)) e.doc.Patrols[e.idx] = ed; }
     const content = JSON.stringify(e.doc, null, 2);
     const r = await apiPost('/dayz/configs/set-patrols', cred, { mission: e.mission, content, baseVersion: e.version });
     toast(r.message || 'Saved - restart to apply', 'ok');
-    mapPatEdit = null;
+    mapPatEdit = null; mapPatNav = null;
     el.mapDetail.classList.remove('editing');
     mapData = null; loadMapTab(true);   // re-derive the store so the map reflects the save
   } catch (err) {
@@ -1013,6 +1035,7 @@ function drawMap() {
   drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
   drawMapBandits(ctx);                                 // AIB activity under the players
   drawMapPlayers(ctx);                                 // live players on top of the bookmarks
+  drawMapShip(ctx);                                    // the Dutchman topmost — one marker, most watched
   drawMapCrosshair(ctx, w, h);
   updateMapBar();
 }
@@ -1192,8 +1215,11 @@ const saveSet = (key, set) => { try { localStorage.setItem(key, JSON.stringify([
 // Live overlays (player dots, NPC diamonds) default ON — readSet's empty-set default is
 // right for the datascraped bars but would blank live positions on everyone's first visit.
 const readSetOr = (key, dflt) => { try { return localStorage.getItem(key) === null ? new Set(dflt) : readSet(key); } catch { return new Set(dflt); } };
-const LIVE_KINDS = ['Players', 'NPCs'];
-const mapLiveSel = readSetOr('cfgview-maplive', LIVE_KINDS);
+const LIVE_KINDS = ['Players', 'NPCs', 'Ship'];
+// Key bumped (…-maplive → …-maplive2) when 'Ship' joined LIVE_KINDS: a stored pre-Ship
+// selection would otherwise lock the new chip OFF for every existing visitor. One-time
+// preference reset to the all-on default is the lesser evil.
+const mapLiveSel = readSetOr('cfgview-maplive2', LIVE_KINDS);
 
 // "All" is a three-state toggle: off/partial -> enable every present category;
 // fully on -> disable every one. That's "check All twice = disable all".
@@ -1255,8 +1281,11 @@ function renderMarkersFilter() {
 function renderLiveFilter() {
   const css = (v, fb) => (getComputedStyle(document.documentElement).getPropertyValue(v) || fb).trim();
   chipBar(el.mapLiveFilter, 'Live', LIVE_KINDS, mapLiveSel, 'data-live',
-    (n) => (n === 'Players' ? css('--info', '#2f6fd0') : css('--map-bad', '#c33327')),
-    (n) => (mapMission !== getActiveMission() ? 0 : (n === 'Players' ? mapPlayers.length : mapBandits.positions.length)));
+    (n) => (n === 'Players' ? css('--info', '#2f6fd0') : n === 'NPCs' ? css('--map-bad', '#c33327') : css('--map-ship', '#0e9aa7')),
+    (n) => (mapMission !== getActiveMission() ? 0
+      : n === 'Players' ? mapPlayers.length
+      : n === 'NPCs' ? mapBandits.positions.length
+      : mapShip.positions.length));
 }
 
 // Building footprints: small dark squares, culled to the viewport. 5-12k points,
@@ -1600,9 +1629,95 @@ async function loadBandits() {
     /* transient (torn read / pre-deploy 404): keep last-known, don't blank */
   }
 }
-const MAP_POLL_MS = 45000;   // map players+bandits — relaxed; Refresh button + refresh-on-return for immediacy
-export function startPlayers() { stopPlayers(); loadPlayers(); loadBandits(); mapPlayersTimer = setInterval(() => { loadPlayers(); loadBandits(); }, MAP_POLL_MS); }
-export function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersTimer); mapPlayersTimer = null; } mapPlayers = []; mapBandits = { positions: [], stale: false, ageSec: null }; }
+// ---------- the Flying Dutchman (patrol-ship overlay: one triangle + a state label) ----------
+function drawMapShip(ctx) {
+  if (!mapView || !mapLiveSel.has('Ship')) return;
+  if (mapMission !== getActiveMission()) return;   // ship coords only mean anything on the live map
+  const stateColor = { patrol: '#0e9aa7', docked: '#3fae4a', halted: '#e0a63a' };
+  // The patrol loop, dashed, under the ship marker — so "where is it going" needs no guesswork.
+  if (mapShip.route.length > 1) {
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i <= mapShip.route.length; i++) {
+      const w = mapShip.route[i % mapShip.route.length];
+      const [rx, ry] = mapToScreen(w.x, w.z);
+      if (i === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+    }
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 5]);
+    ctx.strokeStyle = 'rgba(14,154,167,0.75)';   // the ship teal, translucent
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  // Shore boarding pad(s) — a gold anchor marker + label, so "where do I board" is obvious.
+  for (const d of (mapShip.docks || [])) {
+    const [dx, dy] = mapToScreen(d.x, d.z);
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.beginPath();                                  // a diamond, distinct from ship + players
+    ctx.moveTo(0, -6); ctx.lineTo(6, 0); ctx.lineTo(0, 6); ctx.lineTo(-6, 0); ctx.closePath();
+    ctx.fillStyle = '#e8b923';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.stroke();
+    const label = '⚓ ' + (d.label || 'board');   // ⚓
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.strokeText(label, 10, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillText(label, 10, 4);
+    ctx.restore();
+  }
+  for (const s of mapShip.positions) {
+    const [sx, sy] = mapToScreen(s.x, s.z);
+    ctx.save();
+    ctx.translate(sx, sy);
+    // A sail-like triangle, larger than the player dots so the one ship reads at a glance.
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(7, 6); ctx.lineTo(-7, 6); ctx.closePath();
+    ctx.fillStyle = stateColor[s.state] || '#0e9aa7';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';   // same ring treatment as the player dots
+    ctx.stroke();
+    // State label beside the marker — answers "is it moving?" without hovering anything.
+    const label = 'ship · ' + (s.state || '?') + (s.target ? ' → ' + s.target : '');
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.strokeText(label, 11, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillText(label, 11, 4);
+    ctx.restore();
+  }
+}
+async function loadShip() {
+  if (rateLimited()) return;      // API said back off — skip this tick, timer stays armed
+  const cred = loadCred();
+  if (!cred) return;
+  try {
+    const r = await apiPost('/dayz/ship', cred);
+    mapShip = {
+      positions: Array.isArray(r.positions) ? r.positions : [],
+      route: Array.isArray(r.route) ? r.route : [],
+      docks: Array.isArray(r.docks) ? r.docks : [],
+      stale: !!r.stale,
+      ageSec: typeof r.ageSec === 'number' ? r.ageSec : null,
+    };
+    requestMapDraw();
+    updateMapBar();
+    renderLiveFilter();   // keep the chip count current
+  } catch (err) {
+    if (handle(err)) return;
+    /* transient (torn read / pre-deploy 404): keep last-known, don't blank */
+  }
+}
+const MAP_POLL_MS = 45000;   // map players+bandits+ship — relaxed; Refresh button + refresh-on-return for immediacy
+export function startPlayers() { stopPlayers(); loadPlayers(); loadBandits(); loadShip(); mapPlayersTimer = setInterval(() => { loadPlayers(); loadBandits(); loadShip(); }, MAP_POLL_MS); }
+export function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersTimer); mapPlayersTimer = null; } mapPlayers = []; mapBandits = { positions: [], stale: false, ageSec: null }; mapShip = { positions: [], route: [], docks: [], stale: false, ageSec: null }; }
 
 function updateMapBar() {
   const scale = mapView ? (1 / mapView.ppm) : 0;
@@ -1621,8 +1736,18 @@ function updateMapBar() {
       : mapBandits.stale
         ? '<span class="mp-stale" title="AIB tracker has not updated in over a minute — the server or the AIB_Tracker serverMod may be down">bandit tracker stale</span>'
         : '';
+  // Ship badge: state + destination at a glance ("is it moving?"), same gating as the others.
+  const shipFix = mapShip.positions.length ? mapShip.positions[0] : null;
+  const ship = mapMission !== getActiveMission() || !mapLiveSel.has('Ship')
+    ? ''
+    : shipFix
+      ? '<span class="mp-live" title="The Flying Dutchman — live position from the serverMod (updated every 20s)">⛵ '
+        + escapeHtml(shipFix.state || '?') + (shipFix.target ? ' → ' + escapeHtml(shipFix.target) : '') + '</span>'
+      : mapShip.stale
+        ? '<span class="mp-stale" title="Ship tracker has not updated in over a minute — the server or the FlyingDutchman serverMod may be down">ship tracker stale</span>'
+        : '';
   if (!mapCursor) {
-    el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
+    el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits + ship +
       (mapTiles ? '' : '<span style="color:var(--danger)">no map tiles delivered for this map — run Build-MapTiles.ps1 -Execute -Deliver + redeploy</span>');
     return;
   }
@@ -1631,7 +1756,7 @@ function updateMapBar() {
     '<span>X <b>' + mapCursor.x.toFixed(1) + '</b></span>' +
     '<span>Y <b>' + (y === null ? '—' : y.toFixed(2)) + '</b></span>' +
     '<span>Z <b>' + mapCursor.z.toFixed(1) + '</b></span>' +
-    '<span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits +
+    '<span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits + ship +
     '<span class="meta">right-click copies X Y Z</span>';
 }
 
@@ -2236,7 +2361,7 @@ export function initMap() {
   });
   el.mapLiveFilter.addEventListener('click', (e) => {
     const b = e.target.closest('.mf-chip'); if (!b) return;
-    toggleOverlay(mapLiveSel, 'cfgview-maplive', b.dataset.live, LIVE_KINDS);
+    toggleOverlay(mapLiveSel, 'cfgview-maplive2', b.dataset.live, LIVE_KINDS);
     renderLiveFilter(); requestMapDraw(); updateMapBar();
   });
   el.mapEditSeg.addEventListener('click', () => toggleMapEdit());

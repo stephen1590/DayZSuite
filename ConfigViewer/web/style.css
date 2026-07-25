@@ -542,6 +542,10 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5;
     padding: 10px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); border-radius: 7px; white-space: pre; overflow: auto; }
   .wf-ta:focus { outline: none; border-color: var(--accent); }
+  /* structured-editor host (the json-editor mounts inside): its own scroll box so the sticky path
+     bar pins to the top and a deep/large file scrolls within the frame instead of the whole page. */
+  .wf-json { border: 1px solid var(--border); border-radius: 7px; background: var(--card);
+    padding: 8px 10px; min-height: 200px; max-height: 64vh; overflow: auto; }
   .wf-preview { border-top: 1px solid var(--border); padding-top: 8px; }
   .wf-preview:empty { display: none; }
   .wf-ptitle { font-weight: 600; margin: 2px 0 4px; font-size: 13px; }
@@ -684,6 +688,8 @@
   .map-detail .me-seg button.on { background: var(--accent); color: var(--accent-fg); }
   .map-detail .pe-fields { display: flex; flex-direction: column; }
   .map-detail .pe-fields.stacked { gap: 9px; }
+  /* opt-in structured (json-editor) mode for a patrol: scroll within the narrow detail panel */
+  .map-detail .pe-jsonhost { max-height: 62vh; overflow: auto; margin-top: 6px; }
   .map-detail .pe-fields.stacked .me-f { display: flex; flex-direction: column; gap: 3px; }
   .map-detail .pe-fields.inline { gap: 3px; }
   .map-detail .pe-fields.inline .me-f { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; padding: 1px 0; }

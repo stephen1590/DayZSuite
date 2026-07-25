@@ -376,6 +376,50 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    ship: {
+      destructive: false,
+      readOnly: true,
+      describe: 'the patrol ship position [{x,z,state,target}] from the FlyingDutchman serverMod (profiles/FlyingDutchman/ship.json, rewritten every ~20s; [] while no ship is alive). state = "patrol" | "docked" (town stop) | "halted" (holding for nearby players); target = the waypoint label it is heading to. Same freshness contract as the other live layers. missing = the mod is not enabled — it ships DORMANT, so missing is the normal state until the ship goes live.',
+      schema: {
+        response: { type: 'object', properties: {
+          positions: { type: 'array', items: { type: 'object', properties: {
+            x: { type: 'number' }, z: { type: 'number' },
+            state: { type: 'string' },   // 'patrol' | 'docked' | 'halted'
+            target: { type: 'string' },  // waypoint label the ship is heading to
+          } } },
+          route: { type: 'array', items: { type: 'object', properties: {
+            x: { type: 'number' }, z: { type: 'number' },
+            label: { type: 'string' },   // waypoint name — the map draws the loop through these
+          } } },
+          docks: { type: 'array', items: { type: 'object', properties: {
+            x: { type: 'number' }, z: { type: 'number' },
+            label: { type: 'string' },   // shore boarding pad(s) — "board here" markers
+          } } },
+          count: { type: 'integer' },
+          ageSec: { type: 'integer', nullable: true },
+          stale: { type: 'boolean' },
+          missing: { type: 'boolean' },
+        } },
+      },
+      async run() {
+        // Mirrors the bandits/live-ai contract: heartbeat mtime, stale window, missing = mod off.
+        // route + docks ride along even when the position is stale — they are static config.
+        const STALE_SEC = 60;   // 3 missed ~20s writes
+        const r = await dayz.ctl('live-ship');
+        if (r.code === 2) return { positions: [], route: [], docks: [], count: 0, ageSec: null, stale: false, missing: true };
+        if (r.code !== 0) throw fail(502, `live-ship failed: ${(r.stderr || r.stdout).trim()}`);
+        let env: { ageSec?: number; positions?: Array<{ x: number; z: number; state?: string }>; route?: Array<{ x: number; z: number; label?: string }>; docks?: Array<{ x: number; z: number; label?: string }> };
+        try { env = JSON.parse(r.stdout); }
+        catch { throw fail(503, 'ship.json unreadable (torn mid-write) — retry'); }
+        const ageSec = typeof env.ageSec === 'number' ? env.ageSec : null;
+        const stale = ageSec === null || ageSec > STALE_SEC;
+        const positions = (!stale && Array.isArray(env.positions)) ? env.positions : [];
+        const route = Array.isArray(env.route) ? env.route : [];
+        const docks = Array.isArray(env.docks) ? env.docks : [];
+        return { positions, route, docks, count: positions.length, ageSec, stale, missing: false };
+      },
+    },
+
     'world-time': {
       destructive: false,
       readOnly: true,

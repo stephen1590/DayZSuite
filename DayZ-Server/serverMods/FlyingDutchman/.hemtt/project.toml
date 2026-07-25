@@ -1,0 +1,18 @@
+# HEMTT build config for FlyingDutchman — a SERVER-ONLY mod (-serverMod, never sent to
+# clients): one persistent Expansion ship patrolling the Sakhal coast by WAYPOINT-TELEPORT (no
+# driving, no fuel). `hemtt build` -> .hemttout/build/addons/FlyingDutchman_main.pbo.
+# No signing (server-only). Clients need @expansionvehicles (already enforced) for the
+# ExpansionLHD class; this mod resolves it by NAME at spawn, so it takes NO compile-time
+# Expansion dependency.
+#
+# DORMANT by default: ShipPatroller.ENABLED = false ships it inert. The two INVALID-PBOPREFIX /
+# "Arma 3 Tools not found" warnings on build are expected + harmless (same as CustomServerMods).
+name = "Flying Dutchman"
+prefix = "FlyingDutchman"
+mainprefix = ""
+
+[version]
+major = 0
+minor = 1
+patch = 0
+git_hash = 0

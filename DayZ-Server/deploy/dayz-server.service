@@ -31,7 +31,9 @@ ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
 #                         world clock for the map overlay (profiles/LiveTracker/) + fresh-spawn flu buff
 #   @transfer_spawn - relocates migrated characters to the new map's own spawn points on a
 #                     map switch (reads profiles/transfer_spawn.json; see serverMods/TransferSpawn)
-ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" -serverMod=@custom_server_mods -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
+#   @flying_dutchman  - coastal patrol ship (FlyingDutchman). DORMANT unless the box has the
+#                       profiles/FlyingDutchman/enable marker - prod stays inert by default
+ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" "-serverMod=@custom_server_mods;@flying_dutchman" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s INT $MAINPID
 # DayZ-Expansion's AI (eAIGroup::Save) LEAKS file descriptors — the process climbs

@@ -4,6 +4,11 @@ Mods here load via **`-serverMod`**, not `-mod`. That means the server runs them
 **never advertises, requires, or ships them to clients** - players join exactly as they
 do now and never download anything. Use this for backend/admin logic only.
 
+Mods in this dir: **CustomServerMods** (live - tracker + spawn buff, below),
+**TransferSpawn**, and **FlyingDutchman** (dormant prototype - a coastal patrol
+ship, deliberately its OWN mod so it can fail without touching the tracker; see its
+`README.md` + `PLAN.md`).
+
 ## CustomServerMods
 
 The grab-bag server-only mod - backend features that can't be expressed as config, one

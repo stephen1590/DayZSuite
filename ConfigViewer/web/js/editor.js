@@ -16,6 +16,10 @@ import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own module with its OWN save path (configs/set-types), never config-overrides.json.
 import { renderTypesEditor, typesAnyDirty } from './types-editor.js';
+// Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
+// Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
+// (getValue -> jsonEnc -> the same preview-override -> set-overrides flow the textarea fed).
+import { mountJsonNavigator } from './json-editor-ui.js';
 
 let shellHooks = { syncHash: () => {} };
 export function setEditorHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -47,7 +51,8 @@ const fileCache = {};
 // it against the frozen default to derive a minimal delta, then Apply merges that delta into
 // overridesDoc so the normal Save path commits it. wfShowDefault drives the View Live/Default toggle.
 let wfDraft = null, wfPreview = null, wfBusy = false, wfShowDefault = false;
-function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfShowDefault = false; }
+let wfJsonHandle = null;   // the mounted json-editor handle in Edit mode (JSON files); getValue at Preview time
+function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfShowDefault = false; wfJsonHandle = null; }
 
 // Dirty tracking: overridesDoc vs its last loaded/saved state. Drives the unsaved
 // notification — the header pill, and the beforeunload guard so a reload/close can't
@@ -531,9 +536,9 @@ function applyFieldVisibility() {
     const kEl = r.querySelector('.k');
     // Match either what is shown or the real cfg key, so searching "whitelist" still finds
     // the field that now reads "enableAllowList".
-    const shown = (kEl?.textContent || '').toLowerCase();
-    const real  = (kEl?.dataset.key || '').toLowerCase();
-    const vis = q ? (shown.includes(q) || real.includes(q)) : (ovrCapOpen || !r.classList.contains('cap-hide'));
+    const txt  = (kEl?.textContent || '').toLowerCase();
+    const real = (kEl?.dataset.key || '').toLowerCase();
+    const vis = q ? (txt.includes(q) || real.includes(q)) : (ovrCapOpen || !r.classList.contains('cap-hide'));
     r.style.display = vis ? '' : 'none';
     if (vis) shown++;
   });
@@ -813,16 +818,29 @@ function wfTarget(row) {
   if (hasMission) return { layer: 'mission', ok: true };
   return { layer: newLayerFor(row), ok: true };   // fresh file: honour the New-overrides selector
 }
+// A JSON file whose current draft parses losslessly gets the structured editor instead of the raw
+// textarea. Malformed JSON (or XML/other) keeps the textarea so you can always fix bad syntax by hand.
+function editJsonOk(row, draft) {
+  if (row.kind !== 'json') return false;
+  try { bigParse(draft); return true; } catch { return false; }
+}
 function editFileHtml(row, file) {
   if (file.text === null) return '<div class="ovr-note">Whole-file editing needs the live file — ' + escapeHtml(file.err || 'unavailable') + '. Use Fields.</div>';
   const draft = wfDraft != null ? wfDraft : file.text;
+  const jsonMode = editJsonOk(row, draft);
+  const hint = jsonMode
+    ? 'Edit the whole file as structured fields — <b>Preview</b> derives the minimal override delta by diffing the frozen default.'
+    : 'Edit the whole file — <b>Preview</b> derives the minimal override delta by diffing the frozen default. Use this only when Fields can’t express the change.';
+  const widget = jsonMode
+    ? '<div class="wf-json" id="wfJson"></div>'
+    : '<textarea class="wf-ta" id="wfTa" spellcheck="false" autocomplete="off" wrap="off">' + escapeHtml(draft) + '</textarea>';
   return '<div class="wfedit">' +
     '<div class="wf-bar">' +
-      '<span class="wf-hint">Edit the whole file — <b>Preview</b> derives the minimal override delta by diffing the frozen default. Use this only when Fields can’t express the change.</span>' +
+      '<span class="wf-hint">' + hint + '</span>' +
       '<button type="button" class="btn-sm" id="wfViewDefault">View default</button>' +
       '<button type="button" class="btn-sm primary" id="wfPreviewBtn"><span class="wf-sp hidden" id="wfSpin"></span>Preview changes</button>' +
     '</div>' +
-    '<textarea class="wf-ta" id="wfTa" spellcheck="false" autocomplete="off" wrap="off">' + escapeHtml(draft) + '</textarea>' +
+    widget +
     '<div class="wf-preview" id="wfPrev"></div>' +
   '</div>';
 }
@@ -921,8 +939,25 @@ function wfApply(row) {
   setGlobalMsg(msg, false);
 }
 function wireEditFile(row) {
-  const ta = $('wfTa'); if (ta) ta.oninput = () => { wfDraft = ta.value; wfPreview = null; renderWfPreview(row); };
-  const pv = $('wfPreviewBtn'); if (pv) pv.onclick = () => wfDoPreview(row);
+  wfJsonHandle = null;
+  const host = $('wfJson');
+  if (host) {
+    // Jump-to-node navigator: the whole file as a clickable JSON map, editing only the node you
+    // click (tiny + instant, no whole-tree build). bigParse keeps big integers lossless; getDoc()
+    // is read at Preview and fed to the SAME preview-override -> set-overrides flow as the textarea.
+    const draft = wfDraft != null ? wfDraft : (lastFileText ?? '');
+    let startval; try { startval = bigParse(draft); } catch { startval = undefined; }
+    if (startval !== undefined) {
+      if (wfDraft == null) wfDraft = jsonEnc(startval);   // seed so Preview works before the first edit
+      mountJsonNavigator(host, { doc: startval, onChange: () => { wfPreview = null; renderWfPreview(row); } }).then((h) => {
+        if (selKey !== row.key) { h.destroy(); return; }   // selection moved while the lib loaded
+        wfJsonHandle = h;
+      });
+    }
+  } else {
+    const ta = $('wfTa'); if (ta) ta.oninput = () => { wfDraft = ta.value; wfPreview = null; renderWfPreview(row); };
+  }
+  const pv = $('wfPreviewBtn'); if (pv) pv.onclick = () => { if (wfJsonHandle) wfDraft = jsonEnc(wfJsonHandle.getDoc()); wfDoPreview(row); };
   const vd = $('wfViewDefault'); if (vd) vd.onclick = () => { wfShowDefault = true; ovrView = 'file'; renderEditor(); };
   renderWfPreview(row);
 }
