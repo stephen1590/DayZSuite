@@ -78,7 +78,9 @@ class ShipFerry
     {
         array<ref ShipDock> docks = new array<ref ShipDock>();
         ShipDock d = new ShipDock();
-        vector p = s_Sign ? s_Sign.GetPosition() : SIGN_POS;
+        vector p = SIGN_POS;
+        if (s_Sign)
+            p = s_Sign.GetPosition();
         d.x = p[0];
         d.z = p[2];
         d.label = "Board the Flying Dutchman";
@@ -99,7 +101,8 @@ class ShipFerry
             top = minMax[1][1] + 3.0;   // just above the island/tower
         vector from = Vector(deckXZ[0], shipY + top, deckXZ[2]);
         vector to   = Vector(deckXZ[0], shipY - 5.0, deckXZ[2]);
-        vector hitPos, hitDir;
+        vector hitPos;
+        vector hitDir;
         int hitComp;
         set<Object> hitObjects = new set<Object>();
         bool hit = DayZPhysics.RaycastRV(from, to, hitPos, hitDir, hitComp, hitObjects, null, null, true, false, ObjIntersectView);
