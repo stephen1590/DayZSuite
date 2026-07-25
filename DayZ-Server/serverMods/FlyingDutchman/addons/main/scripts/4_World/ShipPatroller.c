@@ -249,36 +249,27 @@ class ShipPatroller
         GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(SpawnAfterWorldLoad, 20000, false);
     }
 
-    // Every server-side ExpansionLHD reports here from EEInit (see ExpansionLHD.c) — spawned,
-    // OR loaded back from vehicle persistence. Before the One Ship exists they queue for the
-    // boot purge; after it exists, anything that isn't it is a late-streamed stray: delete on
-    // sight, so hulls can never accumulate again no matter where persistence parks them.
-    private static ref array<EntityAI> s_Hulls = new array<EntityAI>();
-    static void RegisterHull(EntityAI hull)
-    {
-        if (!hull) return;
-        if (s_Ship && hull != s_Ship)
-        {
-            Print("[FlyingDutchman] late-loaded stray " + SHIP_CLASS + " at " + hull.GetPosition().ToString() + " — deleting");
-            GetGame().ObjectDelete(hull);
-            return;
-        }
-        foreach (EntityAI known : s_Hulls)
-            if (known == hull) return;
-        s_Hulls.Insert(hull);
-    }
-
+    // Stray-hull purge v3: small-radius object sweeps at every route waypoint (strays only ever
+    // sit where the ship sailed). 400m queries in open water stay far below the engine's ~1024
+    // result cap, unlike the map-wide query that silently missed hulls. (v2 was an EEInit hook
+    // via `modded class ExpansionLHD` — removed 2026-07-25: a server-only modded class on a
+    // networked VEHICLE type was prime suspect for clients failing to render the ship at all.)
     private static void SpawnAfterWorldLoad()
     {
         int purged = 0;
-        foreach (EntityAI hull : s_Hulls)
+        for (int i = 0; i < s_Route.Count(); i++)
         {
-            if (!hull) continue;
-            Print("[FlyingDutchman] purging stray hull at " + hull.GetPosition().ToString());
-            GetGame().ObjectDelete(hull);
-            purged++;
+            array<Object> objects = new array<Object>();
+            array<CargoBase> proxyCargos = new array<CargoBase>();
+            GetGame().GetObjectsAtPosition3D(LegPos(i), 400, objects, proxyCargos);
+            foreach (Object obj : objects)
+            {
+                if (obj.GetType() != SHIP_CLASS) continue;
+                Print("[FlyingDutchman] purging stray hull at " + obj.GetPosition().ToString());
+                GetGame().ObjectDelete(obj);
+                purged++;
+            }
         }
-        s_Hulls.Clear();
         Print("[FlyingDutchman] purge complete: " + purged + " stray hull(s) removed — the One Ship spawns now");
         Spawn();
     }
@@ -293,9 +284,11 @@ class ShipPatroller
     private static void Spawn()
     {
         vector pos = LegPos(s_Leg);
-        // Boats: CREATEPHYSICS (buoyancy) + INITAI (start the engine simulation) — see the
-        // vehicles wiki. NO PLACE_ON_SURFACE (that snaps to ground, not water).
-        Object obj = GetGame().CreateObjectEx(SHIP_CLASS, pos, ECE_CREATEPHYSICS | ECE_INITAI);
+        // EXACTLY the trader/market spawn recipe (ExpansionItemSpawnHelper.SpawnVehicle — the
+        // one LHD spawn path documented to WORK on this box): CREATEPHYSICS|UPDATEPATHGRAPH,
+        // no ECE_INITAI, no surface placement for boats. Our earlier ECE_INITAI spawn produced a
+        // server-side hull clients never rendered (prod 2026-07-25).
+        Object obj = GetGame().CreateObjectEx(SHIP_CLASS, pos, ECE_CREATEPHYSICS | ECE_UPDATEPATHGRAPH);
         s_Ship = EntityAI.Cast(obj);
         if (!s_Ship)
         {

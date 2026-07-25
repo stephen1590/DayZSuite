@@ -1,11 +1,11 @@
 // FlyingDutchman — server-only mod: one persistent Expansion ship patrolling the Sakhal
 // coast. Loaded via -serverMod ONLY, never sent to / downloaded by clients.
 //
-// Clients need @expansionvehicles (ALREADY enforced) for the ExpansionLHD class. This mod
-// DOES take a compile-time dependency on the vehicles scripts (requiredAddons below): the
-// stray-hull purge hooks `modded class ExpansionLHD` (EEInit registry — the only cap-proof
-// way to see persistence-loaded hulls), and a modded class only applies when its owner addon
-// is named. Owner read from the shipped vehicles_scripts.pbo: DayZExpansion_Vehicles_Scripts.
+// Clients need @expansionvehicles (ALREADY enforced) for the ExpansionLHD class — resolved by
+// NAME at spawn. requiredAddons names the vehicles scripts only to pin compile ORDER (we call
+// Expansion Core's ExpansionNotification; vehicles requires core, so core compiles first).
+// NO modded classes on vehicle types: a server-only override on a networked vehicle class was
+// prime suspect for clients failing to render the ship (removed 2026-07-25).
 //
 // DORMANT: ShipPatroller.ENABLED = false ships it inert — spawns nothing, schedules nothing.
 // Flip it on (and add the mod to the -serverMod chain) only when ready to test on the box.
