@@ -29,11 +29,13 @@ class ShipFerry
     // ---- owner-tunable test constants --------------------------------------------------------
     static vector SIGN_POS      = "13627.42 0 5124.00";   // demo island, east coast — inside the patrol loop
     static vector SHORE_ARRIVAL = "13612.40 0 5139.00";   // return landing: dry land just inland of the pole
-    // Deck points in ship MODEL space (x = beam, y = height HINT, z = along keel). The Y is only
-    // a fallback hint now — DeckLanding() raycasts the real deck height at teleport time.
-    static float  DECK_Y_HINT     = 16.0;
-    static vector DECK_ARRIVAL_MS = "0 16.0 -30";   // boarding landing: aft, clear of the island/tower
-    static vector DECK_PAD_MS     = "0 16.0 25";    // RETURN pad: fore of center (~55m from arrival)
+    // Deck points in ship MODEL space (x = beam, y = height, z = along keel). Deck height is
+    // MEASURED, not estimated: the owner died standing on deck at world y 11.5 with the hull
+    // origin at ~3.5 (ADM, 2026-07-25 16:28) => flight deck = ~+8m over hull origin. The first
+    // +16 estimate made the fallback an ~8m killer drop. +9 = deck + 1m clearance.
+    static float  DECK_Y_HINT     = 9.0;
+    static vector DECK_ARRIVAL_MS = "0 9.0 -30";    // boarding landing: aft, clear of the tower
+    static vector DECK_PAD_MS     = "0 9.0 25";     // RETURN pad: fore of center (~55m from arrival)
     static float  PAD_RADIUS   = 3.5;               // stand this close…
     static int    DWELL_SEC    = 3;                 // …for this long
     static int    COOLDOWN_SEC = 15;                // per-player, blocks pad ping-pong
@@ -105,14 +107,21 @@ class ShipFerry
         vector hitDir;
         int hitComp;
         set<Object> hitObjects = new set<Object>();
-        bool hit = DayZPhysics.RaycastRV(from, to, hitPos, hitDir, hitComp, hitObjects, null, null, true, false, ObjIntersectView);
-        if (hit)
+        // COLLISION geometry (ObjIntersectGeom) — the surface players stand on. The first
+        // version cast ObjIntersectView and punched straight through the deck into the sea:
+        // the owner boarded UNDER the hull ("found deck at -2.9m", prod 2026-07-25). Param
+        // order copied from Hologram.c (sorted=false).
+        bool hit = DayZPhysics.RaycastRV(from, to, hitPos, hitDir, hitComp, hitObjects, null, null, false, false, ObjIntersectGeom);
+        // Plausibility gate: a real deck hit sits well above the hull origin and below the
+        // box top. A sea/hull-bottom hit (anything low) is treated as a MISS — the landing
+        // must never be below deck height, so the fallback overrides bad geometry answers.
+        if (hit && hitPos[1] > shipY + 5.0 && hitPos[1] < shipY + top)
         {
-            Print("[FlyingDutchman] ferry: deck raycast found deck at +" + (hitPos[1] - shipY) + "m above hull origin");
-            return Vector(hitPos[0], hitPos[1] + 0.3, hitPos[2]);
+            Print("[FlyingDutchman] ferry: deck found at +" + (hitPos[1] - shipY) + "m — landing there");
+            return Vector(hitPos[0], hitPos[1] + 1.0, hitPos[2]);
         }
-        Print("[FlyingDutchman] ferry: deck raycast MISS — model-space fallback (+" + DECK_Y_HINT + "m)");
-        return deckXZ;
+        Print("[FlyingDutchman] ferry: deck raycast unusable (hit=" + hit + ") — landing at hull origin +" + DECK_Y_HINT + "m");
+        return Vector(deckXZ[0], shipY + DECK_Y_HINT + 1.0, deckXZ[2]);
     }
 
     // Horizontal proximity + a vertical tolerance (the deck height isn't exact, so a pure 3D

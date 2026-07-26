@@ -87,6 +87,7 @@ let mapCal = null;            // active Calibrate session (null = off) - see the
 let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
 let mapPatJson = false;       // patrol editor mode: false = bespoke Fields, true = json-editor navigator (opt-in toggle)
 let mapPatNav = null;         // the mounted navigator handle in JSON mode (getDoc() at save time)
+let mapPlaceMode = null;      // null | 'patrol' — armed by the Patrols group "+"; next map click places a new patrol there
 let mapNavFilter = '';        // quick-filter text for the nav list (sticky input; survives list re-renders)
 let mapNavMode = 'group';     // nav list layout: 'group' (by kind, collapsible) | 'flat' (A-Z). Loaded from localStorage in initMap.
 function calibFor(short, layerName) {
@@ -156,6 +157,17 @@ export async function loadMapTab(force) {
     if (getActiveMission() === null) {
       try { const s = await apiPost('/dayz/status', cred); setActiveMission(s.map || null); } catch { /* leave null */ }
       if (seq !== mapLoadSeq) return;
+    }
+    // Live patrols (the active mission's AIPatrolSettings) so the map reflects patrol edits BEFORE
+    // the box rebuilds the generated store at restart. Fail-soft -> setupMap falls back to generated.
+    const liveMission = getActiveMission();
+    if (liveMission) {
+      try {
+        const pr = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(liveMission), cred);
+        if (seq !== mapLoadSeq) return;
+        const pd = JSON.parse(stripBom(pr.content || '{}'));
+        if (mapData) mapData.livePatrols = (pd && Array.isArray(pd.Patrols)) ? pd : null;
+      } catch (_e) { if (mapData) mapData.livePatrols = null; }
     }
   }
   buildMapOptions();
@@ -294,21 +306,28 @@ function setMapMission(mission) {
       kind: 'location', cat: 'location', idx: e.idx, name: e.name,
       x: e.x, y: e.y, z: e.z, radius: e.radius, type: e.type, enabled: e.enabled, waypoints: null,
     }));
-    const pats = (d.patrols || []).map((e) => ({
-      kind: 'patrol', cat: 'patrol', idx: e.idx, name: e.name,
-      x: e.x, y: e.y, z: e.z, faction: e.faction, loadout: e.loadout,
-      count: e.count, countMax: e.countMax, behaviour: e.behaviour, speed: e.speed,
-      chance: e.chance, persist: e.persist,
-      // Marker IS waypoint[0]; the route continues from [1]. drawSelectedWaypoints starts its
-      // path at (p.x,p.z), so slicing avoids a doubled first leg.
-      waypoints: (e.waypoints || []).slice(1).map((w) => ({ x: w[0], y: w[1], z: w[2] })),
-    }));
-    const objs = (d.objectPatrols || []).map((e) => ({
-      kind: 'object', cat: 'object', idx: e.idx, name: e.name, objectClass: e.objectClass,
-      faction: e.faction, count: e.count, countMax: e.countMax, behaviour: e.behaviour,
-      chance: e.chance, x: null, y: null, z: null, waypoints: null,
-    }));
-    mapPts = locs.concat(pats, objs);
+    // Patrols/object patrols: derive from the LIVE AIPatrolSettings when we have it (so edits show
+    // before the box rebuilds the generated store at restart); else fall back to the generated store.
+    let pao;
+    if (mapData.livePatrols) {
+      pao = derivePatrolPoints(mapData.livePatrols);
+    } else {
+      const pats = (d.patrols || []).map((e) => ({
+        kind: 'patrol', cat: 'patrol', idx: e.idx, name: e.name,
+        x: e.x, y: e.y, z: e.z, faction: e.faction, loadout: e.loadout,
+        count: e.count, countMax: e.countMax, behaviour: e.behaviour, speed: e.speed,
+        chance: e.chance, persist: e.persist,
+        // Marker IS waypoint[0]; the route continues from [1] (avoids a doubled first leg).
+        waypoints: (e.waypoints || []).slice(1).map((w) => ({ x: w[0], y: w[1], z: w[2] })),
+      }));
+      const objs = (d.objectPatrols || []).map((e) => ({
+        kind: 'object', cat: 'object', idx: e.idx, name: e.name, objectClass: e.objectClass,
+        faction: e.faction, count: e.count, countMax: e.countMax, behaviour: e.behaviour,
+        chance: e.chance, x: null, y: null, z: null, waypoints: null,
+      }));
+      pao = pats.concat(objs);
+    }
+    mapPts = locs.concat(pao);
   } else {
   mapPts = mapData.spawns.points
     .filter((e) => mine.includes(e.map))
@@ -643,7 +662,7 @@ function $id(id) { return document.getElementById(id); }
 
 // ===================== Phase 5: per-patrol field editor =====================
 // The map OWNS patrols. Click a patrol -> Edit fields -> this loads the mission's raw
-// AIPatrolSettings.json (configs/patrols), locates the entry by its stable idx, and edits its
+// AIPatrolSettings.json (configs/settings key=patrols), locates the entry by its stable idx, edits its
 // fields directly. Core fields up front, the other ~35 under Advanced (each showing its value;
 // -1 = inheriting the global). Save merges just this entry back and writes the whole doc via
 // configs/set-patrols (unique-name validated on the box, snapshot, base= concurrency). Every
@@ -666,7 +685,7 @@ async function startPatrolEdit(p) {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/patrols?mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     const arr = Array.isArray(doc.Patrols) ? doc.Patrols : [];
     if (p.idx == null || !arr[p.idx] || typeof arr[p.idx] !== 'object') { toast('Could not locate this patrol in the live file (idx ' + p.idx + ') - reload the map.', 'err'); return; }
@@ -680,11 +699,120 @@ async function startGlobalEdit() {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/patrols?mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     mapPatEdit = { mission, idx: null, doc, version: r.version, entry: doc, isGlobal: true };
     renderMapDetail();
   } catch (err) { if (!handle(err)) toast('Could not load AI settings: ' + err.message, 'err'); }
+}
+// "+" on the Patrols group: after the user clicks the map, create a NEW patrol at those world
+// coords and open it in the editor. The entry is cloned from an existing patrol (guaranteed-valid
+// shape) or a minimal default, given a unique Name and Waypoints[0] = the spawn. Save writes the
+// whole doc via set-patrols; it shows on the map after the next restart (the map draws the derived
+// store). Cancel discards it (nothing is written until Save).
+async function startNewPatrol(wx, wy, wz) {
+  const cred = loadCred(); if (!cred) return;
+  const mission = mapMission;
+  try {
+    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const doc = JSON.parse(stripBom(r.content || '{}'));
+    if (!Array.isArray(doc.Patrols)) doc.Patrols = [];
+    const arr = doc.Patrols;
+    const base = arr.find((e) => e && typeof e === 'object' && !e.ObjectClassName) || arr[0];
+    const tmpl = base ? JSON.parse(JSON.stringify(base))
+      : { Name: '', Faction: docDefaultFaction(), NumberOfAI: 1, NumberOfAIMax: -1, Behaviour: 'PATROL', Speed: 'JOG', Chance: 1, Persist: 0, Waypoints: [] };
+    const names = new Set(arr.map((e) => e && e.Name).filter(Boolean));
+    let n = 1, nm; do { nm = 'New Patrol ' + n++; } while (names.has(nm));
+    tmpl.Name = nm;
+    tmpl.Waypoints = [[Math.round(wx), Math.round(wy), Math.round(wz)]];   // spawn point = waypoint[0]
+    arr.push(tmpl);
+    mapPatEdit = { mission, idx: arr.length - 1, doc, version: r.version, entry: tmpl, kind: 'patrol' };
+    renderMapDetail();
+    toast('New patrol placed at ' + Math.round(wx) + ', ' + Math.round(wz) + ' — fill it in and Save (restart to apply)', 'ok');
+  } catch (err) { if (!handle(err)) toast('Could not create patrol: ' + err.message, 'err'); }
+}
+// "+" on the Object patrols group: object patrols are Patrols entries with an ObjectClassName (they
+// spawn at every instance of that class - no map position). Create one and open it to set the class.
+async function startNewObjectPatrol() {
+  const cred = loadCred(); if (!cred) return;
+  const mission = mapMission;
+  try {
+    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const doc = JSON.parse(stripBom(r.content || '{}'));
+    if (!Array.isArray(doc.Patrols)) doc.Patrols = [];
+    const arr = doc.Patrols;
+    const base = arr.find((e) => e && typeof e === 'object' && e.ObjectClassName) || arr[0];
+    const tmpl = base ? JSON.parse(JSON.stringify(base))
+      : { Name: '', ObjectClassName: '', Faction: docDefaultFaction(), NumberOfAI: 1, NumberOfAIMax: -1, Behaviour: 'GUARD', Chance: 1, Persist: 0, Waypoints: [] };
+    const names = new Set(arr.map((e) => e && e.Name).filter(Boolean));
+    let n = 1, nm; do { nm = 'New Object Patrol ' + n++; } while (names.has(nm));
+    tmpl.Name = nm; tmpl.ObjectClassName = ''; tmpl.Waypoints = [];   // spawns at the class instance - no fixed position
+    arr.push(tmpl);
+    mapPatEdit = { mission, idx: arr.length - 1, doc, version: r.version, entry: tmpl, kind: 'object' };
+    renderMapDetail();
+    toast('New object patrol added — set its ObjectClassName and Save (restart to apply)', 'ok');
+  } catch (err) { if (!handle(err)) toast('Could not create object patrol: ' + err.message, 'err'); }
+}
+// "−" on the Patrols / Object patrols group: delete the selected entry from AIPatrolSettings.Patrols
+// (both kinds live in the same array, keyed by idx) and save the doc.
+async function deleteSelectedPatrol() {
+  const p = mapSelPt > -1 ? mapPts[mapSelPt] : null;
+  if (!p || (p.kind !== 'patrol' && p.kind !== 'object') || p.idx == null) { toast('Select a patrol or object patrol first, then press −', 'err'); return; }
+  if (!confirm('Delete ' + (p.kind === 'object' ? 'object patrol' : 'patrol') + ' "' + navName(p) + '"? Applies at the next restart.')) return;
+  const cred = loadCred(); if (!cred) return;
+  const mission = mapMission;
+  try {
+    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const doc = JSON.parse(stripBom(r.content || '{}'));
+    if (!Array.isArray(doc.Patrols) || !doc.Patrols[p.idx]) { toast('Could not locate that patrol in the live file — reload the map.', 'err'); return; }
+    doc.Patrols.splice(p.idx, 1);
+    await apiPost('/dayz/configs/set-settings', cred, { key: 'patrols', mission, content: JSON.stringify(doc, null, 2), baseVersion: r.version });
+    toast('Patrol deleted — restart to apply', 'ok');
+    mapPatEdit = null; el.mapDetail.classList.remove('editing');
+    applyPatrolDocToMap(doc);   // reflect the deletion on the map NOW (mapSelPt reset inside)
+    renderMapDetail();
+  } catch (err) {
+    if (err.status === 409) { toast('Another admin edited this file since the map loaded — reload and retry.', 'err'); return; }
+    if (!handle(err)) toast('Delete failed: ' + err.message, 'err');
+  }
+}
+// Derive the map's patrol + object-patrol points straight from a LIVE AIPatrolSettings doc (the
+// same shape Build-MapPoints produces on the box), so edits show on the map BEFORE the box rebuilds
+// the generated store at restart. idx = the entry's index in doc.Patrols (the stable edit key).
+// Marker = Waypoints[0]; the route continues from [1]. Object patrols (ObjectClassName set) have no
+// map position. Locations still come from the generated store (no client write path yet).
+function derivePatrolPoints(doc) {
+  const arr = (doc && Array.isArray(doc.Patrols)) ? doc.Patrols : [];
+  const out = [];
+  arr.forEach((e, idx) => {
+    if (!e || typeof e !== 'object') return;
+    const oc = e.ObjectClassName != null ? String(e.ObjectClassName).trim() : '';
+    if (oc) {
+      out.push({ kind: 'object', cat: 'object', idx, name: e.Name, objectClass: oc,
+        faction: e.Faction, count: e.NumberOfAI, countMax: e.NumberOfAIMax, behaviour: e.Behaviour,
+        chance: e.Chance, x: null, y: null, z: null, waypoints: null });
+    } else {
+      const wps = Array.isArray(e.Waypoints) ? e.Waypoints : [];
+      const w0 = Array.isArray(wps[0]) ? wps[0] : null;
+      out.push({ kind: 'patrol', cat: 'patrol', idx, name: e.Name, faction: e.Faction, loadout: e.Loadout,
+        count: e.NumberOfAI, countMax: e.NumberOfAIMax, behaviour: e.Behaviour, speed: e.Speed,
+        chance: e.Chance, persist: e.Persist,
+        x: w0 ? w0[0] : null, y: w0 ? w0[1] : null, z: w0 ? w0[2] : null,
+        waypoints: wps.slice(1).map((w) => ({ x: w[0], y: w[1], z: w[2] })) });
+    }
+  });
+  return out;
+}
+// Reflect a saved AIPatrolSettings doc onto the map immediately (add/edit/delete), without waiting
+// for the generated store to rebuild. Keeps the (read-only, snapshot-sourced) locations as-is.
+function applyPatrolDocToMap(doc, selectIdx) {
+  if (mapData) mapData.livePatrols = doc;
+  const locs = mapPts.filter((p) => p.kind === 'location');
+  mapPts = locs.concat(derivePatrolPoints(doc));
+  if (selectIdx != null) { const i = mapPts.findIndex((p) => (p.kind === 'patrol' || p.kind === 'object') && p.idx === selectIdx); mapSelPt = i; }
+  else mapSelPt = -1;
+  mapPts.forEach((p) => mapCatFilter.add(mapCatKey(p)));   // keep everything (incl. the new one) visible
+  renderMapList(); renderMapSummary(); renderMap();
 }
 // One editable field. Object-valued fields (Units/LoadBalancingCategory/Waypoints) get a JSON
 // textarea; negative numbers are annotated "inherits". The label truncates - full name on hover.
@@ -901,11 +1029,13 @@ async function savePatrolEdit() {
     // JSON mode: fold the navigator's edited entry back into the whole doc (covers a root replace).
     if (mapPatJson && mapPatNav) { const ed = mapPatNav.getValue(); if (e.isGlobal) e.doc = ed; else if (e.doc && Array.isArray(e.doc.Patrols)) e.doc.Patrols[e.idx] = ed; }
     const content = JSON.stringify(e.doc, null, 2);
-    const r = await apiPost('/dayz/configs/set-patrols', cred, { mission: e.mission, content, baseVersion: e.version });
+    const r = await apiPost('/dayz/configs/set-settings', cred, { key: 'patrols', mission: e.mission, content, baseVersion: e.version });
     toast(r.message || 'Saved - restart to apply', 'ok');
+    const savedDoc = e.doc, savedIdx = e.idx;
     mapPatEdit = null; mapPatNav = null;
     el.mapDetail.classList.remove('editing');
-    mapData = null; loadMapTab(true);   // re-derive the store so the map reflects the save
+    applyPatrolDocToMap(savedDoc, savedIdx);   // reflect the save on the map NOW (no restart wait) + select it
+    renderMapDetail();
   } catch (err) {
     if (S) S.disabled = false;
     if (err.status === 409) { toast('Another admin edited this file since you opened it - Cancel and reopen.', 'err'); return; }
@@ -1855,8 +1985,14 @@ function mapListBodyHtml() {
       const arr = byG[g]; if (!arr || !arr.length) return;
       any = true; arr.sort(az);
       const open = q ? true : navGroupOpen(g);   // an active filter forces matching groups open
+      // Patrols + Object patrols are add/deletable (same AIPatrolSettings.Patrols array). Locations
+      // are a separate read-only file; the authored spawn layer is deprecated. +: add; −: delete selected.
+      const gkind = g === 'Patrols' ? 'patrol' : g === 'Object patrols' ? 'object' : '';
+      const gb = gkind
+        ? '<span class="grp-btns"><button type="button" class="grp-add" data-kind="' + gkind + '" title="Add a new ' + (gkind === 'object' ? 'object patrol' : 'patrol') + '">+</button><button type="button" class="grp-del" data-kind="' + gkind + '" title="Delete the selected ' + (gkind === 'object' ? 'object patrol' : 'patrol') + '">−</button></span>'
+        : '';
       body += '<details class="side-grp mp-grp"' + (open ? ' open' : '') + ' data-g="' + attr(g) + '">' +
-        '<summary>' + escapeHtml(g) + '<span class="side-count">' + arr.length + '</span></summary>' +
+        '<summary>' + escapeHtml(g) + '<span class="side-count">' + arr.length + '</span>' + gb + '</summary>' +
         arr.map(mapNavItemHtml).join('') + '</details>';
     });
     return '<div class="side-sub2">' + count + '</div>' + (any ? body : '<div class="mp-empty">no matches</div>');
@@ -1884,6 +2020,18 @@ function renderMapList() {
     if (mapNavFilter.trim()) return;   // don't persist the filter-forced-open state
     setNavGroupOpen(d.dataset.g, d.open);   // nav-only collapse state; the map is unaffected
   }, true);
+  // Patrols group +/- (delegated so it survives filter/mode re-renders). preventDefault stops the
+  // click (inside <summary>) from toggling the <details>.
+  if (lst) lst.addEventListener('click', (e) => {
+    const add = e.target.closest('.grp-add');
+    if (add) {
+      e.preventDefault(); e.stopPropagation();
+      if (add.dataset.kind === 'object') startNewObjectPatrol();               // no position - opens the editor to set ObjectClassName
+      else { mapPlaceMode = 'patrol'; if (el.mapCanvas) el.mapCanvas.style.cursor = 'crosshair'; toast('Click the map to place the new patrol', 'ok'); }
+      return;
+    }
+    if (e.target.closest('.grp-del')) { e.preventDefault(); e.stopPropagation(); deleteSelectedPatrol(); return; }
+  });
 }
 
 function renderMapSummary() {
@@ -2288,6 +2436,11 @@ export function initMap() {
         if (!drag.moved && e.type === 'pointerup') {
           if (mapCal) {                                                          // calibrate: click captures a control point
             const w = mapToWorld(e.offsetX, e.offsetY); addCalPoint(w.x, w.z);
+          } else if (mapPlaceMode === 'patrol') {                                 // Patrols "+": this click places the new patrol
+            const w = mapToWorld(e.offsetX, e.offsetY);
+            const gy = mapLocalY(w.x, w.z);
+            mapPlaceMode = null; if (el.mapCanvas) el.mapCanvas.style.cursor = '';
+            startNewPatrol(w.x, gy == null ? 0 : gy, w.z);
           } else {
             const i = mapHitTest(e.offsetX, e.offsetY);
             if (i > -1) selectMapPt(i);

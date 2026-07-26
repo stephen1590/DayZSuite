@@ -40,6 +40,11 @@ vppDisablePassword = 1;     // VPPAdminTools: skip the in-game admin password pr
 
 adminLogPlayerList = 1;     // Periodically log the connected-player roster WITH positions to the .ADM. Feeds the config UI's map overlay (read via the API's `log adm` bridge). -adminlog is already on the unit ExecStart; positions are anonymized server-side before the API returns them.
 
+networkRangeClose = 20;     // Network bubble buckets (engine defaults except Far). Close: items/detail
+networkRangeNear = 150;     // Near: standard entity streaming
+networkRangeFar = 3000;     // Far: vehicles/large objects. RAISED 1000->3000 (2026-07-25) so the Flying Dutchman streams live from 3km instead of freezing at the ~1km default - players watch it sail at distance. Cost: more far-bucket entities streamed per client; negligible at this population
+networkRangeDistantEffect = 4000;   // Distant one-shot effects (gunshots etc.) - engine default
+
 
 class Missions
 {
