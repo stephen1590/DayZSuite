@@ -120,8 +120,15 @@ construction, because a file absent from the manifest is never rebuilt.
       4/4, gate 24/0 - ships with the next DayZ deploy). Part 2 (retire override-diff*/Edit-file
       derive path) CLOSED AS SUPERSEDED - see decisions log; the path stays, bounded to the niche.
 
-- [ ] **Phase 4 — reconcile-on-update** (3-way merge, human-reviewed) - replaces the one real
-      thing deltas provided. Builders untouched throughout.
+- [x] **Phase 4 engine — BUILT 2026-07-29.** `DayZ-Server/Reconcile-Defaults.ps1`: 3-way
+      merge (old-default vs new-default vs live) via `git merge-file` per the decisions log.
+      Report-only default; -Fix writes only a CLEAN parse-validated merge + adopts the new
+      baseline; a CONFLICT never touches live - marker-annotated copy to reconcile-conflicts/
+      for human review, resolved through the owned-file editor. TDD 7/7
+      (tests/reconcile.test.ps1; fixture note: adjacent-line both-side edits are REAL diff3
+      conflicts, verified). REMAINING (part 2): the operational wiring - registry-driven
+      enumeration of owned surfaces + the update-day runbook (capture new defaults, run
+      reconcile per surface, gate).
 
 ### Worklist — override targets by class (measured from the box doc, 2026-07-29: 36 targets, 14,881 leaves)
 
