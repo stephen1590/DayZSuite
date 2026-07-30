@@ -979,6 +979,76 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
+    'configs/owned': {
+      destructive: false,
+      readOnly: true,
+      describe: 'the owned-surface masks (registry category:\'owned\'): files = exact relpaths, dirs = folders whose json/xml files are owned. The web editor routes matching rows to the whole-file two-copy editor (configs/own + configs/set-own) instead of the override editor.',
+      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, dirs: { type: 'array', items: { type: 'string' } } } } },
+      async run() {
+        const r = await dayz.ctl('config-owned');
+        if (r.code !== 0) throw fail(502, `config-owned failed: ${(r.stderr || r.stdout).trim()}`);
+        const files: string[] = []; const dirs: string[] = [];
+        for (const line of r.stdout.split('\n')) {
+          const [k, v] = line.replace(/\r$/, '').split('\t');
+          if (k === 'F' && v) files.push(v);
+          else if (k === 'D' && v) dirs.push(v);
+        }
+        return { files, dirs };
+      },
+    },
+
+    'configs/own': {
+      destructive: false,
+      readOnly: true,
+      describe: 'one category-\'owned\' config file raw, plus its version hash — the generic whole-file read of the two-copy model (CONFIG-ARCHITECTURE.md Phase 1). path = a ServerDir-relative file under an owned registry surface (json/xml only). Pass the version back to configs/set-own as baseVersion so a concurrent admin edit is rejected (409).',
+      schema: {
+        query: { type: 'object', required: ['path'], properties: { path: { type: 'string', description: 'ServerDir-relative path of an owned config file (e.g. profiles/ExpansionMod/Loadouts/TownLoadout.json)' } } },
+        response: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'string' }, content: { type: 'string' } } },
+      },
+      async run(params) {
+        const path = String(params.path ?? '');
+        if (!/^[A-Za-z0-9_./-]+$/.test(path) || path.includes('..')) throw fail(400, 'invalid or missing "path"');
+        const r = await dayz.ctl('own-read', path);
+        if (r.code === 2) throw fail(404, `'${path}' is not an owned config surface (or its file is not on the box)`);
+        if (r.code !== 0) throw fail(502, `own-read failed: ${(r.stderr || r.stdout).trim()}`);
+        // dayz-ctl's contract: line 1 = sha256, the rest = the raw contents.
+        const nl = r.stdout.indexOf('\n');
+        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
+        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
+        return { path, version, content };
+      },
+    },
+
+    'configs/set-own': {
+      destructive: false,
+      readOnly: false,
+      describe: 'replace one category-\'owned\' config file whole — the generic whole-file write of the two-copy model (CONFIG-ARCHITECTURE.md Phase 1); the bespoke types/settings writers migrate onto it. The box validates by extension (JSON parse / well-formed XML), refuses generated + disabled-mod + non-owned paths, snapshots the outgoing version (.own-versions/, keep 30), and writes atomically. Pass baseVersion (from configs/own) for optimistic concurrency (409 on conflict).',
+      schema: {
+        body: { type: 'object', required: ['path', 'content'], properties: {
+          path: { type: 'string', description: 'ServerDir-relative path of an owned config file (same path configs/own takes)' },
+          content: { type: 'string', description: 'the complete new document (whole file, not a delta)' },
+          baseVersion: { type: 'string', description: 'the version hash from configs/own this edit was based on — the box rejects the write with 409 if the file changed since. Omit to skip the check (last-write-wins).' },
+        } },
+        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
+      },
+      async run(params) {
+        const path = String(params.path ?? '');
+        if (!/^[A-Za-z0-9_./-]+$/.test(path) || path.includes('..')) throw fail(400, 'invalid or missing "path"');
+        if (typeof params.content !== 'string' || !params.content.trim()) throw fail(400, '"content" must be the whole document');
+        if (params.content.length > 2097152) throw fail(413, '"content" too large (max 2MB)');
+        // Content travels over STDIN (ctlStdin puts '-' at $2), so the path rides third — own-write's arg order.
+        const extra: string[] = [path];
+        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
+        const r = await dayz.ctlStdin('own-write', params.content, ...extra);
+        if (r.code === 2) throw fail(404, `'${path}' is not an owned config surface (or its file is not on the box)`);
+        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
+        if (r.code !== 0) throw fail(502, `own-write failed: ${(r.stderr || r.stdout).trim()}`);
+        // stdout = "ok\n<newVersion>" — hand the new version back so the caller can rebase.
+        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+        return { message: `${path} saved (previous version snapshotted on the box); restart the server to apply`, version: lines.length > 1 ? lines[1] : '' };
+      },
+    },
+
     'configs/overrides': {
       destructive: false,
       readOnly: true,

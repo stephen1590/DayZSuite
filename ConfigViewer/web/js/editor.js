@@ -16,6 +16,7 @@ import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own module with its OWN save path (configs/set-types), never config-overrides.json.
 import { renderTypesEditor, typesAnyDirty } from './types-editor.js';
+import { renderOwnEditor, ownAnyDirty } from './own-editor.js';
 // Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
 // Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
 // (getValue -> jsonEnc -> the same preview-override -> set-overrides flow the textarea fed).
@@ -38,6 +39,8 @@ let configItems = [];     // /dayz/configs/list — now carries each file's relp
 let boxFiles = [];        // /dayz/configs/writable [{name, path}]
 let roRe = [];            // /dayz/configs/readonly — compiled globs of generated (read-only) files
 let disabledSet = new Set(); // /dayz/configs/disabled — relpaths whose owning mod is off in mods.conf; dropped from the tree
+let ownedFiles = new Set(); // /dayz/configs/owned — exact relpaths of category-'owned' file surfaces
+let ownedDirs = [];         // /dayz/configs/owned — folders whose json/xml files are owned (whole-file editable)
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
@@ -71,7 +74,7 @@ let ovrBaseVersion = null;
 // for the Discard flow. The exported isDirty() ORs in the types editor so the header pill and
 // the beforeunload guard cover every unsaved edit, whichever editor holds it.
 function ovrDirtyOnly() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
-export function isDirty() { return ovrDirtyOnly() || typesAnyDirty(); }
+export function isDirty() { return ovrDirtyOnly() || typesAnyDirty() || ownAnyDirty(); }
 function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
 // Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
 function discardChanges() {
@@ -155,6 +158,14 @@ function isGenerated(rel) { return !!rel && roRe.some((re) => re.test(rel)); }
 // A surface whose owning mod is DISABLED in mods.conf (configs/disabled): dropped from the tree
 // entirely, so a mod turned off there stops surfacing its config files and override-patch targets.
 function isDisabledMod(rel) { return !!rel && disabledSet.has(rel); }
+// A file the two-copy model owns whole (registry category:'owned'): exact owned file row, or a
+// json/xml file under an owned folder. Mirrors dayz-ctl's _own_check allowlist half; the box
+// re-enforces everything (extension, generated, disabled, jail) on every read/write.
+function isOwnedRel(rel) {
+  if (!rel || !/\.(json|xml)$/.test(rel) || /\.defaults\./.test(rel)) return false;
+  if (ownedFiles.has(rel)) return true;
+  return ownedDirs.some((d) => rel.startsWith(d + '/'));
+}
 function buildRows(items, writable, doc, mission) {
   const list = [];
   const byRel = new Map();
@@ -228,6 +239,14 @@ function buildRows(items, writable, doc, mission) {
   // (direct-write, out of the override system). Read-only here so it is never override-patched
   // and the Patrols array is never dumped as a field blob.
   for (const r of list) { if (r.relpath && /(^|\/)mpmissions\/[^/]+\/expansion\/settings\/AIPatrolSettings\.json$/.test(r.relpath)) { r.access = 'lock'; r.mapOwned = true; } }
+  // Two-copy routing (CONFIG-ARCHITECTURE.md Phase 1): an owned file with ZERO active override
+  // patches edits WHOLE in the own-editor. Files still carrying patches keep the override editor
+  // until their Phase 2 cutover empties the block - then they flip here automatically, which IS
+  // the migration UX. Types rows keep their table; set-file rows ('own') and locked rows keep theirs.
+  for (const r of list) {
+    if (r.access === 'edit' && !r.types && !r.generated && !r.mapOwned && !r.readonly
+        && isOwnedRel(r.relpath) && ownLayerCount(r) === 0) r.ownFile = true;
+  }
   // Final drop: any row whose owning mod is disabled in mods.conf (curated row OR override-synth)
   // is removed entirely — a turned-off mod must not surface here. Done last so every path above is
   // covered. The box-owned patches remain on disk (reversible); re-enable the mod + redeploy the Api.
@@ -334,17 +353,20 @@ export async function loadFiles(preserve) {
     // re-shipping the whole document (it crossed 1MB on 2026-07-23; tab re-entries and the
     // post-save refresh were re-downloading it every time).
     const ovrQ = (overridesLoaded && ovrBaseVersion) ? '?ifVersion=' + encodeURIComponent(ovrBaseVersion) : '';
-    const [cfgR, ovrR, boxR, roR, disR] = await Promise.all([
+    const [cfgR, ovrR, boxR, roR, disR, ownR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
       apiPost('/dayz/configs/overrides' + ovrQ, cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
       apiPost('/dayz/configs/readonly', cred).catch(() => ({ files: [] })),   // generated (read-only) globs; [] on an older API
       apiPost('/dayz/configs/disabled', cred).catch(() => ({ files: [] })),   // disabled-mod relpaths to drop; [] on an older API
+      apiPost('/dayz/configs/owned', cred).catch(() => ({ files: [], dirs: [] })),   // owned-surface masks; empty on an older API = no rows route to the whole-file editor
     ]);
     configItems = cfgR.configs || [];
     boxFiles = boxR.files || [];
     roRe = (roR.files || []).map(globToRe);
     disabledSet = new Set(disR.files || []);
+    ownedFiles = new Set(ownR.files || []);
+    ownedDirs = ownR.dirs || [];
     // On a plain tab re-entry (preserve) keep unsaved override edits — only reload the doc from
     // the server on the initial load, after a save, or after a rollback. unchanged = the box
     // still holds exactly the doc we parsed; nothing to adopt.
@@ -425,7 +447,18 @@ function typesChrome(row) {
     '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>web-edited CE types override layer — each entry fully replaces the same-named upstream type</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
+function ownChrome(row) {
+  return '<div class="ovr-phead">' +
+    '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(row.scope === 'mission' ? 'mpmissions · ' + (row.mission || '') + '/' : 'files/') + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
+    '<div class="ovr-pact">' +
+      '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+      '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
+    '</div></div>' +
+    '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>owned file — edited whole; the diff vs the frozen default is display-only</span>' +
+    '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
+}
 function editorChrome(row) {
+  if (row.ownFile) return ownChrome(row);
   if (row.types) return typesChrome(row);
   const eff = effectivePatches(row);
   const nOver = eff.size;
@@ -457,7 +490,7 @@ function editorChrome(row) {
     '<div class="ovr-sum">' + summary + '<span class="stat" style="margin-left:auto">' + (locked ? '' : 'Restart to apply') + '</span></div>';
 }
 function editorFoot(row) {
-  if (row.access === 'lock' || row.types) return '';   // types rows: the note below is about override DELTAS, wrong for a whole-file writer
+  if (row.access === 'lock' || row.types || row.ownFile) return '';   // types/own rows: the note below is about override DELTAS, wrong for a whole-file writer
   return '<div class="ovr-note" style="border-top:1px solid var(--border);border-bottom:none">' +
     '<b style="color:var(--delta)">Deltas only.</b> The whole file shows for context — Save writes just your changes to <span class="mono">config-overrides.json</span>.</div>';
 }
@@ -484,6 +517,16 @@ async function renderBody(row) {
   // Fixed-height layout ONLY while the types TABLE shows: the top bars + XML preview stay put
   // and the LIST is the sole scroller (types-mode CSS on #editorPage). Everything else — the
   // overrides editor, and a types row's own 'file' view — keeps the normal workspace scroll.
+  // Owned rows: the whole-file two-copy editor (own-editor.js) - its own load/save path.
+  if (row.ownFile) {
+    el.editorPage.classList.remove('types-mode');
+    const text = await renderOwnEditor(row, body, {
+      onDirty: updateDirtyUi,
+      onSaved: () => { delete fileCache['f|' + row.key]; },
+    });
+    if (text != null && selKey === row.key) lastFileText = text;
+    return;
+  }
   const typesTable = !!row.types && ovrView !== 'file';
   el.editorPage.classList.toggle('types-mode', typesTable);
   // Types rows: the table editor is its own view with its own load/save (types-editor.js).

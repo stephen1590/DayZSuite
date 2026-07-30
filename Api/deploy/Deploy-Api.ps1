@@ -198,6 +198,25 @@ foreach ($t in $disabledTargets) {
 $disabledTargetsRendered = ($disabledTargets -join "`n")
 if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled in mods.conf): $($disabledTargets -join ', ')`n" }
 
+# Owned-surface masks -> OWNED_FILES / OWNED_DIRS (one ServerDir-relative path per line). The
+# registry's category:'owned' rows (CONFIG-ARCHITECTURE.md two-copy model, Phase 0 classification)
+# gate dayz-ctl's generic own-read/own-write - the Phase 1 whole-file mechanism the bespoke
+# types-/settings- verbs migrate onto. File rows contribute their box path; folder rows their dir
+# (files beneath are reachable, json/xml + replace-only enforced box-side by _own_check).
+# web:'types' rows are EXCLUDED even when owned: types-write is their ONLY writer (structural CE
+# validation own-write doesn't do). They join the generic verb when it gains per-kind validation.
+$ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.box -and $_.web -ne 'types' } |
+    ForEach-Object { "$($_.box)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+$ownedDirs  = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.dir -and -not $_.box } |
+    ForEach-Object { "$($_.dir)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+foreach ($p in ($ownedFiles + $ownedDirs)) {
+    if ("$p" -match '^\s*/' -or "$p" -match '\.\.') { throw "Api Configs: owned path must be ServerDir-relative with no '..': '$p'." }
+    if ("$p" -notmatch '^[A-Za-z0-9_./-]+$') { throw "Api Configs: owned path has invalid chars (allowed A-Z a-z 0-9 . _ - /): '$p'." }
+}
+$ownedFilesRendered = ($ownedFiles -join "`n")
+$ownedDirsRendered  = ($ownedDirs -join "`n")
+Write-Host "Owned surfaces (own-read/own-write): $($ownedFiles.Count) file(s) + $($ownedDirs.Count) folder(s)`n"
+
 # Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
 # Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
 $docs = $cfg.Docs
@@ -311,6 +330,8 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__WRITE_MAP__'   = $writeMap
         '__GENERATED__'   = $generated
         '__DISABLED_TARGETS__' = $disabledTargetsRendered
+        '__OWNED_FILES__' = $ownedFilesRendered
+        '__OWNED_DIRS__'  = $ownedDirsRendered
         '__LOG_NOISE__'   = $logNoiseSq
         '__DOCS_ROOTS__'    = $docsRoots
         '__DOCS_EXT__'      = $docsExt

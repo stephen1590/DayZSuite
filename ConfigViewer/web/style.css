@@ -742,3 +742,10 @@
   .map-detail .lbc-newadd { flex: none; background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; cursor: pointer; }
   /* list row kind glyph (matches the map: location ring / patrol hexagon / object diamond) */
   .mp-item .mf-ico { flex: none; }
+
+  /* Owned-file whole editor (own-editor.js — CONFIG-ARCHITECTURE.md Phase 1 two-copy model) */
+  .own-bar { display: flex; align-items: center; gap: 10px; padding: 10px 22px 6px; flex-wrap: wrap; }
+  .own-bar .spacer { flex: 1; }
+  .own-cm { margin: 8px 22px 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--pre-bg); }
+  .own-cm .cm-editor { height: min(68vh, 860px); font-size: 12.5px; }
+  .own-cm .cm-editor .cm-scroller { overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

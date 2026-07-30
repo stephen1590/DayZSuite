@@ -1,0 +1,12 @@
+{
+  "name": "configviewer-vendor-build",
+  "private": true,
+  "description": "Build harness for the vendored CodeMirror 6 bundle (web/vendor/codemirror/). Not shipped - the OUTPUT is.",
+  "dependencies": {
+    "codemirror": "6.0.2",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-xml": "6.1.0",
+    "@codemirror/merge": "6.10.2"
+  },
+  "devDependencies": { "esbuild": "0.25.9" }
+}

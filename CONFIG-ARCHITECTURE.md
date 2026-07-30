@@ -4,7 +4,7 @@
 >
 > Rendered snapshots (presentation only, private Claude links): the *reassessment* and *two-copy-model* artifacts.
 
-**Status: mid-redesign.** The box runs the **current model** below. The **target model** is agreed (2026-07-20) but **not built**. Do not describe the target as if it exists.
+**Status: Phases 0-2 DONE (2026-07-29); Phase 3-4 pending owner decisions.** The two-copy path is LIVE: the generic own-read/own-write verbs + CM6 whole-file editor are deployed to prod, and all 15 chaotic patch targets are cut over - the box override doc is down from 14,881 to **175 leaves (-98.8%)**, the rump being genuine field tweaks + parked disabled-mod patches. The mirror is pulled + auto-committed (552b29b); the gate passes 24/0 against the slim world. `Apply-ConfigOverrides` still runs at prestart FOR THE RUMP until the Phase 3 decision (tiny patch niche for game-rewritten files vs full retirement). The worklist below is the per-file status ledger.
 
 ---
 
@@ -14,7 +14,7 @@ Old docs drift on these. These are the truth, verified against code:
 
 | Thing | Canonical | Retired name (do not use) |
 |---|---|---|
-| AI-bandit spawn store | `profiles/AI_Bandits/map-points.json` (registry surface `Spawn-points`) | `spawn-points.json` (renamed 2026-07-15) |
+| AI spawn store (frozen legacy) | `profiles/AI_Shared/map-points.json` (registry surface `Map-points`; read-only since the 2026-07-23 map inversion - live AI settings are the source) | `spawn-points.json`, `AI_Bandits/map-points.json` |
 | The service | **Api** | Webhooks (renamed 2026-07-13) |
 | VPP webhooks | event/FPS telemetry feed only | a live command-relay path (deprecated 2026-07-15) |
 
@@ -26,15 +26,14 @@ Three tiers. The box owns the truth; the API is a signed relay; the browser is a
 
 - **Registry** — `DayZ-Server/config-registry.json`. One row per surface (21 today). Fields: `name`, `box`, `scope`, `seed`, `mirror`, `web`, `writable`, `check`. Four consumers read it: Api allowlist, Deploy seed-if-missing, Sync/Pull mirroring, Confirm-LiveConfigs parse-check.
 - **Defaults** — `DayZ-Server/config-defaults/` holds frozen `<stem>.defaults.<ext>` baselines, refreshed by hand via `Generate-ConfigDefaults.ps1`.
-- **Overrides** — `DayZ-Server/config-overrides.json` (~98 KB) holds field-level deltas: dotted-path selectors for JSON, XPath for XML, layered common vs per-mission. Box-authoritative; the repo copy is a mirror.
-- **Apply + build at prestart** — `deploy/prestart.sh` runs these engines in order, fail-soft (`|| true`) so bad config can't block boot:
-  1. `Apply-ConfigOverrides.ps1` — default + deltas → live file
-  2. `deploy/Build-BabakuSpawns.ps1`
-  3. `Build-AIBandits.ps1`
-  4. `Build-AILocations.ps1`
-  5. `Build-AIPatrols.ps1`
-  6. `Apply-CustomCE.ps1`
-  7. `deploy/Build-TransferSpawns.ps1`
+- **Overrides** — `DayZ-Server/config-overrides.json` (**175 leaves after the 2026-07-29 Phase 2 sweep**; was 1.1 MB / 14,881 leaves at Phase 0, ~98 KB - was ~98 KB when this doc was written; the growth is 13 Loadout files + AirdropSettings expressed as patch lists) holds field-level deltas: dotted-path selectors for JSON, XPath for XML, layered common vs per-mission, plus a `wholeFiles` layer. Box-authoritative; the repo copy is a mirror. KNOWN ENGINE LIMIT (2026-07-29): `Apply-ConfigOverrides` uses `SelectSingleNode` - a multi-match XPath silently patches only the first node, so wildcard selectors are impossible.
+- **Apply + build at prestart** — `deploy/prestart.sh` runs these engines in order, fail-soft (`|| true`) so bad config can't block boot *(list corrected 2026-07-29 - the AI draft builders and Babaku were retired 07-23/07-24)*:
+  1. `Apply-ServerCfg.ps1` — serverDZ.cfg from template + host.env + server-settings.json
+  2. `Apply-ConfigOverrides.ps1` — default + deltas → live file
+  3. `Apply-CustomCE.ps1`
+  4. `deploy/Build-TransferSpawns.ps1`
+  5. `Build-MapPoints.ps1` — derives the read-only map store FROM live AI settings
+- **Already on the target pattern** (whole-file, box-validated, snapshotted, `base=` optimistic concurrency): the CE types tuning pair via `types-write` (2026-07-23), `AIPatrolSettings.json` via `patrol-write` + the Sakhal manifest cutover (2026-07-24), and bans/whitelist via the older `set-file`. These three bespoke verbs are the prototypes the generic Phase 1 verb replaces.
 - **The API** — Fastify/TS, relays signed HTTP → `sudo dayz-ctl` (closed verb set, re-validated on the box). ~38 actions in `Api/app/src/actions.ts`. Config edits: `override-diff.ts` / `override-diff-xml.ts` compute a delta, the box stores and applies it.
 - **The web UI** — ConfigViewer, a dependency-free SPA. Hand-rolled editor (`editor.js`), `highlight.js`, `lossless-json.js`.
 
@@ -44,7 +43,7 @@ The override model is written three times — browser JS, API TS, box PowerShell
 
 ---
 
-## Target model — agreed 2026-07-20, NOT built
+## Target model — agreed 2026-07-20, BUILT through Phase 2 (2026-07-29; Phases 3-4 pending)
 
 Stop applying diffs. The diff becomes something the UI **shows**, never something the box **applies**. Every config is one of two kinds:
 
@@ -90,20 +89,54 @@ Principle: **test the seams, not just the tiers.** Isolated tier tests pass whil
 
 ---
 
-## Migration — no big-bang, one file at a time
+## Migration — no big-bang, one file at a time (ACTIVE, owner priority 2026-07-29)
 
 Delta path and two-copy path coexist while surfaces move across, each step reversible.
+The proven cutover trick (Sakhal AIPatrolSettings, 2026-07-24): **removing a file's block from
+the manifest freezes the live file at its current built state** - behavior-preserving by
+construction, because a file absent from the manifest is never rebuilt.
 
-0. **Classify all 21 surfaces** A vs B; add `category` to the contract. Pure data, no deploy. *(safe under a freeze)*
-1. **Build display-diff + whole-file save for ONE owned file** while the delta path stays untouched. *(additive, no deploy)*
-2. **Migrate owned files one at a time** — seed the live copy from today's built output, switch its write path to whole-file, retire its delta entries. *(reversible)*
-3. **Delete the delta engine** — remove `override-diff*.ts`, `config-overrides.json`, the selector apply. Editor moves to **CodeMirror 6**.
-4. **Add reconcile-on-update + conformance gate.** Builders untouched throughout.
+- [x] **Phase 0 — classify + re-baseline** (2026-07-29): registry rows carry `category`
+      (owned | computed | reference); this doc corrected to current reality; worklist below.
+- [ ] **Phase 1 — one generic whole-file mechanism.** Generalize `types-write`/`patrol-write`/
+      `set-file` into ONE registry-driven verb (row's `check` picks the validator; snapshots +
+      `base=` concurrency as proven). UI: two-copy diff view on **CodeMirror 6** (decision log)
+      with **XML + JSON syntax editing** (owner requirement 2026-07-29). Folds in the
+      deploy-owns-frozen-defaults item: the frozen default IS the `default` copy.
+- [x] **Phase 2 — DONE 2026-07-29.** All 15 chaotic targets cut over (13 Loadouts incl.
+      PlayerMaleSuit, AirdropSettings, BookSettings) + the empty SpawnerBubaku block deleted.
+      One guarded override-write per file, every live file proven byte-identical throughout;
+      AirdropSettings needed `force` (the shrink guard correctly flagged the deliberate
+      mass-delete as its removal exceeded half the by-then-shrunken doc). Box doc:
+      **14,881 -> 175 leaves (-98.8%)**. Rollback: one snapshot per step in .overrides-versions/
+      (first: 20260729T233038Z). The rows now open the whole-file editor:
+      cut the block (live file freezes), flip the row to the whole-file path, verify, next.
+      ONE Loadout end-to-end first, then the other 12, then AirdropSettings, BookSettings.
+      Owner call 2026-07-29: the Loadouts are OURS - they should always have been owned files.
+      Quick win any time: delete the EMPTY SpawnerBubaku block.
+- [ ] **Phase 3 — rump decision + engine retirement.** ~195 leaves remain (genuine field
+      tweaks). Decide with migration experience: full retirement per the 2026-07-20 decision,
+      or a deliberately tiny patch niche for GAME-REWRITTEN files (db/events.xml is the honest
+      case FOR patches: they survive game updates; whole files fight them). Then retire
+      `Apply-ConfigOverrides` + `override-diff*.ts`; gate moves to the conformance tests above.
+- [ ] **Phase 4 — reconcile-on-update** (3-way merge, human-reviewed) - replaces the one real
+      thing deltas provided. Builders untouched throughout.
+
+### Worklist — override targets by class (measured from the box doc, 2026-07-29: 36 targets, 14,881 leaves)
+
+| Class | Targets | Leaves | Action |
+|---|---|---|---|
+| Whole-doc rewrites as patches | 13 Loadouts (~10.6k), AirdropSettings (4,009), BookSettings (111) | 14,686 (98.7%) | Phase 2 → owned files |
+| Genuine field tweaks | 19 targets (globals timers, events lifetimes, server-settings, MapSettings, …) | 195 (1.3%) | hold for Phase 3 decision |
+| Dead weight | SpawnerBubaku (EMPTY block), 3 parked disabled-mod targets, inert AIPatrols.control | ~57 | delete / stay parked |
 
 ---
 
 ## Decisions log
 
+- **2026-07-29** — Migration re-activated as OWNER PRIORITY. It never got scheduled after the 2026-07-20 agreement; in those 9 days the override doc grew ~98 KB → 1.1 MB (the Loadouts + AirdropSettings landed as patch lists) - the exact failure the target model predicted.
+- **2026-07-29** — The Expansion Loadouts are OURS (owner statement): custom content that should always have been separate owned files, never override targets. They migrate in Phase 2.
+- **2026-07-29** — The whole-file editor must support **XML editing with syntax support**, not just JSON (owner requirement). Covered by the CodeMirror 6 decision below (its `@codemirror/lang-xml` + merge view); the hand-rolled `highlight.js`/`cx-edit` overlay does not extend to this.
 - **2026-07-20** — Adopt the two-copy model; retire the delta/override engine. Why: the override model was re-implemented across browser/API/box and drifted silently, causing missed requirements and rewrites. Two copies move the diff off the write path.
 - **2026-07-20** — Editor engine = **CodeMirror 6** (MIT). Why: native merge/diff view (the two-copy core UX), lints against the contract schema, far lighter than Monaco. `vscode.dev` is a hosted IDE, not embeddable; Monaco is its embeddable engine but heavier.
 - **2026-07-15** — `spawn-points.json` → `map-points.json`.
@@ -114,6 +147,6 @@ Delta path and two-copy path coexist while surfaces move across, each step rever
 
 ## Open items / known gaps
 
-- **HELD** — config-duplication investigation (the map-tiles "dump" vs the web UI, multi-editor). Team is looking into it; no config work proceeds until it clears.
-- **Test gap** — `Build-AILocations` runs at prestart but is not covered by `Test-Configs.ps1` (found in the 2026-07-20 doc audit). Add coverage when the hold lifts.
+- **Hold SUPERSEDED 2026-07-29** — the 2026-07-20 "no config work until the config-duplication investigation clears" hold was never formally lifted, but every config change since 07-21 proceeded past it, and the owner's 2026-07-29 priority directive supersedes it. ASSUMPTION surfaced to owner (2026-07-29): the hold is treated as moot. If the duplication investigation is still live, say so and Phase 1 pauses.
+- **Test gap CLOSED by retirement** — `Build-AILocations` was retired to `archive/` in the 2026-07-23 map inversion (Phase 4); the uncovered-builder gap no longer exists.
 - **Doc cleanup** — stale references still live in other docs (`spawn-points.json` naming, short engine list, outdated Api action catalog, VPP-as-live). Those docs should defer their config-model explanation to this file rather than re-explain it.

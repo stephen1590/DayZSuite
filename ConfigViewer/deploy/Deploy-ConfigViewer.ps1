@@ -92,6 +92,26 @@ if (-not (Test-Path (Join-Path $suiDir 'swagger-ui-bundle.js'))) {
     Copy-Item (Join-Path $tmp 'package/swagger-ui.css') $suiDir -Force
     Copy-Item (Join-Path $tmp 'package/swagger-ui-bundle.js') $suiDir -Force
 }
+# CodeMirror 6 bundle (own-editor.js, the two-copy whole-file editor). Same provisioning rule
+# as swagger: web/vendor/ is gitignored, so a fresh checkout BUILDS the bundle once from the
+# pinned harness (../vendor-build: npm install + esbuild -> cm6.esm.js), then reuses it.
+$cmOut = Join-Path $webDir 'vendor/codemirror/cm6.esm.js'
+if (-not (Test-Path $cmOut)) {
+    $vb = Join-Path $SiteRoot 'vendor-build'
+    if (-not (Test-Path (Join-Path $vb 'package.json'))) { throw "CM6 bundle missing and no vendor-build harness at $vb (own-editor.js cannot load without it)." }
+    foreach ($tool in 'npm', 'npx') {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' not found on PATH - needed once to build the vendored CM6 bundle." }
+    }
+    Write-Host "Building vendored CodeMirror 6 bundle (first run only)…"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cmOut) | Out-Null
+    Push-Location $vb
+    try {
+        & npm install --no-audit --no-fund 2>&1 | Out-Null
+        if ($LASTEXITCODE) { throw "npm install failed for the CM6 vendor build." }
+        & npx esbuild cm6-entry.js --bundle --format=esm --minify "--outfile=$cmOut"
+        if ($LASTEXITCODE) { throw "esbuild failed for the CM6 vendor build." }
+    } finally { Pop-Location }
+}
 # --- Deploy (rsync over ssh) ---------------------------------------------
 # Trailing slash on source => copy the CONTENTS of web/, not the dir itself.
 $sshParts = @('ssh')

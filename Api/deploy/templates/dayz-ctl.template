@@ -16,6 +16,8 @@ IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
 GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; override-write refuses to target them
 DISABLED_TARGETS='__DISABLED_TARGETS__'  # rendered relpaths of config surfaces whose owning mod is DISABLED in mods.conf (config-registry.json "mod" x deploy/mods.conf, resolved at deploy time) - the web editor DROPS these rows
+OWNED_FILES='__OWNED_FILES__'      # rendered relpaths of registry FILE rows with category:'owned' - the generic own-read/own-write allowlist (CONFIG-ARCHITECTURE.md two-copy model, Phase 1)
+OWNED_DIRS='__OWNED_DIRS__'        # rendered reldirs of registry FOLDER rows with category:'owned' - files under these are own-read/own-write reachable (json/xml only, replace-only)
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
 DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
@@ -202,6 +204,40 @@ _is_generated() {
   done
   IFS="$_oldifs_ig"; return 1
 }
+# --- Owned-file guard (generic own-read/own-write, CONFIG-ARCHITECTURE.md Phase 1) -----------
+# Is <relpath> a readable/writable OWNED config file? Guards in order: syntax, extension
+# (json/xml ONLY - .env and friends can never ride these verbs), the OWNED masks (registry
+# category:'owned', rendered at deploy time), the generated mask (artifacts are never edit
+# inputs), the disabled-mod mask, existence (replace-only - a typo'd path can't create files),
+# and the realpath jail. Return 0 = allowed, 2 = refused with the reason on stderr.
+# `|| true` guards on the greps: a no-match grep in a plain statement would trip set -e.
+_own_check() {
+  _r="$1"
+  case "$_r" in ''|*..*|/*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
+  case "$_r" in *[!A-Za-z0-9_./-]*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
+  case "$_r" in *.json|*.xml) ;; *) echo "dayz-ctl: own verbs take json/xml only: $_r" >&2; return 2 ;; esac
+  _hit=''
+  { printf '%s\n' "$OWNED_FILES" | grep -qxF "$_r" && _hit=1; } || true
+  if [ -z "$_hit" ] && [ -n "$OWNED_DIRS" ]; then
+    while IFS= read -r _d; do
+      [ -n "$_d" ] || continue
+      case "$_r" in "$_d"/*) _hit=1; break ;; esac
+    done <<EOF
+$OWNED_DIRS
+EOF
+  fi
+  [ -n "$_hit" ] || { echo "dayz-ctl: not an owned config surface: $_r" >&2; return 2; }
+  if _is_generated "$_r"; then echo "dayz-ctl: generated artifact - edit the inputs, never the output: $_r" >&2; return 2; fi
+  if [ -n "$DISABLED_TARGETS" ] && printf '%s\n' "$DISABLED_TARGETS" | grep -qxF "$_r"; then
+    echo "dayz-ctl: owning mod is disabled in mods.conf: $_r" >&2; return 2
+  fi
+  [ -f "$SERVER_DIR/$_r" ] || { echo "dayz-ctl: owned file not present: $_r" >&2; return 2; }
+  _b="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
+  _real="$(realpath -- "$SERVER_DIR/$_r" 2>/dev/null || printf '')"
+  case "$_real" in "$_b"/*) ;; *) echo "dayz-ctl: owned file resolved outside the server dir" >&2; return 2 ;; esac
+  return 0
+}
+
 # Read an override document on stdin; emit the generated relpath(s) it TARGETS, one per line, sorted
 # unique. An F target is its own relpath; an M target resolves to mpmissions/<mission>/<filerel>
 # (mission 'common' -> mpmissions/common/..., which the '*' wildcard still matches, so a common-layer
@@ -623,6 +659,15 @@ case "$verb" in
     # per line. The web editor marks any file matching one of these read-only (no edit/no save);
     # override-write refuses to target one. Pure enumeration of the rendered mask - no caller input.
     if [ -n "$GENERATED" ]; then printf '%s\n' "$GENERATED"; fi
+    ;;
+
+  config-owned)
+    # Emit the OWNED-surface masks (rendered from registry category:'owned' at deploy time):
+    # 'F<TAB><relpath>' per owned file row, 'D<TAB><reldir>' per owned folder row. The web editor
+    # uses these to route a row to the whole-file two-copy editor (own-read/own-write) instead of
+    # the override editor. Pure enumeration of the rendered masks - no caller input.
+    if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES" | while IFS= read -r _l; do [ -n "$_l" ] && printf 'F\t%s\n' "$_l"; done; fi
+    if [ -n "$OWNED_DIRS" ];  then printf '%s\n' "$OWNED_DIRS"  | while IFS= read -r _l; do [ -n "$_l" ] && printf 'D\t%s\n' "$_l"; done; fi
     ;;
 
   config-disabled)
@@ -1052,6 +1097,71 @@ for c in r:
     printf 'ok\n%s\n' "$(sha256sum "$file" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
     ;;
 
+  own-read)
+    # own-read <relpath> — print ONE category-'owned' config file whole: line 1 = sha256 (the
+    # base= for own-write), rest = RAW contents (the editor round-trips it back, so no redaction
+    # backstop - safe because 'owned' rows are game/mod config, never secret-bearing files, and
+    # _own_check refuses anything but .json/.xml outright). THE generic read of the two-copy
+    # target model (CONFIG-ARCHITECTURE.md Phase 1); the bespoke types-read/settings-read verbs
+    # predate it and migrate onto it later.
+    [ -n "$arg" ] || die "own-read needs a relpath"
+    _own_check "$arg" || exit $?
+    file="$SERVER_DIR/$arg"
+    sha256sum "$file" | awk '{print $1}'
+    cat "$file"
+    ;;
+
+  own-write)
+    # own-write <doc|-> <relpath> [base=<sha256>] — REPLACE one category-'owned' config file
+    # whole. THE generic write of the two-copy target model (CONFIG-ARCHITECTURE.md Phase 1).
+    # Same contract as types-write: the doc rides $2 ('-' = stdin, 2MB cap), replace-only,
+    # validated BEFORE the write (parse by extension: .json = JSON, .xml = well-formed XML),
+    # base= optimistic concurrency (exit 5 = conflict, the editor says "reload"), snapshot the
+    # outgoing version to .own-versions/ (keep 30, flattened relpath names), atomic tmp+mv.
+    rel="${3:-}"
+    [ -n "$rel" ] || die "own-write needs a relpath"
+    _own_check "$rel" || exit $?
+    file="$SERVER_DIR/$rel"
+    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
+    [ -n "$arg" ] || die "own-write needs the new document"
+    sz="$(printf '%s' "$arg" | wc -c)"
+    [ "$sz" -le 2097152 ] || die "own-write: too large ($sz bytes)"
+    case "$rel" in
+      *.json)
+        if command -v python3 >/dev/null 2>&1; then
+          printf '%s' "$arg" | python3 -c 'import sys, json; json.load(sys.stdin)' 2>/dev/null || die "own-write: input is not valid JSON"
+        elif command -v jq >/dev/null 2>&1; then
+          printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "own-write: input is not valid JSON"
+        else die "own-write: no JSON validator (python3/jq) on the box"; fi ;;
+      *.xml)
+        if command -v python3 >/dev/null 2>&1; then
+          printf '%s' "$arg" | python3 -c 'import sys, xml.etree.ElementTree as ET; ET.fromstring(sys.stdin.read())' 2>/dev/null || die "own-write: input is not well-formed XML"
+        elif command -v xmllint >/dev/null 2>&1; then
+          printf '%s' "$arg" | xmllint --noout - 2>/dev/null || die "own-write: input is not well-formed XML"
+        else die "own-write: no XML validator (python3/xmllint) on the box"; fi ;;
+    esac
+    _base='__none__'
+    for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
+    if [ "$_base" != '__none__' ]; then
+      _cur="$(sha256sum "$file" | awk '{print $1}')"
+      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    OWN_VERSIONS="$SERVER_DIR/.own-versions"
+    mkdir -p "$OWN_VERSIONS"
+    _flat="$(printf '%s' "$rel" | tr '/' '_')"
+    cp -p "$file" "$OWN_VERSIONS/$_flat.$(date -u +%Y%m%dT%H%M%S%NZ)"
+    find "$OWN_VERSIONS" -maxdepth 1 -name "$_flat.*" | sort -r | tail -n +31 \
+      | while IFS= read -r _old; do rm -f "$_old"; done
+    _ownr="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
+    [ -n "$_ownr" ] && chown -R "$_ownr" "$OWN_VERSIONS" 2>/dev/null || true
+    tmp="$(mktemp "$SERVER_DIR/.own-write.XXXXXX")"
+    printf '%s' "$arg" > "$tmp"
+    [ -n "$_ownr" ] && chown "$_ownr" "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$file"
+    printf 'ok\n%s\n' "$(sha256sum "$file" | awk '{print $1}')"   # line 2 = the new version
+    ;;
+
   settings-read)
     # settings-read <key> <mission> — print ONE mission's Expansion AI settings file for <key>:
     # line 1 = sha256 (the base= for settings-write), the rest = RAW contents (the editor writes the
@@ -1202,6 +1312,6 @@ if uniq:
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write types-read types-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
     ;;
 esac
