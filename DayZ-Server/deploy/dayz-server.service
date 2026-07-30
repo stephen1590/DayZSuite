@@ -33,8 +33,9 @@ ExecStartPre={{DEPLOY_HOME}}/servers/dayz-server/prestart.sh
 #                     map switch (reads profiles/transfer_spawn.json; see serverMods/TransferSpawn)
 #   @flying_dutchman  - coastal patrol ship (FlyingDutchman). DORMANT unless the box has the
 #                       profiles/FlyingDutchman/enable marker - prod stays inert by default
-ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" "-serverMod=@custom_server_mods;@flying_dutchman" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
+ExecStart={{DEPLOY_HOME}}/servers/dayz-server/DayZServer -config=serverDZ.cfg -mission=mpmissions/${DAYZ_MISSION} -port=2301 "-mod={{DEPLOY_MODLINE}}" "-serverMod=@custom_server_mods" -BEpath=battleye -profiles=profiles -dologs -adminlog -freezecheck
 ExecReload=/bin/kill -s HUP $MAINPID
+#;@flying_dutchman
 ExecStop=/bin/kill -s INT $MAINPID
 # DayZ-Expansion's AI (eAIGroup::Save) LEAKS file descriptors — the process climbs
 # ~600 fds/min and, capped at 100000, hit the ceiling in <3h (well inside the 6h
