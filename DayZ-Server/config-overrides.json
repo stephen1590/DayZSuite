@@ -1372,15 +1372,6 @@
             },
             "expansion/settings/MapSettings.json": {
                 "CreateDeathMarker": 0
-            },
-            "db/events.xml": {
-                "//event[@name='VehicleOffroadHatchback']/lifetime": 3888000,
-                "//event[@name='VehicleCivilianSedan']/lifetime": 3888000,
-                "//event[@name='VehicleHatchback02']/lifetime": 3888000,
-                "//event[@name='VehicleSedan02']/lifetime": 3888000,
-                "//event[@name='VehicleTruck01']/lifetime": 3888000,
-                "//event[@name='VehicleBoat']/lifetime": 3888000,
-                "//event[@name='VehicleMilitaryBoat']/lifetime": 3888000
             }
         }
     }
