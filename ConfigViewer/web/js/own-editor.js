@@ -129,8 +129,20 @@ export async function renderOwnEditor(row, body, hooks) {
   }
   body.innerHTML = '<div id="ownHead">' + toolbarHtml(st) + '</div><div class="own-cm" id="ownCm"></div>';
   const lang = st.path.endsWith('.xml') ? CM.xml() : CM.json();
+  // Token colors = the app's OWN t-* palette (style.css), on the app's always-dark code
+  // surface (--pre-bg) - the same look as the File view and log panes, in BOTH themes.
+  // Class-mapped so style.css stays the single owner of the colors.
+  const appHighlight = CM.HighlightStyle.define([
+    { tag: CM.tags.propertyName, class: 't-key' },
+    { tag: CM.tags.attributeName, class: 't-key' },
+    { tag: [CM.tags.string, CM.tags.attributeValue], class: 't-str' },
+    { tag: CM.tags.number, class: 't-num' },
+    { tag: [CM.tags.bool, CM.tags.null, CM.tags.keyword], class: 't-kw' },
+    { tag: CM.tags.comment, class: 't-com' },
+    { tag: CM.tags.tagName, class: 't-tag' },
+  ]);
   const exts = [
-    CM.basicSetup, lang,
+    CM.basicSetup, lang, CM.syntaxHighlighting(appHighlight),
     CM.EditorView.updateListener.of((u) => {
       if (!u.docChanged) return;
       const was = isDirtySt(st);

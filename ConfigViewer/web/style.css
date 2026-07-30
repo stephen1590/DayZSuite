@@ -743,9 +743,28 @@
   /* list row kind glyph (matches the map: location ring / patrol hexagon / object diamond) */
   .mp-item .mf-ico { flex: none; }
 
-  /* Owned-file whole editor (own-editor.js — CONFIG-ARCHITECTURE.md Phase 1 two-copy model) */
+  /* Owned-file whole editor (own-editor.js — CONFIG-ARCHITECTURE.md Phase 1 two-copy model).
+     CM6 ships a LIGHT default theme; every rule below re-homes it onto the app's always-dark
+     code surface (--pre-bg/--pre-fg, same in both themes - matches the File view and log
+     panes), with token colors inherited from the app's own t-* palette via class-mapped
+     highlighting in own-editor.js. style.css stays the single owner of all colors. */
   .own-bar { display: flex; align-items: center; gap: 10px; padding: 10px 22px 6px; flex-wrap: wrap; }
   .own-bar .spacer { flex: 1; }
   .own-cm { margin: 8px 22px 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--pre-bg); }
-  .own-cm .cm-editor { height: min(68vh, 860px); font-size: 12.5px; }
+  .own-cm .cm-editor { height: min(68vh, 860px); font-size: 12.5px; background: var(--pre-bg); color: var(--pre-fg); }
   .own-cm .cm-editor .cm-scroller { overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .own-cm .cm-gutters { background: var(--pre-bg); color: var(--faint); border-right: 1px solid rgba(255,255,255,0.08); }
+  .own-cm .cm-activeLine { background: rgba(255,255,255,0.045); }
+  .own-cm .cm-activeLineGutter { background: rgba(255,255,255,0.06); color: var(--pre-fg); }
+  .own-cm .cm-cursor, .own-cm .cm-dropCursor { border-left-color: var(--pre-fg); }
+  .own-cm .cm-selectionBackground, .own-cm .cm-content ::selection { background: rgba(121,192,255,0.22) !important; }
+  .own-cm .cm-selectionMatch { background: rgba(121,192,255,0.14); }
+  .own-cm .cm-matchingBracket { background: rgba(126,231,135,0.18); outline: none; }
+  .own-cm .cm-tooltip, .own-cm .cm-panels { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+  .own-cm .cm-foldPlaceholder { background: rgba(255,255,255,0.08); color: var(--faint); border: none; }
+  /* unified merge view: live-vs-default chunks, colored from the app's ok/danger hues */
+  .own-cm .cm-changedLine { background: rgba(70,194,102,0.10); }
+  .own-cm .cm-changedText { background: rgba(70,194,102,0.22); }
+  .own-cm .cm-deletedChunk { background: rgba(239,91,82,0.12); }
+  .own-cm .cm-deletedChunk del, .own-cm .cm-deletedText { background: rgba(239,91,82,0.22); text-decoration: none; }
+  .own-cm .cm-changeGutter { width: 4px; }

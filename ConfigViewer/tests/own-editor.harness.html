@@ -1,5 +1,14 @@
 <!doctype html><html><head><meta charset="utf-8"><title>own-editor harness</title>
+<script>
+// Same early theme resolution as the app's index.html: manual choice wins, else OS preference.
+try {
+  var t = localStorage.getItem('cfgview-theme');
+  if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+} catch (e) { /* default light */ }
+</script>
 <link rel="stylesheet" href="/web/style.css">
+<style>body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; padding: 12px 20px; }</style>
 <script type="importmap">
 { "imports": {
     "/web/js/api-client.js": "/tests/mocks/api-client.js",
