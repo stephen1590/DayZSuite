@@ -993,10 +993,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionKar98ScopeOptic">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1019,10 +1019,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionEXPS3HoloOptic">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1033,10 +1033,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionHAMROptic">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1047,10 +1047,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_PMII25Optic">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1061,10 +1061,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionReflexMRSOptic">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>14400</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1076,10 +1076,10 @@
         <value name="Tier3"/>
     </type>
     <type name="Expansion_M1A_RailAtt">
-        <nominal>7</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>800</restock>
-        <min>2</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1091,10 +1091,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_ANPEQ15_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1105,10 +1105,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_Kar98_Bayonet">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>14400</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1121,10 +1121,10 @@
         <value name="Tier3"/>
     </type>
     <type name="ExpansionSatchel">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>10800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1136,10 +1136,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionRPG7">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>3600</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1150,10 +1150,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionLAW">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>3600</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1164,10 +1164,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_Taser_Yellow">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>900</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1193,10 +1193,10 @@
         <value name="Tier2"/>
     </type>
     <type name="Expansion_G36">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>3600</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1207,10 +1207,10 @@
         <value name="Tier3"/>
     </type>
     <type name="Expansion_MPX">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1265,10 +1265,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_MP7">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1279,10 +1279,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_Kedr">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>900</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1293,10 +1293,10 @@
         <value name="Tier3"/>
     </type>
     <type name="Expansion_VityazSN">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1200</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1322,10 +1322,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_M1A">
-        <nominal>9</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>3600</restock>
-        <min>2</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1336,10 +1336,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_DT11">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>1200</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1351,10 +1351,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Expansion_Kar98">
-        <nominal>25</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>900</restock>
-        <min>6</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1368,10 +1368,10 @@
         <value name="Tier3"/>
     </type>
     <type name="AmmoBox_Expansion_46x30_25rnd">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1383,10 +1383,10 @@
         <tag name="shelves"/>
     </type>
     <type name="AmmoBox_Expansion_338_15rnd">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1398,10 +1398,10 @@
         <tag name="shelves"/>
     </type>
     <type name="Expansion_AmmoBox_8mm_15rnd">
-        <nominal>30</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>800</restock>
-        <min>8</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1414,10 +1414,10 @@
         <value name="Tier2"/>
     </type>
     <type name="Expansion_Ammo_8mm">
-        <nominal>40</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>800</restock>
-        <min>10</min>
+        <min>0</min>
         <quantmin>10</quantmin>
         <quantmax>80</quantmax>
         <cost>100</cost>
@@ -1430,10 +1430,10 @@
         <value name="Tier2"/>
     </type>
     <type name="ExpansionAmmoRPG">
-        <nominal>8</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>10800</restock>
-        <min>2</min>
+        <min>0</min>
         <quantmin>100</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1444,10 +1444,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionAmmoLAW">
-        <nominal>8</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>10800</restock>
-        <min>2</min>
+        <min>0</min>
         <quantmin>100</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1458,10 +1458,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_White">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1471,10 +1471,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_Red">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1484,10 +1484,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_Green">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1497,10 +1497,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_Yellow">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1510,10 +1510,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_Purple">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1523,10 +1523,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Smoke_Teargas">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1536,10 +1536,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_White">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1549,10 +1549,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_Red">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1562,10 +1562,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_Green">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1575,10 +1575,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_Yellow">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1588,10 +1588,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_Purple">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1601,10 +1601,10 @@
         <usage name="Police"/>
     </type>
     <type name="Ammo_Expansion_M203_Sticky_Smoke_Teargas">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>0</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1626,10 +1626,10 @@
         <usage name="Military"/>
     </type>
     <type name="Ammo_Expansion_46x30">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>25</quantmin>
         <quantmax>80</quantmax>
         <cost>100</cost>
@@ -1638,10 +1638,10 @@
         <usage name="Military"/>
     </type>
     <type name="Ammo_Expansion_338">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>20</quantmin>
         <quantmax>80</quantmax>
         <cost>100</cost>
@@ -1650,10 +1650,10 @@
         <usage name="Military"/>
     </type>
     <type name="Mag_Expansion_Taser">
-        <nominal>30</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>8</min>
+        <min>0</min>
         <quantmin>100</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1665,10 +1665,10 @@
         <value name="Tier3"/>
     </type>
     <type name="Mag_Expansion_Vityaz_30Rnd">
-        <nominal>25</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>800</restock>
-        <min>6</min>
+        <min>0</min>
         <quantmin>10</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1693,10 +1693,10 @@
         <tag name="shelves"/>
     </type>
     <type name="Mag_Expansion_MPX_50Rnd">
-        <nominal>30</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>8</min>
+        <min>0</min>
         <quantmin>8</quantmin>
         <quantmax>50</quantmax>
         <cost>100</cost>
@@ -1707,10 +1707,10 @@
         <value name="Tier2"/>
     </type>
     <type name="Mag_Expansion_G36_30Rnd">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>0</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>20</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1721,10 +1721,10 @@
         <value name="Tier3"/>
     </type>
     <type name="Mag_Expansion_Kedr_20Rnd">
-        <nominal>30</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>8</min>
+        <min>0</min>
         <quantmin>20</quantmin>
         <quantmax>100</quantmax>
         <cost>100</cost>
@@ -1735,10 +1735,10 @@
         <value name="Tier2"/>
     </type>
     <type name="Mag_Expansion_MP7_40Rnd">
-        <nominal>25</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>6</min>
+        <min>0</min>
         <quantmin>15</quantmin>
         <quantmax>80</quantmax>
         <cost>100</cost>
@@ -1749,10 +1749,10 @@
         <value name="Tier4"/>
     </type>
     <type name="Mag_Expansion_AWM_5Rnd">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>10800</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>15</quantmin>
         <quantmax>80</quantmax>
         <cost>100</cost>
@@ -1762,10 +1762,10 @@
         <value name="Tier4"/>
     </type>
     <type name="ExpansionCamoBoxKit">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1776,10 +1776,10 @@
         <usage name="Hunting"/>
     </type>
     <type name="ExpansionCamoTentKit">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1790,10 +1790,10 @@
         <usage name="Hunting"/>
     </type>
     <type name="ExpansionSafeLarge">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1804,10 +1804,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionSafeMini">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1818,10 +1818,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionSafeMedium">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1832,10 +1832,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionGunrack">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>3888000</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -1845,10 +1845,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionHescoKit">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>7200</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -2165,5 +2165,33 @@
         <quantmax>-1</quantmax>
         <cost>100</cost>
         <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Expansion_BenelliM4">
+        <nominal>0</nominal>
+        <lifetime>10800</lifetime>
+        <restock>3600</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+        <category name="weapons"/>
+        <usage name="Military"/>
+        <value name="Tier3"/>
+        <value name="Tier4"/>
+    </type>
+    <type name="Expansion_AWM">
+        <nominal>0</nominal>
+        <lifetime>7200</lifetime>
+        <restock>28800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="1"/>
+        <category name="weapons"/>
+        <usage name="Military"/>
+        <value name="Tier3"/>
+        <value name="Tier4"/>
     </type>
 </types>

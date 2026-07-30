@@ -1,6 +1,6 @@
 {
   "m_Version": 32,
-  "Enabled": 1,
+  "Enabled": 0,
   "FormationScale": -1,
   "DespawnTime": 600,
   "RespawnTime": 1200,
@@ -994,11 +994,11 @@
     {
       "Name": "Land_Mil_Tent_Big1_4",
       "Persist": 0,
-      "Faction": "MilitaryLoadout",
+      "Faction": "East",
       "Formation": "",
       "FormationScale": 1.5,
       "FormationLooseness": 0,
-      "Loadout": "",
+      "Loadout": "MilitaryLoadout",
       "Units": [],
       "NumberOfAI": 1,
       "NumberOfAIMax": 2,
