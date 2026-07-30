@@ -360,10 +360,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Left_Orange">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -372,10 +372,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Right_Orange">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -384,10 +384,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Trunk_Orange">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -396,10 +396,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Hood_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -408,10 +408,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Driverdoor_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -420,10 +420,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Codriverdoor_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -432,10 +432,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Left_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -444,10 +444,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Right_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -456,10 +456,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Trunk_Red">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -468,10 +468,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Hood_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -480,10 +480,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Driverdoor_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -492,10 +492,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Codriverdoor_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -504,10 +504,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Left_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -516,10 +516,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Right_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -528,10 +528,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Trunk_Blue">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -540,10 +540,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Hood_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -552,10 +552,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Driverdoor_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -564,10 +564,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Codriverdoor_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -576,10 +576,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Left_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -588,10 +588,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Right_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -600,10 +600,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Trunk_Grey">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -612,10 +612,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Hood_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -624,10 +624,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Driverdoor_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -636,10 +636,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Codriverdoor_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -648,10 +648,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Left_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -660,10 +660,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Right_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -672,10 +672,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Landrover_Trunk_Green">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -684,10 +684,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionHelicopterBattery">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>43200</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -697,10 +697,10 @@
         <usage name="Military"/>
     </type>
     <type name="ExpansionIgniterPlug">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>43200</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -710,10 +710,10 @@
         <usage name="Military"/>
     </type>
     <type name="ExpansionHydraulicHoses">
-        <nominal>20</nominal>
+        <nominal>0</nominal>
         <lifetime>43200</lifetime>
         <restock>1800</restock>
-        <min>5</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -723,10 +723,10 @@
         <usage name="Military"/>
     </type>
     <type name="ExpansionBusWheel">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -736,10 +736,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionBusWheelDouble">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -749,10 +749,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUAZWheel">
-        <nominal>25</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>6</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -761,10 +761,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionTractorFrontWheel">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -774,10 +774,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionTractorBackWheel">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -787,10 +787,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionTractorDoorsDriver">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -800,10 +800,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionTractorDoorsCoDriver">
-        <nominal>10</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>3</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -813,10 +813,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionVodnikWheel">
-        <nominal>25</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>6</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -825,10 +825,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionVodnikDoorDriver">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -837,10 +837,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionVodnikDoorCoDriver">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -849,10 +849,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUAZDoorDriver">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -861,10 +861,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUAZDoorCoDriver">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -873,10 +873,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUAZDoorCargo1">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -885,10 +885,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUAZDoorCargo2">
-        <nominal>15</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>4</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -897,10 +897,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUh1hDoor_1_1">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -909,10 +909,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUh1hDoor_1_2">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -921,10 +921,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUh1hDoor_2_1">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -933,10 +933,10 @@
         <tag name="floor"/>
     </type>
     <type name="ExpansionUh1hDoor_2_2">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -945,10 +945,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Mh6_Door_1_1">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -957,10 +957,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Mh6_Door_1_2">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -969,10 +969,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Mh6_Door_2_1">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -981,10 +981,10 @@
         <tag name="floor"/>
     </type>
     <type name="Expansion_Mh6_Door_2_2">
-        <nominal>5</nominal>
+        <nominal>0</nominal>
         <lifetime>2700</lifetime>
         <restock>1800</restock>
-        <min>1</min>
+        <min>0</min>
         <quantmin>-1</quantmin>
         <quantmax>-1</quantmax>
         <cost>100</cost>
@@ -2005,5 +2005,165 @@
         <usage name="Town"/>
         <usage name="Village"/>
         <tag name="shelves"/>
+    </type>
+    <type name="Expansion_Landrover">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="OffroadHatchback_Green">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Hatchback_02_Red">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="OffroadHatchback_WhiteRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="OffroadHatchback_GreenRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Hatchback_02_BlackRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Hatchback_02_BlueRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Hatchback_02_RedRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Hatchback_02_BanditKitty">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_GreyRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_RedRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_Yellow">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_YellowRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_YellowBright">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_Blue">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
+    </type>
+    <type name="Sedan_02_BlueRust">
+        <nominal>0</nominal>
+        <lifetime>3888000</lifetime>
+        <restock>1800</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+        <flags count_in_cargo="0" count_in_hoarder="0" count_in_map="1" count_in_player="0" crafted="0" deloot="0"/>
     </type>
 </types>
