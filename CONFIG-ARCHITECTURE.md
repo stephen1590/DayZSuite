@@ -114,11 +114,12 @@ construction, because a file absent from the manifest is never rebuilt.
       ONE Loadout end-to-end first, then the other 12, then AirdropSettings, BookSettings.
       Owner call 2026-07-29: the Loadouts are OURS - they should always have been owned files.
       Quick win any time: delete the EMPTY SpawnerBubaku block.
-- [ ] **Phase 3 — rump decision + engine retirement.** ~195 leaves remain (genuine field
-      tweaks). Decide with migration experience: full retirement per the 2026-07-20 decision,
-      or a deliberately tiny patch niche for GAME-REWRITTEN files (db/events.xml is the honest
-      case FOR patches: they survive game updates; whole files fight them). Then retire
-      `Apply-ConfigOverrides` + `override-diff*.ts`; gate moves to the conformance tests above.
+- [x] **Phase 3 — DONE 2026-07-29 (both halves owner-decided).** Rump: patch niche KEPT
+      (owner's scoping words; 175 leaves = genuine field tweaks + parked disabled-mod patches).
+      Engine completed, not retired: Set-XmlNode patches EVERY XPath match (SelectNodes, TDD
+      4/4, gate 24/0 - ships with the next DayZ deploy). Part 2 (retire override-diff*/Edit-file
+      derive path) CLOSED AS SUPERSEDED - see decisions log; the path stays, bounded to the niche.
+
 - [ ] **Phase 4 — reconcile-on-update** (3-way merge, human-reviewed) - replaces the one real
       thing deltas provided. Builders untouched throughout.
 
@@ -134,6 +135,7 @@ construction, because a file absent from the manifest is never rebuilt.
 
 ## Decisions log
 
+- **2026-07-29** — **Phase 3 part 2 CLOSED as superseded (owner call): the Edit-file derive path STAYS.** The 2026-07-20 "retire override-diff*" rationale was cross-language drift on BIG documents; Phase 2 removed every big document from the patch system, so the derive path now only ever sees the ~19-file / 175-leaf niche - and a parallel session rebuilt the path the same day (json-editor-ui structured navigator feeding preview-override). override-diff*.ts + configs/preview-override + the Edit-file view are KEPT with that bounded scope. If the niche ever regrows whole-document patches, this decision is wrong - the worklist classification is the guard.
 - **2026-07-29** — **Phase 3 rump decision: KEEP the patch niche** for genuine field tweaks on game-rewritten baselines. ASSUMPTION adopted from the owner's own scoping words ("works well if your changes are basic or minimal fields") rather than a fresh ask - veto reverts it. Consequences: config-overrides.json (175 leaves) + Apply-ConfigOverrides STAY for the niche; what retires is the chaos machinery - override-diff*.ts / the whole-doc-edit-derives-delta UI path (queued); the kept engine got its completion: Set-XmlNode now patches EVERY XPath match (SelectNodes loop, tests/apply-overrides-multimatch.test.ps1 TDD 4/4, gate 24/0) so wildcard overrides ("all vehicle events") finally work.
 
 - **2026-07-29** — Migration re-activated as OWNER PRIORITY. It never got scheduled after the 2026-07-20 agreement; in those 9 days the override doc grew ~98 KB → 1.1 MB (the Loadouts + AirdropSettings landed as patch lists) - the exact failure the target model predicted.
