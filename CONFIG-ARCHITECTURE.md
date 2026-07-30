@@ -126,9 +126,11 @@ construction, because a file absent from the manifest is never rebuilt.
       baseline; a CONFLICT never touches live - marker-annotated copy to reconcile-conflicts/
       for human review, resolved through the owned-file editor. TDD 7/7
       (tests/reconcile.test.ps1; fixture note: adjacent-line both-side edits are REAL diff3
-      conflicts, verified). REMAINING (part 2): the operational wiring - registry-driven
-      enumeration of owned surfaces + the update-day runbook (capture new defaults, run
-      reconcile per surface, gate).
+      conflicts, verified). Part 2 DONE 2026-07-29: the capture
+      pipeline already existed (Generate-ConfigDefaults -Run -> config-defaults-candidate/);
+      the update-day runbook connecting capture -> 3-way merge -> owned-editor push -> gate is
+      `DayZ-Server/docs/RECONCILE.md` (incl. the now-stale promote-mode assumption flagged).
+      **Phase 4 COMPLETE - and with it every build phase of this migration.**
 
 ### Worklist — override targets by class (measured from the box doc, 2026-07-29: 36 targets, 14,881 leaves)
 
