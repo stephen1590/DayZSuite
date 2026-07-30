@@ -52,11 +52,14 @@ class ShipFix
 class ShipPatroller
 {
     // HARD RULE — the hull is untouchable. The ONLY writes this mod ever makes to the ship are
-    // its MOTION: SetVelocity / SetOrientation / Update / dBodyActive. Never AddChild anything
-    // to it, never insert into its part list, never alter its physics composition: floating IS
-    // the hull's physics, and the one build that attached an object to it broke buoyancy and
-    // terrain collision — the ship free-fell out of the world (2026-07-26). Companion objects
-    // (the return pole) stand FREE and are moved alongside instead.
+    // its MOTION: SetVelocity / SetOrientation / Update / dBodyActive. Two builds died learning
+    // this (2026-07-26):
+    //  1. AddChild'ing a marker pole into the hull broke its physics compound — buoyancy and
+    //     terrain collision stopped; the ship free-fell out of the world.
+    //  2. A FREE-standing pole teleported onto the deck every tick interpenetrated the hull's
+    //     collision — the depenetration impulse LAUNCHED the ship 15km into the sky.
+    // So: never AddChild to the hull, never touch its part list, and never place ANY object
+    // with collision inside/on the hull. The ship sails alone.
 
     // ---- ENABLE SWITCH ---------------------------------------------------------------------
     // Set at boot by MissionServer.OnInit from the $profile:FlyingDutchman/enable marker file —
@@ -98,20 +101,6 @@ class ShipPatroller
 
     // ---- state -----------------------------------------------------------------------------
     private static EntityAI s_Ship;
-    // The hull as its concrete class, when it IS an LHD (null otherwise). Used to reach the
-    // PUBLIC m_Parts array — the 11 superstructure pieces whose client sync upstream breaks
-    // (its 5s CallLater(Update) VM-excepts every call), so WE re-broadcast them. A cast, not a
-    // modded class: server-only modded vehicle classes broke client rendering (2026-07-25).
-    private static ExpansionLHD s_Lhd;
-    // The deck return-pad pole: a FREE-STANDING TerritoryFlag that FOLLOWS the ship via
-    // SetPosition pushes every tick (the airdrop-plane replication pattern — statics DO
-    // replicate transform pushes). Deliberately NEVER AddChild'd: parenting a base-building
-    // object into the hull's physics compound destroyed buoyancy AND terrain collision — the
-    // hull free-fell to y≈-2000 within 60s of spawn on BOTH boots that ran the attached
-    // version (2026-07-25 22:32, 2026-07-26 00:20), then got engine-deleted, and the map
-    // overlay silently emptied.
-    private static Object s_PadPole;
-    static vector PAD_POLE_MS = "0 8.0 25";       // pole base ON the measured +8m fore deck (ferry DECK_PAD_MS x/z)
     private static bool s_HadShip = false;        // a hull existed this boot — arms the loss log
     private static bool s_LossLogged = false;     // one loud RPT line when the hull vanishes, not silence
 
@@ -337,18 +326,12 @@ class ShipPatroller
         // static preview boats with ActiveState.INACTIVE — ACTIVE is the live state).
         dBodyActive(s_Ship, ActiveState.ACTIVE);
         LockShip(s_Ship);
-        // LHD extras: the concrete cast, for the superstructure re-broadcast in Tick.
-        s_Lhd = ExpansionLHD.Cast(s_Ship);
         s_HadShip = true;
         s_LossLogged = false;
-        // The VISIBLE return pole (owner report: the return pad was unfindable with nothing to
-        // see). Spawned free-standing at the deck-pad spot and made to FOLLOW the ship in Tick —
-        // see the s_PadPole declaration for why it must never be AddChild'd to the hull.
-        s_PadPole = GetGame().CreateObject("TerritoryFlag", s_Ship.ModelToWorld(PAD_POLE_MS));
-        if (s_PadPole)
-            Print("[FlyingDutchman] deck return-pad pole spawned (follows the fore deck)");
-        else
-            Print("[FlyingDutchman] deck return-pad pole FAILED to spawn — return pad works but is unmarked");
+        // NO deck marker object — see the HARD RULE at the top of the class: both marker-pole
+        // designs (attached AND free-following) destroyed the hull's physics. The return pad is
+        // pure coordinates (ShipFerry.DECK_PAD_MS); marking it visibly needs a collision-free
+        // design and an owner go before anything is built.
     }
 
     // TODO: lock against boarding/hijack — Expansion vehicle lock (set locked, issue no key) or a
@@ -375,25 +358,11 @@ class ShipPatroller
                 // returned, ship.json went [], and the only clue was a missing map chip.
                 s_LossLogged = true;
                 Print("[FlyingDutchman] HULL LOST (destroyed or engine-deleted) — ship.json goes empty; no respawn until next restart");
-                if (s_PadPole)
-                {
-                    GetGame().ObjectDelete(s_PadPole);
-                    s_PadPole = null;
-                }
             }
             return;
         }
         int now = NowSec();
         vector shipPos = s_Ship.GetPosition();
-
-        // The return pole rides the deck via transform pushes every tick (10Hz) — position AND
-        // yaw, so it stays planted on the fore pad through turns.
-        if (s_PadPole)
-        {
-            s_PadPole.SetPosition(s_Ship.ModelToWorld(PAD_POLE_MS));
-            s_PadPole.SetOrientation(s_Ship.GetOrientation());
-            s_PadPole.Update();
-        }
 
         // RPT activity heartbeat (~60s) — answers "is it actually moving?" from the log alone.
         if (s_TickCount % HEARTBEAT_EVERY_TICKS == 0)
@@ -456,19 +425,6 @@ class ShipPatroller
             vector ang = dir.VectorToAngles();
             s_Ship.SetOrientation(Vector(ang[0], 0, 0));   // yaw toward heading (1Hz; physics owns the rest)
             s_Ship.Update();
-            // Re-broadcast every superstructure piece (1Hz). Upstream's own 5s refresh is the
-            // call that VM-exceptions ("ExpansionLHD::Update expected IEntity"), so on a MOVING
-            // hull the clients' copies of the 11 attached parts go stale — players watched half
-            // the ship vanish mid-voyage (owner report, 2026-07-25). Children track the hull
-            // server-side; Update() pushes their true transforms to clients — the same
-            // SetPosition/Update replication the airdrop plane and world-object mover rely on.
-            if (s_Lhd && s_Lhd.m_Parts)
-            {
-                foreach (Object part : s_Lhd.m_Parts)
-                {
-                    if (part) part.Update();
-                }
-            }
         }
     }
 

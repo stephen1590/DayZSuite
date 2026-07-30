@@ -513,6 +513,18 @@
   .ll.lwarn .lt { color: var(--map-warn); }
   .ll.lerr .lt { color: var(--map-bad); }
   .ll .lt mark { background: var(--accent-weak); color: var(--accent); border-radius: 3px; padding: 0 1px; }
+  /* Chat view (logs.js chat source): day divider heads the file, then [time] [channel] <name> message */
+  .ll.chat-line .lt { white-space: pre-wrap; }
+  .chat-ts { color: var(--faint); }
+  .chat-sep { color: var(--border); }
+  .chat-ch { color: var(--info); }
+  .chat-name { color: var(--accent); font-weight: 700; }
+  .chat-msg { color: var(--fg); }
+  .ll.chat-day { padding: 6px 0 4px; }
+  .ll.chat-day .lt { display: flex; align-items: center; justify-content: center; gap: 8px;
+    color: var(--faint); white-space: nowrap; overflow: hidden; }
+  .chat-day-rule { color: var(--border); overflow: hidden; }
+  .chat-day-date { color: var(--muted); font-weight: 700; letter-spacing: 0.04em; }
   .log-sentinel { text-align: center; color: var(--faint); font-size: 11px; padding: 4px 0; }
   .log-filter { width: 300px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
     padding: 6px 10px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }

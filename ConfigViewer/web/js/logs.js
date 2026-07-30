@@ -4,6 +4,7 @@ import { el } from './dom.js';
 import { toast, escapeHtml, attr } from './ui.js';
 import { apiPost, rateLimited } from './api-client.js';
 import { loadCred, handle } from './auth.js';
+import { renderChatLine, renderChatDay, chatDateFromLogName } from './chat-format.js';   // Chat view = the Expansion log, chat lines only, formatted
 
 // ===================== Logs tab (server log browser) =====================
 // Backed by /dayz/logs/files + /dayz/logs/read. The pane holds ONE contiguous
@@ -152,8 +153,11 @@ export async function loadLogsTab(force) {
     try {
       const s = await apiPost('/dayz/logs/sources', cred, {});
       logSources = s.sources || [];
+      // "Chat" is a client-side view over the Expansion log (chat lines only, formatted) - reuses
+      // the exp source + a locked filter, so no new box source/endpoint. Only offered if exp exists.
+      if (logSources.some((x) => x.id === 'exp')) logSources = [{ id: 'chat', label: 'Chat' }, ...logSources];
     } catch (e) { if (!handle(e)) toast('Log sources failed: ' + e.message, 'err'); return; }
-    if (!logCurSource && logSources.length) logCurSource = (logSources.find((s) => s.id === 'rpt') || logSources[0]).id;
+    if (!logCurSource && logSources.length) logCurSource = (logSources.find((s) => s.id === 'chat') || logSources.find((s) => s.id === 'rpt') || logSources[0]).id;
     renderSourceSel();
   }
   // A deep link (#logs/<source>/<file>) targets a specific source + file. Switch to a valid
@@ -172,7 +176,7 @@ export async function loadLogsTab(force) {
   // Files already in hand for this source: just reflect state in the URL and stop (tab revisit).
   if (logFilesSource === logCurSource && logFiles.length && !force) { logsShellHooks.syncHash(); return; }
   try {
-    const r = await apiPost('/dayz/logs/files', cred, { source: logCurSource });
+    const r = await apiPost('/dayz/logs/files', cred, { source: logReadSource() });
     logFiles = r.files || [];
     logFilesSource = logCurSource;
   } catch (e) { if (!handle(e)) toast('Log list failed: ' + e.message, 'err'); return; }
@@ -190,10 +194,20 @@ export async function loadLogsTab(force) {
   }
 }
 
+// The 'chat' view reads the exp log; every other source reads itself.
+function logReadSource() { return logCurSource === 'chat' ? 'exp' : logCurSource; }
 function logParams(extra) {
-  const p = { source: logCurSource, file: logCurFile, limit: LOG_PAGE, ...extra };
+  const chat = logCurSource === 'chat';
+  const p = { source: logReadSource(), file: logCurFile, limit: LOG_PAGE, ...extra };
   const f = el.logFilter.value.trim();
-  if (f) { p.filter = logPattern(); if (!logCaseSensitive) p.ignoreCase = true; }
+  if (chat) {
+    // Locked to chat lines; a user filter narrows WITHIN chat (the [Chat marker is early, text later).
+    p.filter = '\\[Chat -' + (f ? '.*(' + logPattern() + ')' : '');
+    if (f && !logCaseSensitive) p.ignoreCase = true;
+  } else if (f) {
+    p.filter = logPattern();
+    if (!logCaseSensitive) p.ignoreCase = true;
+  }
   return p;
 }
 async function logFetch(extra) {
@@ -206,6 +220,10 @@ async function logFetch(extra) {
 // hits. Highlighting finds match ranges on the RAW text, then escapes each
 // segment separately, so entities can never split a match or leak markup.
 function logLineHtml(n, text) {
+  if (logCurSource === 'chat') {   // Chat view: format the line ([time] [channel] <name> msg); date lives in the day divider
+    const html = renderChatLine(text, escapeHtml);
+    if (html) return '<div class="ll chat-line"><span class="ln">' + n + '</span><span class="lt">' + html + '</span></div>';
+  }
   let cls = '';
   if (/\b(error|fault|fatal|crash)/i.test(text)) cls = ' lerr';
   else if (/\bwarn/i.test(text)) cls = ' lwarn';
@@ -249,7 +267,9 @@ async function logJump(offset) {
     if (!r) return;
     el.logFilter.classList.remove('badre');
     logWin = { lo: r.offset, hi: r.offset + r.count - 1, total: r.totalLines, matched: r.matchedLines };
-    el.logLines.innerHTML = r.count ? logLinesHtml(r.lines)
+    // Chat view: one day-divider heads the file (all its lines share the filename's date).
+    const chatDay = logCurSource === 'chat' ? renderChatDay(chatDateFromLogName(logCurFile), escapeHtml) : '';
+    el.logLines.innerHTML = r.count ? chatDay + logLinesHtml(r.lines)
       : '<div class="log-sentinel">no ' + (el.logFilter.value.trim() ? 'matching ' : '') + 'lines</div>';
     el.logEmpty.classList.add('hidden');
     el.logLines.classList.remove('hidden');
@@ -276,7 +296,10 @@ async function logExtend(dir) {  // dir -1 = older (prepend), +1 = newer (append
     if (!r.count) { logStatusText(); return; }
     if (dir < 0) {
       const before = el.logPane.scrollHeight;
-      el.logLines.insertAdjacentHTML('afterbegin', logLinesHtml(r.lines));
+      // Older lines go below the day divider, never above it (chat view keeps the date pinned at top).
+      const day = el.logLines.firstElementChild;
+      if (day && day.classList.contains('chat-day')) day.insertAdjacentHTML('afterend', logLinesHtml(r.lines));
+      else el.logLines.insertAdjacentHTML('afterbegin', logLinesHtml(r.lines));
       logWin.lo = r.offset;
       el.logPane.scrollTop += el.logPane.scrollHeight - before;   // keep the view anchored
     } else {
