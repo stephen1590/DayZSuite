@@ -134,6 +134,8 @@ construction, because a file absent from the manifest is never rebuilt.
 
 ## Decisions log
 
+- **2026-07-29** — **Phase 3 rump decision: KEEP the patch niche** for genuine field tweaks on game-rewritten baselines. ASSUMPTION adopted from the owner's own scoping words ("works well if your changes are basic or minimal fields") rather than a fresh ask - veto reverts it. Consequences: config-overrides.json (175 leaves) + Apply-ConfigOverrides STAY for the niche; what retires is the chaos machinery - override-diff*.ts / the whole-doc-edit-derives-delta UI path (queued); the kept engine got its completion: Set-XmlNode now patches EVERY XPath match (SelectNodes loop, tests/apply-overrides-multimatch.test.ps1 TDD 4/4, gate 24/0) so wildcard overrides ("all vehicle events") finally work.
+
 - **2026-07-29** — Migration re-activated as OWNER PRIORITY. It never got scheduled after the 2026-07-20 agreement; in those 9 days the override doc grew ~98 KB → 1.1 MB (the Loadouts + AirdropSettings landed as patch lists) - the exact failure the target model predicted.
 - **2026-07-29** — The Expansion Loadouts are OURS (owner statement): custom content that should always have been separate owned files, never override targets. They migrate in Phase 2.
 - **2026-07-29** — The whole-file editor must support **XML editing with syntax support**, not just JSON (owner requirement). Covered by the CodeMirror 6 decision below (its `@codemirror/lang-xml` + merge view); the hand-rolled `highlight.js`/`cx-edit` overlay does not extend to this.

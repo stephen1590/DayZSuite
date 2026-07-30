@@ -208,17 +208,25 @@ function Get-WholeFileJobs($manifest, [string]$serverDir) {
 # --- XML / JSON single-file patchers (mutate an in-memory doc, report per selector) --
 
 function Set-XmlNode($doc, [string]$selector, $value, [string]$label) {
-    $node = $doc.SelectSingleNode($selector)
-    if ($null -eq $node) { Show-Warn "$label : selector '$selector' matched nothing"; return $false }
+    # SelectNodes, not SelectSingleNode (fixed 2026-07-29): a selector patches EVERY node it
+    # matches, so wildcard overrides ("all vehicle events") work. Single-match selectors are
+    # unchanged - one node in, one node patched. Previously a multi-match silently patched
+    # only the first node, making wildcards impossible (found shipping 7 per-event selectors).
+    $nodes = $doc.SelectNodes($selector)
+    if ($null -eq $nodes -or $nodes.Count -eq 0) { Show-Warn "$label : selector '$selector' matched nothing"; return $false }
     $want = ConvertTo-InvariantString $value
-    # XmlAttribute exposes .Value; an element node we treat by its text content.
-    if ($node -is [System.Xml.XmlAttribute]) {
-        if ($node.Value -eq $want) { Show-Same "$label : $selector (unchanged)"; return $false }
-        Show-Change "$label : $selector"; $node.Value = $want; return $true
-    } else {
-        if ($node.InnerText -eq $want) { Show-Same "$label : $selector (unchanged)"; return $false }
-        Show-Change "$label : $selector"; $node.InnerText = $want; return $true
+    $changed = 0; $same = 0
+    foreach ($node in $nodes) {
+        # XmlAttribute exposes .Value; an element node we treat by its text content.
+        if ($node -is [System.Xml.XmlAttribute]) {
+            if ($node.Value -eq $want) { $same++ } else { $node.Value = $want; $changed++ }
+        } else {
+            if ($node.InnerText -eq $want) { $same++ } else { $node.InnerText = $want; $changed++ }
+        }
     }
+    $multi = if ($nodes.Count -gt 1) { " [$($nodes.Count) matches: $changed changed, $same unchanged]" } else { '' }
+    if ($changed -gt 0) { Show-Change "$label : $selector$multi"; return $true }
+    Show-Same "$label : $selector (unchanged)$multi"; return $false
 }
 
 # FORCE-CREATE: a dotted path that doesn't exist in the target JSON is CREATED (missing
