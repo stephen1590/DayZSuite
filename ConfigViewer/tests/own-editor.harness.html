@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>own-editor harness</title>
+<link rel="stylesheet" href="/web/style.css">
+<script type="importmap">
+{ "imports": {
+    "/web/js/api-client.js": "/tests/mocks/api-client.js",
+    "/web/js/auth.js": "/tests/mocks/auth.js" } }
+</script></head>
+<body>
+<div id="toast" class="toast"></div>
+<h3 style="font-family:monospace">own-editor.js DOM harness</h3>
+<div id="body" style="max-width:900px"></div>
+<pre id="result" style="font-family:monospace;font-weight:bold"></pre>
+<script type="module">
+// Top-level await HOLDS the load event until the editor is rendered - so a headless
+// screenshot taken at load shows the real final state.
+const { renderOwnEditor, ownAnyDirty } = await import('/web/js/own-editor.js');
+const body = document.getElementById('body');
+const text = await renderOwnEditor(
+  { key: 'harness', relpath: 'profiles/ExpansionMod/Loadouts/TownLoadout.json' }, body, {});
+for (let i = 0; i < 100 && !body.querySelector('.cm-editor'); i++) await new Promise(r => setTimeout(r, 50));
+const r = {
+  returnedLiveText: typeof text === 'string' && text.includes('TownEdited'),
+  cmRendered: !!body.querySelector('.cm-editor'),
+  contentShown: (body.querySelector('.cm-content')?.textContent || '').includes('TownEdited'),
+  diffGutterShown: !!body.querySelector('.cm-deletedChunk, .cm-changedLine, .cm-changeGutter'),
+  deletedDefaultLineShown: (body.textContent || '').includes('RemovedInLive'),
+  saveDisabledWhenClean: body.querySelector('#ownSave')?.disabled === true,
+  cleanNotDirty: ownAnyDirty() === false,
+};
+r.ALL_PASS = Object.values(r).every(Boolean);
+document.getElementById('result').textContent = JSON.stringify(r, null, 1);
+try { await fetch('/RESULT/' + encodeURIComponent(JSON.stringify(r))); } catch {}
+</script></body></html>
