@@ -1,6 +1,6 @@
 # Staging Environment — Plan (local VM topology)
 
-> Permanent staging mirror as a **local QEMU/KVM Ubuntu VM** on the dev machine. Purpose: every change is reviewable on staging **before** it reaches prod — starting with the current stakeholder approval. Supersedes the earlier second-VPS draft (owner call 2026-07-21: isolation + zero cost over remote access). Config model: `CONFIG-ARCHITECTURE.md`. VM tooling: `staging/New-StagingVm.ps1` + `staging/staging.env`.
+> Permanent staging mirror as a **local QEMU/KVM Ubuntu VM** on the dev machine. Purpose: every change is reviewable on staging **before** it reaches prod — starting with the current stakeholder approval. Supersedes the earlier second-VPS draft (owner call 2026-07-21: isolation + zero cost over remote access). Config model: `Scale-Ready/CONFIG-ARCHITECTURE.md`. VM tooling: `staging/New-StagingVm.ps1` + `staging/staging.env`.
 
 **Status 2026-07-21: phases 0 and 1 DONE. VM procured + booted (Ubuntu 26.04, `ssh staging-vm` works). Env selector + guards built and PROVEN: bare deploys resolve staging-vm and skip mirror pulls (gate 24/0); prod `-Fix` refused a dirty tree pre-network (exit 5). Next: phase 2 — build the box via SETUP.md (VM lacks pwsh, as a fresh box should).**
 

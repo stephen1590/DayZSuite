@@ -4,7 +4,7 @@
 >
 > Rendered snapshots (presentation only, private Claude links): the *reassessment* and *two-copy-model* artifacts.
 
-**Status: Phases 0-2 DONE (2026-07-29); Phase 3-4 pending owner decisions.** The two-copy path is LIVE: the generic own-read/own-write verbs + CM6 whole-file editor are deployed to prod, and all 15 chaotic patch targets are cut over - the box override doc is down from 14,881 to **175 leaves (-98.8%)**, the rump being genuine field tweaks + parked disabled-mod patches. The mirror is pulled + auto-committed (552b29b); the gate passes 24/0 against the slim world. `Apply-ConfigOverrides` still runs at prestart FOR THE RUMP until the Phase 3 decision (tiny patch niche for game-rewritten files vs full retirement). The worklist below is the per-file status ledger.
+**Status (2026-07-31): Phases 0-2 and 4 DONE; the Phase 3 "keep a patch niche" decision is OVERRULED by the owner - the engine dies fully.** Owner's words (PROGRESS.md log, 2026-07-31): "No Overrides. Just whole file ownership and modifying with a better UI/Syntax manager." The two-copy path is LIVE (generic own-read/own-write + CM6/navigator editor on prod); the A2 tail cutover took the override doc from 14,881 to **12 leaves**, all `server-settings.json` (a generator INPUT, not an owned file - it moves to the settings-write path, then the engine + doc + `override-*` verbs + `override-diff*.ts` are deleted). `Apply-ConfigOverrides` still runs at prestart until that delete. **One OPEN decision blocks it: `db/types.xml`** - see Open items. The Phase 3 text below is kept as historical record.
 
 ---
 
@@ -56,7 +56,16 @@ Stop applying diffs. The diff becomes something the UI **shows**, never somethin
 | On update | reconcile: 3-way merge (old-default vs new-default vs live), human-reviewed | rebuild from inputs |
 | Examples | mod profile configs, bans/whitelist | DynamicAIB, transfer_spawn, custom-CE, babaku |
 
-The universal applier disappears. What replaces it: nothing for Category A, and small explicit builders for Category B (which already exist). The diff moves from the write path (correctness-critical) to the read path (cosmetic if wrong). The 98 KB `config-overrides.json`, the selector grammar, and `override-diff*.ts` are all retired.
+The universal applier disappears. What replaces it: nothing for Category A, and builders for Category B. The diff moves from the write path (correctness-critical) to the read path (cosmetic if wrong). The 98 KB `config-overrides.json`, the selector grammar, and `override-diff*.ts` are all retired.
+
+### Owner's statement of the model (2026-07-31 - the categories in the owner's own terms)
+
+Every regular xml/json has a `*.defaults.*` copy beside it. Two kinds:
+
+- **2.1 Direct replacements** = Category A above. The live file is edited whole; the default is the frozen diff baseline.
+- **2.2 Generator inputs** = Category B above, with a requirement the original table under-specified: inputs include **COMMON files that propagate into multiple per-map files** (we edit for 3 maps). Propagation is ONE declarative mechanism - registry rows declare a surface's inputs and builder - not N hand-rolled builders each inventing its own layout. As of 2026-07-31 only custom-CE has a common→per-map overlay; the other builders (`Apply-ServerCfg`, `Build-TransferSpawns`, `Build-MapPoints`, `Build-BabakuSpawns`) are bespoke. Unifying them is **WS-G in [PLAN.md](PLAN.md)** (G1 declare inputs, G2 one engine, delete bespoke logic per cutover).
+
+**Defaults location convention (name the split, don't paper it):** on the BOX the default lives alongside the live file (`<stem>.defaults.<ext>`, written by Apply-ConfigOverrides for patch targets and `Capture-OwnedDefaults.ps1` for owned files). In the REPO, frozen baselines live in the parallel `config-defaults/` tree. Two conventions for one concept - acceptable while documented HERE, but any new code follows the box convention and reads locations from the registry, never hardcodes either layout.
 
 **One honest catch:** deltas re-stamped your changes onto a vendor rewrite. But defaults are already refreshed by hand today, so that survival was already manual. The target keeps the same touch-point as a reviewed 3-way merge instead of a silent re-stamp.
 
@@ -114,7 +123,7 @@ construction, because a file absent from the manifest is never rebuilt.
       ONE Loadout end-to-end first, then the other 12, then AirdropSettings, BookSettings.
       Owner call 2026-07-29: the Loadouts are OURS - they should always have been owned files.
       Quick win any time: delete the EMPTY SpawnerBubaku block.
-- [x] **Phase 3 — DONE 2026-07-29 (both halves owner-decided).** Rump: patch niche KEPT
+- [x] **Phase 3 — decided 2026-07-29, then OVERRULED 2026-07-31 (see decisions log): the niche is NOT kept; the engine dies fully once `server-settings.json` moves to settings-write and the db/types.xml decision lands.** Historical record of the 07-29 decision: Rump: patch niche KEPT
       (owner's scoping words; 175 leaves = genuine field tweaks + parked disabled-mod patches).
       Engine completed, not retired: Set-XmlNode patches EVERY XPath match (SelectNodes, TDD
       4/4, gate 24/0 - ships with the next DayZ deploy). Part 2 (retire override-diff*/Edit-file
@@ -144,6 +153,8 @@ construction, because a file absent from the manifest is never rebuilt.
 
 ## Decisions log
 
+- **2026-07-31** — **OWNER OVERRULE: no patch niche. The delta engine is deleted outright** ("No Overrides. Just whole file ownership and modifying with a better UI/Syntax manager"). This supersedes BOTH 2026-07-29 Phase 3 entries below (niche kept; Edit-file derive path stays) - they are historical record now. Deletion set: `Apply-ConfigOverrides.ps1` (out of prestart, then deleted), `config-overrides.json` + the selector grammar, `override-diff*.ts` + `configs/preview-override`, the `override-*` verbs. Gated on: `server-settings.json` rows → settings-write path, and the db/types.xml decision (Open items).
+- **2026-07-31** — **Model restated in the owner's terms (§ "Owner's statement of the model"): 2.1 direct replacements + 2.2 generator inputs with common→per-map propagation as ONE mechanism.** The generator-unification gap became WS-G in PLAN.md. Same date, same source: tests must run as one continuously-run suite (WS-T), and design rules live in CLAUDE.md/gates, not silent readmes (WS-P).
 - **2026-07-29** — **Phase 3 part 2 CLOSED as superseded (owner call): the Edit-file derive path STAYS.** The 2026-07-20 "retire override-diff*" rationale was cross-language drift on BIG documents; Phase 2 removed every big document from the patch system, so the derive path now only ever sees the ~19-file / 175-leaf niche - and a parallel session rebuilt the path the same day (json-editor-ui structured navigator feeding preview-override). override-diff*.ts + configs/preview-override + the Edit-file view are KEPT with that bounded scope. If the niche ever regrows whole-document patches, this decision is wrong - the worklist classification is the guard.
 - **2026-07-29** — **Phase 3 rump decision: KEEP the patch niche** for genuine field tweaks on game-rewritten baselines. ASSUMPTION adopted from the owner's own scoping words ("works well if your changes are basic or minimal fields") rather than a fresh ask - veto reverts it. Consequences: config-overrides.json (175 leaves) + Apply-ConfigOverrides STAY for the niche; what retires is the chaos machinery - override-diff*.ts / the whole-doc-edit-derives-delta UI path (queued); the kept engine got its completion: Set-XmlNode now patches EVERY XPath match (SelectNodes loop, tests/apply-overrides-multimatch.test.ps1 TDD 4/4, gate 24/0) so wildcard overrides ("all vehicle events") finally work.
 
@@ -160,6 +171,7 @@ construction, because a file absent from the manifest is never rebuilt.
 
 ## Open items / known gaps
 
+- **OPEN DECISION (owner) — `db/types.xml` is classified BOTH ways and both are live (found 2026-07-31).** The registry (uncommitted) carries `typesSakhal`/`typesEnoch`/`typesChernarus` as `category:'owned'`/`web:'file'`; a parallel session simultaneously wrote ~19 vehicle-lifetime override rows onto the BOX and left `tests/vehicle-lifetime-overrides.test.ps1` asserting it is "NOT a whole-file ownership case". Both gate-green (the niche cap is 60 leaves; the block is ~19). The UI is safe only because override rows suppress the own-editor (`editor.js` `ownLayerCount === 0`), but `own-write` on the file is PERMITTED - a whole-file save would be partly re-patched at next boot. **Pick one:** (a) owned - cut the box rows over (removal freezes the live file; the pre-patch `.defaults` companion already exists, so the diff view keeps showing the lifetime tweaks), consistent with the 07-31 "no overrides" ruling; or (b) niche - drop the owned rows to `web:'view'`. The repo mirror has 0 of the box's rows; a Pull-Configs before the decision will import them.
 - **Hold SUPERSEDED 2026-07-29** — the 2026-07-20 "no config work until the config-duplication investigation clears" hold was never formally lifted, but every config change since 07-21 proceeded past it, and the owner's 2026-07-29 priority directive supersedes it. ASSUMPTION surfaced to owner (2026-07-29): the hold is treated as moot. If the duplication investigation is still live, say so and Phase 1 pauses.
 - **Test gap CLOSED by retirement** — `Build-AILocations` was retired to `archive/` in the 2026-07-23 map inversion (Phase 4); the uncovered-builder gap no longer exists.
 - **Doc cleanup** — stale references still live in other docs (`spawn-points.json` naming, short engine list, outdated Api action catalog, VPP-as-live). Those docs should defer their config-model explanation to this file rather than re-explain it.

@@ -47,7 +47,8 @@
 /Api/openapi.json
 
 # ── Editor / OS / agent cruft ──
+# CLAUDE.md is TRACKED (un-ignored 2026-07-31): it carries the owner's standing design
+# contract, and its changelog sibling was already tracked. Not cruft.
 .claude/
-CLAUDE.md
 .DS_Store
 Thumbs.db

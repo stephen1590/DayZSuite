@@ -1,8 +1,8 @@
 # Scale-Ready - Project Plan
 
-**Created:** 2026-07-24
-**Basis:** the 2026-07-24 architecture audit (three readers: ConfigViewer JS, Api TS, cross-tier duplication).
-**Config-model source of truth:** [../CONFIG-ARCHITECTURE.md](../CONFIG-ARCHITECTURE.md). This plan orchestrates and schedules; it does not re-explain the config model.
+**Created:** 2026-07-24. **Reframed:** 2026-07-31 (owner) - see §1a. Nothing was removed in the reframe; four workstreams were added (U, G, T, P) and one wrong scoping call was corrected (§3).
+**Basis:** the 2026-07-24 architecture audit (three readers: ConfigViewer JS, Api TS, cross-tier duplication) + the owner's four-needs statement of 2026-07-31 (recorded in [README.md](README.md) - that list is the spec this plan serves).
+**Config-model source of truth:** [CONFIG-ARCHITECTURE.md](CONFIG-ARCHITECTURE.md). This plan orchestrates and schedules; it does not re-explain the config model.
 
 ---
 
@@ -12,20 +12,35 @@ The audit found the codebase is **not slop** - it is honestly built, cleanly lay
 
 - **Wall 1 - the duplicated override engine (HIGH risk).** Override logic is written twice in two languages (Api TypeScript + box PowerShell), synced only by comments, using two different XPath engines. On the XML/PowerShell apply path there is no round-trip proof, so a selector can resolve to a different node on the box and write your edit to the **wrong place, silently.**
 - **Wall 2 - the un-abstracted UI render pattern.** The build-string → `innerHTML` → `querySelectorAll` → `addEventListener` dance is copy-pasted 13+ times. Two god-files (`editor.js` 1199 lines, `map.js` 2064 lines). Adding a tab is 150-200 lines of the same dance rewritten. Fine at 6 tabs; breaks near 10.
-- The Api backend is sound; only one small fix is in scope.
+- The Api backend is sound; only one small fix is in scope. *(Corrected 2026-07-31: the framework is sound, the write-VERB proliferation is not - see §3 and WS-U.)*
 
 **The insight that shapes the plan:** retiring the override engine (the two-copy migration we already decided) is *also* the fix for the HIGH silent-drift risk. Wall 1's remedy and the drift remedy are the same work.
 
+## 1a. The 2026-07-31 reframe (owner) - one disease, not two walls
+
+Seven days of work proved the walls are symptoms. The disease: **mechanisms get built as one-offs and no migration ever finishes by deleting what it replaced.** Evidence, measured from code 2026-07-31:
+
+- 7 parallel write verbs for "save a config" (`override-write`, `own-write`, `types-write`, `settings-write`, `file-write`, `spawn-write`, the patrol path) - each with its own validation/snapshot/concurrency semantics. `types-write` was built as "the prototype the generic verb replaces"; it was never replaced.
+- ~7 distinct edit surfaces in the UI (Fields grid, whole-file textarea, json-editor navigator, own-editor CM6, the 540-line types-editor, the server-settings form, map.js bespoke editors).
+- 5 hand-rolled generators, each inventing its own input layout; only custom-CE has a common→per-map overlay.
+- 10 test files, zero runners - each test is a per-change artifact nothing re-runs.
+
+**The standing rule this adds (encoded in GameServices/CLAUDE.md, enforced by WS-P gates): a migration is DONE when the replaced mechanism is DELETED. A new abstraction that leaves the old path alive is N+1, not 1 - it made the problem worse.**
+
 ## 2. Goals
 
-- Remove Wall 1: retire the override delta engine; move to the two-copy model (`default` + `live`, diff shown not applied).
-- Remove Wall 2: one reusable UI render primitive used by every view; split the two god-files.
+- Remove Wall 1: retire the override delta engine; move to the two-copy model (`default` + `live`, diff shown not applied). *(Need 2.1)*
+- Remove Wall 2: one reusable UI render primitive used by every view; split the two god-files. *(Need 1, UI face)*
+- **One write path** (added 2026-07-31): every config save goes through the generic registry-driven verb; the bespoke verbs are migrated onto it and deleted. *(Need 1, write face)*
+- **One propagation mechanism** (added 2026-07-31): generator inputs - including common files shared across the 3 maps - are declared in the registry and propagated by one engine, not N hand-rolled builders. *(Need 2.2)*
+- **One test suite** (added 2026-07-31): a single runner discovers and runs every test; every deploy gate runs the runner fail-closed. A test outside the runner does not exist. *(Need 3)*
+- **Enforced design** (added 2026-07-31): the design contract lives in the CLAUDE.md chain and in gate assertions - the two channels an agent cannot skip. *(Need 4)*
 - Prove it scales: adding a new view/editor costs ~80 lines, not ~200, and no new copy of the render dance.
-- Keep every step incremental and reversible; old and new paths coexist during migration.
+- Keep every step incremental and reversible; old and new paths coexist during migration - **but coexistence is a phase, not an end state: each migration closes with the deletion of the old path.**
 
 ## 3. Non-goals (explicit, so scope stays whole)
 
-- Rewriting the Api. It is sound. (One small fix, C3. A future split at ~50 actions is noted, not scheduled - see WS-D.)
+- Rewriting the Api wholesale. Its transport/auth/action framework is sound. **Corrected 2026-07-31: the config WRITE VERBS are NOT exempt** - the original "Api is sound and out of scope" call wrongly shielded the verb proliferation that need 1 targets; that is WS-U now. (The ~50-action split stays deferred - see WS-D.)
 - Changing the deploy model, the registry contract, or the box-owns-truth doctrine.
 - Adding a build step or heavy framework to ConfigViewer beyond the decided pieces (CodeMirror 6 for text editing; a light render primitive for view chrome - see the contract).
 - Formatting/naming as the headline. They are foundations (C1/C2), not the point.
@@ -44,6 +59,10 @@ The audit found the codebase is **not slop** - it is honestly built, cleanly lay
 - **WS-B - UI render abstraction + god-file split.** Removes Wall 2. **This is the workstream that must align with the parallel editor-UI effort** - see [UI-ABSTRACTION-CONTRACT.md](UI-ABSTRACTION-CONTRACT.md).
 - **WS-C - Foundations.** Formatting + naming standard, TYPES_BASE → registry, conformance-test scaffold. Small, enabling.
 - **WS-D - Deferred.** Api actions split at ~50 actions. Not scheduled; recorded so it is not lost.
+- **WS-U - One write path** (added 2026-07-31). Migrate each bespoke write verb (`types-write`, `settings-write`, `file-write`, `spawn-write`, the patrol path) onto the generic registry-driven path, then DELETE the verb. Per-surface validation stays - it becomes the registry row's `check`, not a private verb.
+- **WS-G - One propagation mechanism** (added 2026-07-31). Generator inputs declared per registry row (`inputs:` - common + per-map); ONE engine renders them into the generated live files. The 5 builders become rows on that engine or thin wrappers over a shared library; each cutover deletes the bespoke logic it replaces.
+- **WS-T - Testing architecture** (added 2026-07-31). One runner (`Invoke-Tests.ps1`) that discovers `tests/*.test.*` repo-wide; every deploy gate runs it fail-closed; one shared harness convention (one pass/fail counter, not three); cross-map behavior-parity assertions so the 3 missions cannot silently diverge. Tests are written FIRST (the existing CLAUDE.md TDD rule) - WS-T is what makes them KEEP running.
+- **WS-P - Design enforcement** (added 2026-07-31). The design contract goes into GameServices/CLAUDE.md (auto-loaded) and into gate assertions (fail-closed): mechanism counts (write verbs, editor mounts) may only go DOWN; a feature request names its surface category, editor, and write path before build. The niche leaf-cap assertion is the existence proof of this pattern.
 
 ## 6. The convergence point
 
@@ -166,6 +185,53 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** the new view is ~80 lines and wired with no boilerplate; then removed. Proves Wall 2 is down.
 - **Deps:** B3, B4. **Tier:** ConfigViewer (throwaway). **Deploy:** none. **Reversible:** yes. **Owner:** this-plan.
 
+### Added 2026-07-31 - WS-U / WS-G / WS-T / WS-P tasks (slot alongside Phases 0-3; deps below, not phase labels, order them)
+
+**T1 - One test runner, wired fail-closed**
+- Build `Invoke-Tests.ps1`: discovers `tests/*.test.*` (ps1 / sh / js) repo-wide, runs all, one summary. Wire into Deploy-DayZServer (beside Test-Configs), Deploy-Api, Deploy-ConfigViewer - red blocks the ship.
+- **Acceptance:** every existing test file (10 as of 2026-07-31) runs from ONE command; a deliberately broken test blocks a deploy (proven non-vacuous, then reverted).
+- **Deps:** none. **Do this first - every other task proves itself through it.** **Deploy:** none (dev tooling + deploy-script edit). **Reversible:** yes.
+
+**T2 - Shared test harness + housekeeping**
+- One pass/fail/counter convention shared by all tests (today there are three). Move `chat-format.test.js` out of `web/js/` - test files must never ship to the prod webroot.
+- **Acceptance:** no test file inside a shipped directory; the runner counts every test; new tests get the shared harness by copying one pattern.
+- **Deps:** T1. **Deploy:** ConfigViewer (removes the shipped test). **Reversible:** yes.
+
+**T3 - Cross-map parity assertions**
+- For every map-scoped surface, assert the 3 missions agree on classification and shape unless the registry row DECLARES the divergence (e.g. Sakhal-only CE logging). "Behavior wildly differs between settings" becomes a red gate, not a discovery.
+- **Acceptance:** an undeclared divergence between missions fails Test-Configs; declared ones are listed in the run output.
+- **Deps:** C4. **Deploy:** none. **Reversible:** yes.
+
+**U1 - Freeze the mechanism counts**
+- Gate assertion: write-verb count and editor-mount count are pinned at today's values as a MAXIMUM. They may only go down.
+- **Acceptance:** adding an 8th write verb or a new editor mount fails Test-Configs with a message naming this plan.
+- **Deps:** none. **Deploy:** none. **Reversible:** yes.
+
+**U2 - Migrate each bespoke write verb onto the generic path, then DELETE it (rolling)**
+- Worst-first order decided at start (candidates: `file-write`, `spawn-write`, `settings-write`, `types-write`, patrol path). Per verb: the registry row carries what the verb encoded (validator = `check`, pairing, scope), the UI switches to the generic call, the verb is deleted from dayz-ctl + actions.ts + the client. Per-surface validation SURVIVES - it moves into the row, not a private verb.
+- **Acceptance per verb:** verb gone from all three tiers; behavior preserved (test written first); U1's count drops by one.
+- **Deps:** U1, T1. **Deploy:** Api per verb. **Reversible:** per verb.
+
+**G1 - Declare generator inputs in the registry**
+- Every `computed`/`input` surface's row names its inputs (common + per-map) and its builder. The wiring leaves the scripts' insides and becomes data.
+- **Acceptance:** conformance asserts every computed surface declares inputs + builder; no builder reads a path the registry does not know.
+- **Deps:** C4. **Deploy:** none (data). **Reversible:** yes.
+
+**G2 - One propagation engine (rolling)**
+- One engine renders declared inputs → generated live files (common propagates to the 3 maps). The 5 builders become registry declarations or thin wrappers over the shared library; each cutover deletes the bespoke logic it replaces. Freeze-current-output proof per file (byte-identical before/after), same as the A2 pattern.
+- **Acceptance per builder:** bespoke propagation logic deleted; output byte-identical; a new common→3-maps surface costs a registry row, not a script.
+- **Deps:** G1, T1. **Deploy:** DayZ per builder (prestart scripts). **Reversible:** per builder.
+
+**P1 - Design contract into GameServices/CLAUDE.md**
+- The four needs + the retirement rule, compressed to the always-loaded file. A feature request is placed against the whole design - surface category, editor, write path - BEFORE building.
+- **Acceptance:** the contract is in CLAUDE.md; Scale-Ready docs are pointed to from it.
+- **Deps:** none. **Deploy:** none. **Reversible:** yes.
+
+**P2 - Design decisions become gate assertions**
+- Every design decision that CAN be asserted, IS: the U1 count freezes, the niche leaf-cap (exists - the pattern's proof), mods.conf single-owner (exists), T3 parity. New decisions add an assertion in the same named gate section, with the rationale in the failure message.
+- **Acceptance:** a named "design contract" section exists in Test-Configs; each assertion's failure text says WHY and points here.
+- **Deps:** U1, T3. **Deploy:** none. **Reversible:** yes.
+
 ### Phase 4 - Verify scale (Definition of Done)
 
 The project is DONE when:
@@ -175,6 +241,10 @@ The project is DONE when:
 - `editor.js` and `map.js` are split into single-purpose modules.
 - Conformance + builder-shape + live-parse tests are green and fail-closed.
 - Adding a new view costs ~80 lines (B5 proved it).
+- **(2026-07-31) ONE generic write path remains; the bespoke verbs are deleted (U2 = 100%).**
+- **(2026-07-31) ONE propagation engine renders every computed surface; the bespoke builders' propagation logic is deleted (G2 = 100%).**
+- **(2026-07-31) `Invoke-Tests.ps1` runs every test in the repo and every deploy gate runs it fail-closed (T1-T3).**
+- **(2026-07-31) The design contract lives in CLAUDE.md + gate assertions; mechanism counts can only fall (P1-P2).**
 
 ---
 
@@ -186,9 +256,13 @@ Phase 1  A0  B0 -> B1 -> [A1 + B2 = pilot]  (the editor convergence)
 Phase 2  A2 (rolling)   B3 (rolling)  B4
 Phase 3  A3  A4         B5
 Phase 4  verify / DoD
+
+2026-07-31 additions (cross-cutting, slot alongside the phases):
+  T1 FIRST (the runner - everything else proves through it), then U1 + P1 (cheap freezes)
+  G1 (data)  ->  G2 (rolling)      U2 (rolling)      T2  T3  P2
 ```
 
-WS-A (config/box) and WS-B (frontend) run largely in parallel after Phase 1, meeting only at the editor.
+WS-A (config/box) and WS-B (frontend) run largely in parallel after Phase 1, meeting only at the editor. WS-U/G/T/P are cross-cutting: T1/U1/P1 land immediately in any order after their deps; U2/G2 roll one mechanism at a time like A2/B3.
 
 ## 9. Risks + mitigations
 
@@ -197,11 +271,13 @@ WS-A (config/box) and WS-B (frontend) run largely in parallel after Phase 1, mee
 - **R3 - XPath divergence writes to the wrong node DURING migration.** **Mitigation:** migrate the XML / whole-array overrides FIRST (A2 priority) and prefer whole-file for XML surfaces, removing the XPath apply before it can bite.
 - **R4 - behavior drift when seeding live from built output.** **Mitigation:** freeze-current-output (the proven Sakhal-patrol cutover pattern); verify built output byte-identical before/after.
 - **R5 - deploy coupling surprises.** **Mitigation:** every task names its deploy needs; most of WS-B is ConfigViewer-only rsync; WS-A touches Api + box.
-- **R6 - collisions with the parallel session's commits.** **Mitigation:** this folder + PROGRESS tracker; explicit per-task owner; agree a branch/commit discipline in B0.
+- **R6 - collisions with the parallel session's commits.** **Mitigation:** this folder + PROGRESS tracker; explicit per-task owner; agree a branch/commit discipline in B0. *(This risk FIRED 2026-07-31: two sessions classified `db/types.xml` opposite ways - owned vs patch-niche - and both landed. The decision is logged as OPEN in CONFIG-ARCHITECTURE.md; T3/P2 assertions are the systemic fix.)*
+- **R7 - half-migration / N+1 (added 2026-07-31 - this risk already fired repeatedly).** A new shared mechanism ships, the old one-offs stay "temporarily", and the count goes UP: own-write landed while types/settings/file/spawn-write all survived; json-editor-ui landed while every bespoke editor survived. **Mitigation:** the retirement rule (§1a) + U1/P2 count-freeze assertions - a migration without its deletion fails the gate, not the review.
+- **R8 - tests rot the moment they pass (added 2026-07-31 - fired: 10 test files, zero runners).** Per-change TDD satisfies the letter of the change-notice rule while nothing ever re-runs the tests. **Mitigation:** T1 - the runner is wired into every deploy; a test outside the runner does not count as a test.
 
 ## 10. References
 
-- [../CONFIG-ARCHITECTURE.md](../CONFIG-ARCHITECTURE.md) - two-copy model, migration steps 0-4, decisions log. WS-A's design source of truth.
+- [CONFIG-ARCHITECTURE.md](CONFIG-ARCHITECTURE.md) - two-copy model, migration steps 0-4, decisions log. WS-A's design source of truth.
 - [UI-ABSTRACTION-CONTRACT.md](UI-ABSTRACTION-CONTRACT.md) - WS-B alignment spec.
 - `../DayZ-Server/config-registry.json` - the surface registry (one contract, four consumers).
 - The 2026-07-24 audit - the three-reader findings this plan is built on.

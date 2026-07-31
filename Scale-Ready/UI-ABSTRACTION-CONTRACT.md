@@ -2,6 +2,12 @@
 
 **Purpose:** keep this project and the parallel editor-UI effort pointed at the same target. As of 2026-07-24 the parallel effort has a design proof - **`json-ui`** - and this contract is now written to align to it, not to a hypothetical.
 
+> **2026-07-31 scope note (owner reframe - PLAN.md §1a).** This contract covers more than rendering: it is the alignment spec for **one editing practice** - one editor family AND one save path (WS-U). A view that renders through the primitive but saves through a bespoke verb is still a one-off. Status facts the contract must absorb:
+>
+> - **B0 was never signed**, and the de-facto component landed anyway: `json-editor-ui.js` (the structured navigator over the vendored json-editor) now has THREE consumers - the map editor, the Edit view, and (2026-07-31, uncommitted) the own-editor. That is reuse, not a 14th pattern - fold it in: **json-editor-ui IS the Wall 2a component**; sign B0 around what exists instead of re-litigating it.
+> - CodeMirror 6 answered its open question in practice: it is the XML/raw-text surface (own-editor), the navigator is the structured-JSON surface. Two surfaces, one editor family, both saving through the generic own-write path.
+> - Wall 2b (view chrome - nav lists, tabs, filters, buttons) remains genuinely unaddressed: 87 innerHTML sites as of 2026-07-31. The B0 sign-off decides its primitive; nothing built since the audit reduced it.
+
 **The parallel work (`json-ui`):** a generic, shape-dispatched JSON editor shipped as a **self-contained, dependency-free, framework-agnostic package** - native ES modules (no build step), a CSS-token contract, a README, a version. The host calls `mountEditor(container, value, { onChange, hints })`, the package renders the editable structure, **the host owns persistence.** It replaces the bespoke editors (the config editor's raw textarea; the map editor's `meField` / `lbcSectionHtml` / `waypointsSectionHtml`). Source of truth for its design is that chat's proof, not this file.
 
 ---
