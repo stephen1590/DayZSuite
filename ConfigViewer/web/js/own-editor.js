@@ -16,6 +16,7 @@ import { loadCred, handle } from './auth.js';
 // It replaces only the WIDGET; the save path stays whole-file `configs/set-own`. That is the
 // difference from the old wf-json mount, which fed the override-delta flow being deleted (A3).
 import { mountJsonNavigator } from './json-editor-ui.js';
+import { confirmSave } from './dirty-files.js';           // E4: name the files before saving
 import { bigParse, restoreBigInts } from './lossless-json.js';
 
 // Big-int-safe encode, identical to editor.js jsonEnc: the sentinel round-trips so a 17-digit
@@ -34,6 +35,14 @@ const states = new Map();
 export function ownAnyDirty() {
   for (const st of states.values()) if (st.draft != null && st.draft !== st.baseText) return true;
   return false;
+}
+
+// E4: WHICH owned files are dirty, by name - the shell pill and the save dialog
+// both need names, not a boolean. See js/dirty-files.js.
+export function ownDirtyNames() {
+  const out = [];
+  for (const st of states.values()) if (st.draft != null && st.draft !== st.baseText) out.push(st.path);
+  return out;
 }
 
 function defaultsPathOf(rel) {
@@ -113,6 +122,7 @@ async function doSave(st, body, hooks) {
   if (!cred) return;
   const content0 = currentText(st, body);
   if (content0 === null) return;
+  if (!confirmSave([st.path])) return;                    // E4: name the file before writing
   const save = body.querySelector('#ownSave');
   if (save) { save.disabled = true; save.textContent = 'Saving…'; }
   try {

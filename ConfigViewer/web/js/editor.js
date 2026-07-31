@@ -15,8 +15,9 @@ import { isOperator, getActiveMission, setActiveMission } from './state.js';
 import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own module with its OWN save path (configs/set-types), never config-overrides.json.
-import { renderTypesEditor, typesAnyDirty } from './types-editor.js';
-import { renderOwnEditor, ownAnyDirty } from './own-editor.js';
+import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
+import { renderOwnEditor, ownAnyDirty, ownDirtyNames } from './own-editor.js';
+import { changedFiles, formatUnsaved, confirmSave } from './dirty-files.js';   // E4
 // Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
 // Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
 // (getValue -> jsonEnc -> the same preview-override -> set-overrides flow the textarea fed).
@@ -75,6 +76,11 @@ let ovrBaseVersion = null;
 // the beforeunload guard cover every unsaved edit, whichever editor holds it.
 function ovrDirtyOnly() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
 export function isDirty() { return ovrDirtyOnly() || typesAnyDirty() || ownAnyDirty(); }
+// E4: the same dirtiness, BY NAME. One list, three sources - the header pill and the
+// shell's beforeunload guard both read it, so "unsaved changes" can finally say which.
+export function dirtyNames() {
+  return [...changedFiles(JSON.parse(savedSnapshot), overridesDoc), ...typesDirtyNames(), ...ownDirtyNames()];
+}
 function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
 // Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
 function discardChanges() {
@@ -84,7 +90,20 @@ function discardChanges() {
   updateDirtyUi(); renderFilesNav(); renderEditor();
   setGlobalMsg('Unsaved changes discarded.', false, true);
 }
-function updateDirtyUi() { const d = $('ovrDirty'); if (d) d.classList.toggle('on', isDirty()); }
+// E4: ONE pill renderer for all three chromes (they held three copies of this markup).
+// Named files when dirty, the old generic text when clean.
+function dirtyPillText() { return formatUnsaved(dirtyNames()) || 'Unsaved changes'; }
+export function dirtyPillHtml() {
+  return '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '" title="' +
+    attr(dirtyNames().join('\n')) + '"><span class="ud-dot"></span>' + escapeHtml(dirtyPillText()) + '</span>';
+}
+function updateDirtyUi() {
+  const d = $('ovrDirty');
+  if (!d) return;
+  d.classList.toggle('on', isDirty());
+  d.title = dirtyNames().join('\n');
+  d.innerHTML = '<span class="ud-dot"></span>' + escapeHtml(dirtyPillText());
+}
 
 function kindOf(p) { const s = (p || '').toLowerCase(); return s.endsWith('.xml') ? 'xml' : s.endsWith('.json') ? 'json' : 'other'; }
 function jsonEnc(v) { return restoreBigInts(JSON.stringify(v)); }   // sentinel big-ints display as bare digits
@@ -460,7 +479,7 @@ function typesChrome(row) {
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">files/</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
-      '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+      dirtyPillHtml() +
       '<div class="seg" id="ovrSeg"><button data-v="types" class="' + (ovrView === 'types' ? 'on' : '') + '">Types editor</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
@@ -485,7 +504,7 @@ function ownChrome(row) {
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(row.scope === 'mission' ? 'mpmissions · ' + (row.mission || '') + '/' : 'files/') + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
-      '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+      dirtyPillHtml() +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
     aboutBlock(row) +
@@ -512,7 +531,7 @@ function editorChrome(row) {
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
-      '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
+      dirtyPillHtml() +
       layerSel +
       // Owned surfaces get two views (E1): Edit is the default, View file is the read-only render.
       // server-settings.json gets NO switcher - it is a generator input, not a file to own, so
@@ -1198,6 +1217,9 @@ async function saveOverrides() {
   // Never ship a doc that was never loaded — that would replace the box manifest with
   // this session's empty/partial state (the exact accident of 2026-07-16).
   if (!overridesLoaded) { setGlobalMsg('config-overrides.json never loaded in this session — refusing to save. Reload the tab first.', true); return; }
+  // E4: name every file this save touches before writing. Derived from the doc diff,
+  // so it names the files the OWNER edited, not the transport (config-overrides.json).
+  if (!confirmSave(changedFiles(JSON.parse(savedSnapshot), overridesDoc))) return;
   const save = $('ovrSave');
   const saveHtml = save ? save.innerHTML : '';
   if (save) { save.disabled = true; save.innerHTML = '<span class="wf-sp"></span>Saving…'; }

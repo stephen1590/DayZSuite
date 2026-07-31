@@ -235,6 +235,7 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** every save path prompts with the exact file list before writing; the page-switch/unsaved warning names the files; ONE dirty registry, zero per-editor private copies left.
 - **Deps:** none to start; converges with U2 (the generic save path consumes the same registry). Design proof shown to the owner before the UI is built (standing rule).
 - **Deploy:** ConfigViewer. **Reversible:** yes.
+- **BUILT 2026-07-31 (design approved first), NOT DEPLOYED.** `web/js/dirty-files.js` is the one mechanism; the confirm dialog, the header pill and the tab-switch warning are its three consumers. Editors report names through `ownDirtyNames()` / `typesDirtyNames()` / `changedFiles()`. Note the honest limit: the browser's own reload/close dialog (`beforeunload`) shows fixed text no page can change - the named warning fires on tab switch and in the pill instead.
 
 **P2 - Design decisions become gate assertions**
 - Every design decision that CAN be asserted, IS: the U1 count freezes, the niche leaf-cap (exists - the pattern's proof), mods.conf single-owner (exists), T3 parity. New decisions add an assertion in the same named gate section, with the rationale in the failure message.

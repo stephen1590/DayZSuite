@@ -11,6 +11,7 @@ import { mountJsonEditor, inferSchema } from './json-editor-ui.js';   // opt-in 
 import { loadCred, handle } from './auth.js';
 import { getActiveMission, setActiveMission } from './state.js';
 import { IDENTITY, isIdentity, applyAffine, invertAffine, solveCalibration } from './map-calibrate.js';
+import { confirmSave } from './dirty-files.js';           // E4: name the files before saving
 
 let shellHooks = { syncHash: () => {}, syncHashSoon: () => {}, updateThemeToggle: () => {} };
 export function setMapShellHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -1024,6 +1025,8 @@ function applyPatrolField(inp) {
 async function savePatrolEdit() {
   const e = mapPatEdit; if (!e) return;
   const cred = loadCred(); if (!cred) return;
+  // E4: name the file before writing (patrols ride the whole AIPatrolSettings doc).
+  if (!confirmSave([`expansion/settings/AIPatrolSettings.json (${e.mission})`])) return;
   const S = $id('peSave'); if (S) S.disabled = true;
   try {
     // JSON mode: fold the navigator's edited entry back into the whole doc (covers a root replace).

@@ -11,6 +11,7 @@ import { escapeHtml, attr, setGlobalMsg, stripBom } from './ui.js';
 import { apiPost } from './api-client.js';
 import { loadCred, handle } from './auth.js';
 import { highlight, detectLang } from './highlight.js';   // XML preview of the selected type
+import { confirmSave } from './dirty-files.js';           // E4: name the files before saving
 
 // Which BASE surface a tuning row overlays. Hardcoded on purpose (two rows today) — promote to
 // a config-registry.json field if types surfaces multiply. Keys are registry surface names.
@@ -34,6 +35,14 @@ const states = new Map();
 export function typesAnyDirty() {
   for (const st of states.values()) if (st.edits.size || st.removals.size) return true;
   return false;
+}
+
+// E4: WHICH types files are dirty, by name - the shell pill and the save dialog
+// both need names, not a boolean. See js/dirty-files.js.
+export function typesDirtyNames() {
+  const out = [];
+  for (const st of states.values()) if (st.edits.size || st.removals.size) out.push(st.name);
+  return out;
 }
 
 function parseTypes(text) {
@@ -477,6 +486,7 @@ function rerender(st, hooks, keepFocus) {
 async function doSave(st, body, hooks) {
   const cred = loadCred();
   if (!cred) return;
+  if (!confirmSave([st.name])) return;                    // E4: name the file before writing
   const save = body.querySelector('#tySave');
   if (save) { save.disabled = true; save.textContent = 'Saving…'; }
   try {

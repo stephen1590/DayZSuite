@@ -328,7 +328,7 @@ import { setScope, getScope, isOperator, getActiveMission, setActiveMission } fr
 import { startStats, stopStats, startMaint, stopMaint, loadWhoami, renderUpdate, initMaint } from './js/maintenance.js';
 import { loadLogsTab, startLogFollow, stopLogFollow, initLogs, logsHashFrag, setPendingLog, setLogsShellHooks } from './js/logs.js';
 import { loadMapTab, startPlayers, stopPlayers, initMap, mapHashFrag, setPendingMapView, mapIsDirty, setMapShellHooks, requestMapDraw } from './js/map.js';
-import { loadFiles, showFilesSurface, isDirty, getSelKey, setPendingFile, initEditor, setEditorHooks } from './js/editor.js';
+import { loadFiles, showFilesSurface, isDirty, dirtyNames, getSelKey, setPendingFile, initEditor, setEditorHooks } from './js/editor.js';
 import { detectLang, highlight } from './js/highlight.js';
 (() => {
   'use strict';
@@ -436,6 +436,12 @@ import { detectLang, highlight } from './js/highlight.js';
   }
   let currentTab = null;   // active sub-tab, so visibility-resume knows which poller to restart
   function showTab(name) {
+    // E4: leaving the editor with unsaved work used to give a warning that could not say WHICH
+    // file. Name them here - the edits survive the tab switch, so this is a reminder, not a block.
+    if (currentTab === 'files' && name !== 'files') {
+      const unsaved = dirtyNames();
+      if (unsaved.length) toast('Unsaved (kept in this session): ' + unsaved.join(', '), 'err');
+    }
     currentTab = name;
     el.mainttab.classList.toggle('hidden', name !== 'maint');
     el.apitab.classList.toggle('hidden', name !== 'api');
