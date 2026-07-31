@@ -49,6 +49,7 @@ param(
     [switch]$NoLog,
     [switch]$Force,                                         # deploy even with players online / unverifiable count
     [switch]$SkipConfigTest,                                # bypass the offline pre-deploy config gate (emergency only)
+    [switch]$SkipTests,                                     # bypass the repo-wide unit-test gate (emergency only)
     [switch]$SkipProdSync,                                  # staging only: skip the prod-parity gate (prod unreachable / offline)
     [int]$MaxProdSyncAgeHours = 24,                         # staging gate: refuse if the last prod->staging sync is older than this
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
@@ -185,6 +186,20 @@ if (-not $Local) {
             elseif ($gate)       { Write-Warning "pre-deploy config gate failed (exit $gate) — a -Fix would be blocked here. Dry-run continues." }
             Write-Host ""
         }
+    }
+
+    # Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+    # *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
+    # refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback
+    # on purpose). Under -Fix a failure ABORTS; a bare dry-run just reports it. -SkipTests
+    # bypasses (emergencies only). Dev-side only: the -Local box leg has no node/test tree.
+    if (-not $SkipTests) {
+        Write-Host "--- pre-deploy unit-test gate (Invoke-Tests.ps1: repo-wide suites) ---"
+        & (Join-Path $PSScriptRoot "../Invoke-Tests.ps1") -NoLog:$NoLog
+        $testGate = $LASTEXITCODE
+        if ($testGate -and $Fix) { Write-Error "unit-test gate FAILED (exit $testGate) — NOT shipping. Fix the tests, or pass -SkipTests to override."; exit $testGate }
+        elseif ($testGate)       { Write-Warning "unit-test gate failed (exit $testGate) — a -Fix would be blocked here. Dry-run continues." }
+        Write-Host ""
     }
 
     # Committed config history: each PROD -Fix deploy commits the just-pulled box config

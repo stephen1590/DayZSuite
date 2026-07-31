@@ -37,7 +37,8 @@ param(
     [string]$RemotePath,                 # e.g. /var/www/config-viewer
     [int]$SshPort = 0,                   # 0/unset = emit no -p, so ~/.ssh/config decides (an explicit -p overrides a Host alias's Port)
     [string]$SshKey,                     # path to private key (optional)
-    [switch]$NoLog
+    [switch]$NoLog,
+    [switch]$SkipTests                   # bypass the repo-wide unit-test gate (emergency only)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +72,20 @@ foreach ($tool in 'rsync', 'ssh') {
 
 $webDir = Join-Path $SiteRoot 'web'
 if (-not (Test-Path (Join-Path $webDir 'index.html'))) { throw "No app at $webDir (expected index.html)." }
+
+# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+# *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
+# refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback on
+# purpose). Under -Push a failure ABORTS; a dry run just reports it. -SkipTests bypasses
+# (emergencies only).
+if (-not $SkipTests) {
+    Write-Host "--- pre-deploy unit-test gate (Invoke-Tests.ps1: repo-wide suites) ---"
+    & (Join-Path $PSScriptRoot '../../Invoke-Tests.ps1') -NoLog:$NoLog
+    $testGate = $LASTEXITCODE
+    if ($testGate -and $Push) { throw "unit-test gate FAILED (exit $testGate) - NOT shipping. Fix the tests, or pass -SkipTests to override." }
+    elseif ($testGate)        { Write-Warning "unit-test gate failed (exit $testGate) - a -Push would be blocked here. Dry-run continues." }
+    Write-Host ""
+}
 
 # --- Stage vendored assets + the API spec into web/ ----------------------
 # The API tab embeds Swagger UI (vendored, self-hosted — no CDN); it loads the OpenAPI

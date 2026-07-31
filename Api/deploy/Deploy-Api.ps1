@@ -37,7 +37,8 @@ param(
     [ValidateSet('staging','prod')]
     [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
     [string]$ConfigPath,
-    [switch]$NoLog
+    [switch]$NoLog,
+    [switch]$SkipTests    # bypass the repo-wide unit-test gate (emergency only)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +64,20 @@ if (-not $cfg.Dayz -or -not $cfg.Dayz.Unit -or -not $cfg.Dayz.ServerDir) {
     throw "Api deploy config needs Dayz.Unit and Dayz.ServerDir."
 }
 $restartWarnSec = if ($cfg.Dayz.RestartWarningSeconds) { [int]$cfg.Dayz.RestartWarningSeconds } else { 15 }
+
+# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+# *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
+# refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback on
+# purpose). Under -Apply a failure ABORTS; a dry run just reports it. -SkipTests bypasses
+# (emergencies only).
+if (-not $SkipTests) {
+    Write-Host "--- pre-deploy unit-test gate (Invoke-Tests.ps1: repo-wide suites) ---"
+    & (Join-Path $PSScriptRoot '../../Invoke-Tests.ps1') -NoLog:$NoLog
+    $testGate = $LASTEXITCODE
+    if ($testGate -and $Apply) { throw "unit-test gate FAILED (exit $testGate) - NOT shipping. Fix the tests, or pass -SkipTests to override." }
+    elseif ($testGate)         { Write-Warning "unit-test gate failed (exit $testGate) - an -Apply would be blocked here. Dry-run continues." }
+    Write-Host ""
+}
 
 # Log-noise pre-filter (ERE) baked into dayz-ctl's log-read. Single-quote-escaped
 # for the bash assignment. Absent/empty = filter off.
