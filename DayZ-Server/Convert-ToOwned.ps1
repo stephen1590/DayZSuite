@@ -36,7 +36,23 @@ param(
     [switch]$NoLog
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot '../../../common/Utils.ps1')
+# SELF-CONTAINED ON PURPOSE. This script is SHIPPED TO THE BOX (~/servers/dayz-server), where the
+# repo - and therefore Dev/common/Utils.ps1 - does not exist. Dot-sourcing it unconditionally made
+# every box invocation die with "term not recognized" before doing any work (found live 2026-07-31;
+# the repo-run tests missed it because the relative path happens to resolve there). Every other
+# box-side script here is self-contained for the same reason. Use the shared util when it IS
+# present, fall back to a local append otherwise.
+$utils = Join-Path $PSScriptRoot '../../../common/Utils.ps1'
+if (Test-Path $utils) { . $utils }
+if (-not (Get-Command Write-CsvLog -ErrorAction SilentlyContinue)) {
+    function Write-CsvLog {
+        param([string]$Path, [PSCustomObject]$Row)
+        $dir = Split-Path $Path -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        if (Test-Path $Path) { $Row | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8 -Append }
+        else                 { $Row | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8 }
+    }
+}
 
 if (-not $Manifest) { $Manifest = Join-Path $PSScriptRoot 'config-overrides.json' }
 if (-not (Test-Path $Manifest))  { Write-Error "No manifest at: $Manifest"; exit 2 }

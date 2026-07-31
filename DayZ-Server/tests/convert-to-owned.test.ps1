@@ -133,6 +133,21 @@ try {
     $r = Run $fx $TARGET -Fix
     Assert 'second -Fix is a no-op success'     ($r.Exit -eq 0) $r.Out
     Assert 'second -Fix says already owned'     ($r.Out -match '(?i)already|no block')
+
+    # --- 7. RUNS AS SHIPPED: the box has no repo around it ----------------------
+    # Found live 2026-07-31: the script dot-sourced ../../../common/Utils.ps1, which resolves only
+    # inside the repo. On the box it lives at ~/servers/dayz-server/, so every invocation died with
+    # "term not recognized" before doing anything - and the other 22 tests missed it because they
+    # run the script FROM the repo, where the path happens to exist. Copy it somewhere with no
+    # common/ sibling (exactly how the deploy ships it) and it must still work.
+    $fx = New-Fixture
+    $shipped = Join-Path $fx.Dir 'Convert-ToOwned.ps1'
+    Copy-Item $script $shipped
+    [string[]]$argv = '-NoProfile', '-File', $shipped, '-ServerDir', $fx.Dir, '-Manifest', $fx.Manifest, '-Target', $TARGET, '-NoLog'
+    $out = & pwsh @argv 2>&1 | ForEach-Object { "$_" }
+    $rc = $LASTEXITCODE
+    Assert 'runs standalone with no repo/common around it' ($rc -eq 0) ($out -join "`n")
+    Assert 'standalone run does not complain about Utils.ps1' (($out -join ' ') -notmatch 'Utils\.ps1')
 }
 finally {
     foreach ($d in $fixtures) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }
