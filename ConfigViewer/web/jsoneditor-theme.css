@@ -23,16 +23,16 @@
 .je-mount input:focus,.je-mount select:focus,.je-mount textarea:focus{ outline:none; border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
 .je-mount .je-form-input-label,.je-mount label{ color:var(--faint); font-size:11px; }
 .je-mount p,.je-mount .je-desc{ color:var(--muted); font-size:10.5px; margin:1px 0; font-family:system-ui,-apple-system,sans-serif; }
-.je-mount .je-indented-panel{ border:none; border-left:2px solid var(--tree-guide,#33455a); border-radius:0; margin:1px 0 3px 7px; padding:2px 0 2px 11px; background:none; }
+.je-mount .je-indented-panel{ border:none; border-left:2px solid var(--tree-guide,#33455a); border-radius:0; margin:0 0 1px 3px; padding:0 0 0 8px; background:none; }
 .je-mount fieldset{ border:none; padding:0; margin:0; }
 /* only the left guide line - no boxes/borders/backgrounds around items (the boxing reads as noise) */
 .je-mount fieldset,.je-mount .je-object__container,.je-mount .je-child-editor-holder{ border:none; background:none; }
 /* schema-unknown (additional/drift) property: json-editor names it in a <b>. Flag it with a left
    accent line only (no box), matching the tree-guide treatment. */
-.je-mount .je-child-editor-holder:has(> b){ border-left:2px solid var(--drift,#c2570b); background:none; padding:1px 0 1px 9px; margin:1px 0; }
+.je-mount .je-child-editor-holder:has(> b){ border-left:2px solid var(--drift,#c2570b); background:none; padding:0 0 0 8px; margin:0 0 1px; }
 .je-mount .je-child-editor-holder > b{ color:var(--drift,#c2570b); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; font-weight:700; }
 /* title row (gold), flex so lifted controls right-justify into the hover highlight */
-.je-mount .je-header{ display:flex; align-items:center; gap:6px; margin:2px 0; padding:1px 4px; border-radius:5px; color:var(--accent); }
+.je-mount .je-header{ display:flex; align-items:center; gap:6px; margin:1px 0; padding:0 4px; border-radius:5px; color:var(--accent); }
 .je-mount .je-header > span:not([class]),.je-mount .je-header h3,.je-mount h3,.je-mount legend{ font-size:12.5px; font-weight:600; color:var(--accent); }
 .je-mount .je-header:hover{ background:color-mix(in srgb,var(--fg) 9%,transparent); }
 /* null / empty node: dimmed gold so it reads as noticeably empty (still the gold family) */
@@ -135,11 +135,17 @@
   background: var(--panel2) !important;
 }
 .je-mount .json-editor-btntype-toggle { border: none !important; background: none !important; }
+/* The add-property button is LIFTED out of this span (decorate() puts it beside the name), so the
+   span is normally left empty - but an empty block still holds a ~15px line box between objects.
+   :has() lets us collapse only the ones with nothing in them; a span that kept a button is intact. */
+.je-mount .je-object__controls:not(:has(button)) { display: none; }
+.je-mount .je-object__controls { margin: 0; padding: 0; }
+
 /* The tier guide: one rule, left side, on every nested node. Root gets none. */
 .je-mount [data-schemapath]:not([data-schemapath=""]):not([data-schemapath="root"]) {
   border-left: 1px solid var(--border) !important;
-  padding-left: 10px;
-  margin-left: 3px;
+  padding-left: 6px;
+  margin-left: 2px;
 }
 /* Drift nodes (schema-unknown) keep their amber guide - same single-rule language. */
 .je-mount .je-child-editor-holder:has(> b) { border-left: 2px solid var(--drift,#c2570b) !important; }
