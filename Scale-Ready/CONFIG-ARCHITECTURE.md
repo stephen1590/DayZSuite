@@ -169,6 +169,28 @@ construction, because a file absent from the manifest is never rebuilt.
 
 ---
 
+## The no-data-loss rule for the engine delete (added 2026-07-31)
+
+Freezing protects the LIVE box. It does not protect a REBUILT one. The deploy seeds a
+missing config from its registry `seed` file, and today the overrides re-apply on top; once
+they are deleted, **the seed IS the value**. So any override leaf that differs from its seed
+is a value that silently reverts on a fresh/disaster-recovery box.
+
+Measured on `server-settings.json` (2026-07-31): 10 of its 12 leaves were exact no-ops, and 2
+were not - `serverTimeAcceleration` 5 → 8 and `serverNightTimeAcceleration` 4 → 4.5. Deleting
+the engine without touching the seed would have quietly reverted the day/night cycle on any
+rebuild, with nothing to notice it.
+
+**Rule, now enforced by `tests/override-seed-parity.test.ps1` (registry-driven, runs on every
+deploy):** every remaining override leaf must equal its seed value. Fix the seed to the value
+actually in service, and the override row becomes a provable no-op - removable with zero effect
+in BOTH directions, live and rebuilt. The seed was corrected to 8 / 4.5 accordingly.
+
+**Do NOT hand-edit the repo's `config-overrides.json` to drop a block.** The box owns that file;
+`Sync-ConfigOverrides.ps1` keeps a `last-synced.sha256` marker and REFUSES to pull (exit 3) over
+a hand-edited working copy. Removal happens ON THE BOX via `Convert-ToOwned.ps1`, then
+`Pull-Configs` mirrors the smaller document back.
+
 ## Open items / known gaps
 
 - **DECIDED 2026-07-31 (owner): OWNED FILE WINS.** Owner's words: *"This isn't complicated. Owned file wins, but we need those 20 vehicle-lifetime sync'd into OUR owned files. They're not overrides anymore, but the agent was dumb and kept using the old approach. They SHOULD have been in our owned file."* So the lifetime VALUES stay - they move into the owned file and stop being overrides. Mechanism built for it: **`Convert-ToOwned.ps1`** (TDD 22/22), the generalized form of the freeze trick DayZ-Server/CLAUDE.md documented as a Sakhal hand-procedure. It verifies EVERY selector against the live file first and REFUSES if any value is not already live - because removing a block freezes the live file as it stands, so an unapplied row would silently lock in the wrong value. Report-only by default; `-Fix` removes the block and re-hashes the live file to prove it never changed. Same tool covers the other A3 blocker (`server-settings.json`) - one mechanism, both cutovers. **Runbook (box-side; the box is authoritative for the manifest - `Sync-ConfigOverrides.ps1`: "THERE IS NO DEV WRITE PATH THROUGH THIS FILE"):** 1. `./Convert-ToOwned.ps1 -ServerDir ~/servers/dayz-server -Target 'mpmissions/dayzOffline.sakhal:db/types.xml'` (report). If it REFUSES with unapplied rows, the box has not restarted since they were written - restart once (owner's call), then re-run. 2. same with `-Fix`. 3. repeat for `-Target 'files:server-settings.json'` after its 12 leaves move to the settings-write path. 4. `Pull-Configs` to mirror the now-empty manifest. 5. then, and only then, A3's delete. The superseded record: *(the conflict as found)* —

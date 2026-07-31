@@ -56,6 +56,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | T1 | 0 | T | ONE test runner (`Invoke-Tests.ps1`), wired fail-closed into all 3 deploys | plan | - | none | **DONE 2026-07-31** (ae27bac) — runner at repo root, TDD 17/17 (seen red first), repo run 10/10 in ~6.5s; wired into all 3 deploys (dry-run warns, ship aborts, `-SkipTests` escape, missing runner = hard stop); non-vacuous: planted red suite flipped Deploy-Api's gate to "would be blocked", then removed |
 | T2 | 0 | T | Shared test harness convention; no test ships to the webroot | plan | T1 | ConfigViewer | TODO — 3 counter styles today; `chat-format.test.js` sits in `web/js/` |
 | T3 | 2 | T | Cross-map parity assertions (3 missions agree unless registry-declared) | plan | C4 | none | TODO |
+| T4 | 3 | T | **Post-deploy LIVE verification (health checks in all 3 deploys)** | plan | A3 | all 3 | **PINNED by owner 2026-07-31** — *"Put a pin in testing until we're done with the overrides migration. Remember it. Don't forget. We need to expand testing."* Deferred, NOT dropped. Measured gap: all 14 suites are offline (no test touches a running service) and no deploy calls a health check; `Confirm-LiveConfigs.ps1` exists and is never invoked. UNPIN WHEN A3 IS DONE |
 | U1 | 0 | U | Freeze mechanism counts (write verbs, editor mounts) as gate maximums | plan | - | none | **DONE 2026-07-31** — `tests/mechanism-counts.test.ps1` via the T1 runner (gates ALL 3 deploys, incl. Deploy-Api which Test-Configs never sees): 6 write verbs max (the old "7" miscounted settings-write's patrols key), the 7-module `apiPost`-caller set pinned by name, apiPost single-definition. Non-vacuous: planted verb + planted writer both red, reverted |
 | U2 | 2 | U | Migrate each bespoke write verb onto the generic path, DELETE it (rolling) | plan | U1, T1 | Api per verb | TODO — candidates: file-write, spawn-write, settings-write, types-write, patrol path |
 | G1 | 1 | G | Registry rows declare generator inputs + builder | plan | C4 | none | TODO |
@@ -125,3 +126,11 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   cutover: verify-then-freeze, refuse on any unapplied row, live file provably untouched.
   Box step deliberately NOT run (prod + possible restart = owner's call). Corrected the stale
   "NOT a whole-file ownership case" header in vehicle-lifetime-overrides.test.ps1.
+- 2026-07-31 (fifth pass) - **T4 PINNED** by the owner (testing expansion deferred until the
+  overrides migration is done; recorded in PLAN.md T4, the row above, and the root Open Work
+  ledger). **NO-DATA-LOSS finding on the A3 delete**: freezing protects the live box but NOT a
+  rebuilt one - the seed becomes the value once the engine is gone. 10 of server-settings.json's
+  12 leaves were no-ops; 2 were not (cycle multipliers 5→8, 4→4.5), so a rebuild would have
+  silently reverted the day/night cycle. Seed corrected; new registry-driven gate
+  `tests/override-seed-parity.test.ps1` (TDD 16/16, red first on exactly those 2) makes it a
+  standing rule. All 12 leaves are now provable no-ops. Suite 15/15, Test-Configs 27/0.

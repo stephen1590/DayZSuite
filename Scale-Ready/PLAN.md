@@ -197,6 +197,14 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** no test file inside a shipped directory; the runner counts every test; new tests get the shared harness by copying one pattern.
 - **Deps:** T1. **Deploy:** ConfigViewer (removes the shipped test). **Reversible:** yes.
 
+**T4 - Post-deploy LIVE verification (PINNED by the owner 2026-07-31 - deliberately deferred, NOT dropped)**
+> Owner: *"Put a pin in testing until we're done with the overrides migration. Remember it. Don't forget. We need to expand testing."*
+
+- **Why it is pinned, not cancelled:** T1 proved the code is self-consistent (GATED). NOTHING proves a deploy actually worked (LIVE). Measured 2026-07-31: all 14 test suites are fully offline - no test touches a running service - and no deploy calls any health check. `Confirm-LiveConfigs.ps1` already SSHes in and validates the live tree, and **no deploy has ever called it** - the same "a tool nobody remembers to run" disease T1 cured for tests.
+- **Scope when unpinned (3 parts, ~2h):** (1) DayZ deploy calls `Confirm-LiveConfigs.ps1 -Env <env>` after the restart, `[WARN]` fails the deploy; (2) Api deploy fetches a real SIGNED route post-`deploy.sh` and fails on non-200 - not just `/health`; (3) ConfigViewer deploy re-fetches `index.html` + one JS module after the rsync and compares bytes against what it shipped (catches a half-synced webroot - the shape of the 2026-07-31 gallery outage where every route 500'd and only visitors noticed).
+- **Unpin condition:** the override delta engine is DELETED (A3 done). Not before.
+- **Deps:** A3. **Deploy:** all three (deploy-script edits). **Reversible:** yes.
+
 **T3 - Cross-map parity assertions**
 - For every map-scoped surface, assert the 3 missions agree on classification and shape unless the registry row DECLARES the divergence (e.g. Sakhal-only CE logging). "Behavior wildly differs between settings" becomes a red gate, not a discovery.
 - **Acceptance:** an undeclared divergence between missions fails Test-Configs; declared ones are listed in the run output.
