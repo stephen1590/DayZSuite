@@ -76,3 +76,41 @@ test('the sliders write through the editor document, never override rows', () =>
   assert.match(body, /setValue\(\[sel\], n\)/, 'must drive the open document');
   assert.doesNotMatch(body, /layerMapRW/, 'must NOT write an override delta - that mechanism is being deleted');
 });
+
+// Owner bug 2026-07-31: "This literally says the file doesn't exist yet, but 2 overrides are
+// present? Make it make sense!" The count and the file's existence were rendered by two
+// unrelated pieces of code, so they contradicted each other. Both now go through
+// override-status.js. These guard the wiring; the wording itself is unit-tested there.
+test('the override summary and the file-view panel share ONE wording source', () => {
+  assert.match(JS, /import \{ overrideStatus \} from '\.\/override-status\.js'/);
+  const uses = JS.match(/overrideStatus\(/g) || [];
+  assert.ok(uses.length >= 2, `only ${uses.length} call site(s); the chrome AND the file panel must both use it`);
+});
+
+test('the hardcoded "still override-managed" claim is gone from the chrome', () => {
+  assert.doesNotMatch(JS, /still override-managed/,
+    'that string asserted the rows are being applied without ever checking the file exists');
+  // The live-branch wording is legitimate, but ONLY behind an existence check. Every place
+  // editor.js still says it must be guarded by an ABSENT test - that is what makes the three
+  // surfaces (summary bar, file panel, footer note) agree instead of contradicting each other.
+  for (const m of JS.matchAll(/re-applies them at every restart/g)) {
+    const ctx = JS.slice(Math.max(0, m.index - 700), m.index);
+    assert.match(ctx, /err === 'ABSENT'/,
+      'an unguarded "the box re-applies these" claim - it is false for a file the box does not have');
+  }
+});
+
+test('the status is re-rendered once the box answers, not left at its cold guess', () => {
+  assert.match(JS, /function refreshOverrideStatus/);
+  assert.match(JS, /refreshOverrideStatus\(row\);/, 'must be called after the file fetch resolves');
+});
+
+test('an absent file with no default still LISTS its override rows', () => {
+  // Hiding them behind the missing-file note is how "2 overrides" became unexplainable.
+  const i = JS.indexOf('function fileViewHtml');
+  const body = JS.slice(i, i + 900);
+  const headAt = body.indexOf('const head =');
+  const bailAt = body.indexOf('!canDef) return');
+  assert.ok(headAt !== -1 && bailAt !== -1 && headAt < bailAt,
+    'the override context must be built BEFORE the absent-file early return, and included in it');
+});

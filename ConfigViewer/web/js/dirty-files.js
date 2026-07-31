@@ -40,14 +40,22 @@ export function formatUnsaved(files) {
 
 // The confirmation dialog body - the owner's ask, verbatim: tell me what files
 // I edited and am currently saving, BEFORE the write happens.
+// An EMPTY list is not a dialog. Owner, 2026-07-31: "when I go to save ... AND NOTHING IS
+// LISTED!" - Save is always enabled, so clicking it with a clean doc asked for confirmation
+// of a write that could not be named. A prompt that lists nothing trains you to click through
+// the one that matters.
 export function confirmSaveText(files) {
+  if (!files || !files.length) return 'Nothing to save - no unsaved changes in this tab.';
   return 'Save these changes?\n\nYou edited and are saving:\n' +
     files.map((f) => `  • ${f}`).join('\n');
 }
 
 // One confirm for every save path. confirmFn is injectable for tests; in the
 // browser it defaults to window.confirm - the house dialog idiom.
+// Nothing changed -> refuse WITHOUT prompting. Callers already treat false as "abort", so an
+// empty list can never reach a write, whichever editor asked.
 export function confirmSave(files, confirmFn) {
+  if (!files || !files.length) return false;
   const ask = confirmFn || ((m) => window.confirm(m));
   return ask(confirmSaveText(files));
 }

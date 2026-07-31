@@ -18,6 +18,7 @@ import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
 import { renderOwnEditor, ownAnyDirty, ownDirtyNames, ownJsonHandle } from './own-editor.js';
 import { changedFiles, formatUnsaved, confirmSave } from './dirty-files.js';   // E4
+import { overrideStatus } from './override-status.js';   // one wording for what override rows actually do
 // Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
 // Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
 // (getValue -> jsonEnc -> the same preview-override -> set-overrides flow the textarea fed).
@@ -516,6 +517,25 @@ function ownChrome(row) {
     '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>owned file — edited whole; the diff vs the frozen default is display-only</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
+// The row's box copy IF we already fetched it this session, else null. The chrome paints before
+// renderBody's fetch resolves, so on a cold row the status starts 'unknown' and is replaced in
+// place by refreshOverrideStatus() the moment the box answers. It never guesses in between.
+function cachedRowFile(row) { return fileCache['f|' + row.key] || null; }
+// ONE renderer for "what do these override rows do", used by the chrome summary and re-run
+// after the fetch. Wording lives in override-status.js so the file view cannot contradict it.
+function overrideStatusHtml(row, eff) {
+  const s = overrideStatus(eff.size, cachedRowFile(row));
+  const cls = s.warn ? 'stat w' : s.kind === 'live' ? 'stat d' : 'stat';
+  const dot = s.warn ? 'dot w' : s.kind === 'live' ? 'dot d' : 'dot b';
+  return '<span id="ovrStatus" class="' + cls + '" title="' + attr([...eff.keys()].join('\n')) + '">' +
+    '<span class="' + dot + '"></span>' + escapeHtml(s.text) + '</span>';
+}
+// Called once the box has answered, so a row whose file turns out to be ABSENT stops claiming
+// its overrides are being applied. Cheap: it swaps one span, no re-render, no lost scroll.
+function refreshOverrideStatus(row) {
+  const cur = $('ovrStatus');
+  if (cur) cur.outerHTML = overrideStatusHtml(row, effectivePatches(row));
+}
 function editorChrome(row) {
   if (row.ownFile) return ownChrome(row);
   if (row.types) return typesChrome(row);
@@ -532,9 +552,7 @@ function editorChrome(row) {
     ? '<span class="stat"><span class="dot b"></span>read-only reference file — shipped with the deploy; view only</span>'
     : locked
     ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
-    : nOver > 0
-    ? '<span class="stat d" title="' + attr([...effectivePatches(row).keys()].join('\n')) + '"><span class="dot d"></span><b>' + nOver + '</b> value' + (nOver === 1 ? '' : 's') + ' still override-managed - listed in the file view</span>'
-    : '<span class="stat"><span class="dot b"></span>owned whole - edits save the entire file</span>';
+    : overrideStatusHtml(row, eff);
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
@@ -554,7 +572,16 @@ function editorChrome(row) {
 }
 function editorFoot(row) {
   if (row.access === 'lock' || row.types || row.ownFile) return '';   // types/own rows: the note below is about override DELTAS, wrong for a whole-file writer
-  return '<div class="ovr-note" style="border-top:1px solid var(--border);border-bottom:none">' +
+  const style = ' style="border-top:1px solid var(--border);border-bottom:none"';
+  // Same trap as the summary bar: this promised the box would apply what you save. It cannot
+  // apply anything to a file it does not have - it logs "file not found" and moves on. Saving
+  // here would be a write with no effect, so say that instead of inviting it.
+  const f = cachedRowFile(row);
+  if (f && f.text == null && f.err === 'ABSENT') {
+    return '<div class="ovr-note"' + style + '>' +
+      '<b style="color:var(--drift)">This file is not on the box.</b> An override saved here is recorded in the manifest and then skipped at every restart - the box logs "file not found". Nothing you save on this screen will take effect until the file exists.</div>';
+  }
+  return '<div class="ovr-note"' + style + '>' +
     '<b style="color:var(--delta)">This file is not owned yet.</b> Saving records only your changed values as overrides, and the box re-applies them at every restart. Cut the file over to own it whole and this editor saves the real file.</div>';
 }
 async function renderEditor() {
@@ -613,6 +640,7 @@ async function renderBody(row) {
   const [file, def] = await Promise.all([fetchRowFile(row), row.access === 'lock' ? { text: null } : fetchDefaultFile(row)]);
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
+  refreshOverrideStatus(row);   // the box has answered: the summary can now say if the rows are inert
   const eff = effectivePatches(row);
   const view = ovrView;
   if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
@@ -899,15 +927,17 @@ function xmlEvalHtml(text, sels) {
 // values the old override system still controls, with what it forces them to, and why that
 // matters: they are re-applied at every restart, so editing the live file does not stick until
 // the file is owned whole. Say which, or say nothing.
-function overrideContextHtml(row, eff) {
+// The heading is the SAME statement the chrome makes (override-status.js), so a file that is
+// absent on the box cannot be told "we re-apply these at every restart" here while the bar
+// above says the file does not exist. Owner 2026-07-31: "Make it make sense!"
+function overrideContextHtml(row, eff, file) {
   if (!eff || !eff.size) return '';
+  const s = overrideStatus(eff.size, file !== undefined ? file : cachedRowFile(row));
   const rows = [...eff.entries()].map(([sel, o]) =>
     '<div class="oc-row"><span class="oc-sel mono">' + escapeHtml(sel) + '</span>'
     + '<span class="oc-val mono">' + escapeHtml(valPreview(o.value)) + '</span>'
     + (o.layer === 'common' ? '<span class="tag">all missions</span>' : '') + '</div>').join('');
-  return '<div class="oc"><div class="oc-head"><b>' + eff.size + '</b> value' + (eff.size === 1 ? '' : 's')
-    + ' here are still managed by the old override system - the box re-applies them at every restart, '
-    + 'so a whole-file edit to any of these will not stick until this file is owned whole.</div>'
+  return '<div class="oc' + (s.warn ? ' oc-dead' : '') + '"><div class="oc-head">' + escapeHtml(s.text) + '</div>'
     + rows + '</div>';
 }
 // One wording for a file the box could not hand back, used by every surface that shows it.
@@ -918,9 +948,11 @@ function fileMissingNote(file) {
 function fileViewHtml(row, file, eff, def) {
   const canDef = !!(def && def.text != null);
   const lang = detectLang(row.relpath || row.label);
-  if (file.text === null && !canDef) return '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>';
   const head = ((row.kind === 'xml' && file.text != null) ? xmlEvalHtml(file.text, [...eff.keys()]) : '')
-    + overrideContextHtml(row, eff);
+    + overrideContextHtml(row, eff, file);
+  // Nothing to show on either side. The override rows still list - they are the only thing
+  // there is to say about this path, and hiding them is how "2 overrides" became a mystery.
+  if (file.text === null && !canDef) return '<div class="fileview">' + head + '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div></div>';
   if (!canDef) return '<div class="fileview">' + head + '<pre>' + highlight(file.text, lang) + '</pre></div>';
   const livePane = file.text === null
     ? '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>'
@@ -1247,7 +1279,12 @@ async function saveOverrides() {
   if (!overridesLoaded) { setGlobalMsg('config-overrides.json never loaded in this session — refusing to save. Reload the tab first.', true); return; }
   // E4: name every file this save touches before writing. Derived from the doc diff,
   // so it names the files the OWNER edited, not the transport (config-overrides.json).
-  if (!confirmSave(changedFiles(JSON.parse(savedSnapshot), overridesDoc))) return;
+  // Save is always enabled, so a click on a clean doc lands here with an empty list. Say so
+  // rather than showing a confirm with nothing under it (owner 2026-07-31: "AND NOTHING IS
+  // LISTED!"); confirmSave refuses an empty list on its own, this is the message for it.
+  const names = changedFiles(JSON.parse(savedSnapshot), overridesDoc);
+  if (!names.length) { setGlobalMsg('Nothing to save - no unsaved override changes in this tab.', false); return; }
+  if (!confirmSave(names)) return;
   const save = $('ovrSave');
   const saveHtml = save ? save.innerHTML : '';
   if (save) { save.disabled = true; save.innerHTML = '<span class="wf-sp"></span>Saving…'; }

@@ -60,3 +60,28 @@ test('confirmSave passes the text to the injected confirm and returns its answer
   assert.match(seen, /x\.json/);
   assert.equal(confirmSave(['x.json'], () => false), false);
 });
+
+// TDD, owner bug 2026-07-31: "And when I go to save: `Save these changes? You edited and are
+// saving:` AND NOTHING IS LISTED!"
+//
+// saveOverrides() derives the list from the doc diff. Click Save with nothing changed and the
+// list is empty, so the dialog asked the owner to confirm a write it could not name. A prompt
+// that lists nothing is worse than no prompt - it trains you to click through the one that
+// matters. An empty list is not a dialog to render, it is a save that must not happen.
+test('confirmSave with NO changed files never prompts and never approves', () => {
+  let asked = false;
+  assert.equal(confirmSave([], () => { asked = true; return true; }), false,
+    'an empty list must refuse, even if the confirm function would say yes');
+  assert.equal(asked, false, 'the dialog must not be shown at all');
+  assert.equal(confirmSave(null, () => { asked = true; return true; }), false);
+  assert.equal(asked, false);
+});
+
+test('confirmSaveText can never render an empty bullet list', () => {
+  for (const empty of [[], null, undefined]) {
+    const t = confirmSaveText(empty);
+    assert.doesNotMatch(t, /You edited and are saving:\s*$/,
+      'the exact string the owner saw: a heading with nothing under it');
+    assert.match(t, /nothing to save|no unsaved/i, 'say what is actually true');
+  }
+});
