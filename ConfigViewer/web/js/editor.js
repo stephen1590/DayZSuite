@@ -814,42 +814,6 @@ function wireCycle(row) {
     n.addEventListener('change', () => commit(n.dataset.sel, n.value));
   });
 }
-const CYCLE_RESTART_H = 4;     // the messages.xml restart schedule, for "cycles per restart"
-function cycleOutHtml(x, y) {
-  const c = cycleHours(x, y);
-  const ok = isFinite(c.full) && c.full > 0;
-  const dayPct = ok ? Math.max(0, Math.min(100, (c.day / c.full) * 100)) : 0;
-  const bar = !ok ? ''
-    : '<div class="cyc-bar"><i class="day" style="width:' + dayPct.toFixed(2) + '%">'
-      + (dayPct >= 18 ? 'Daylight ' + escapeHtml(hm(c.day)) : '') + '</i>'
-      + '<i class="night" style="width:' + (100 - dayPct).toFixed(2) + '%">'
-      + (100 - dayPct >= 18 ? 'Night ' + escapeHtml(hm(c.night)) : '') + '</i></div>';
-  const perRestart = ok ? (CYCLE_RESTART_H / c.full) : null;
-  const nums = '<div class="cyc-nums">'
-    + '<span>Full cycle <b>' + escapeHtml(hm(c.full)) + '</b></span>'
-    + '<span>Daylight <b>' + escapeHtml(hm(c.day)) + '</b></span>'
-    + '<span>Night <b>' + escapeHtml(hm(c.night)) + '</b></span>'
-    + '<span>Cycles per restart <b>' + (perRestart === null ? '—' : perRestart.toFixed(1)) + '</b> <span class="meta">(' + CYCLE_RESTART_H + 'h schedule)</span></span>'
-    + '</div>';
-  // Y below 1 means night runs SLOWER than day - legal, rarely intended.
-  const warn = (y < 1)
-    ? '<div class="cyc-warn">Night acceleration below 1 makes night pass slower than daylight — night becomes the longest part of the cycle.</div>' : '';
-  return bar + nums + warn;
-}
-// E5 (owner 2026-07-31): READ-ONLY context. server-settings.json is a generator DRIVER -
-// its values are edited in the JSON editor like any owned file, and this panel just says what
-// the two multipliers buy in real time. It used to carry sliders that wrote override rows;
-// that path died with the Fields view and the delta engine (A3).
-function cycleHtml(doc) {
-  const num = (k, d) => { const n = Number(doc && doc[k]); return (isFinite(n) && n > 0) ? n : d; };
-  const x = num(CYCLE_X, 5), y = num(CYCLE_Y, 4);
-  return '<div class="cyc" id="cycPanel">'
-    + '<h4>Day / night cycle</h4>'
-    + '<p class="cyc-sub">What <b>' + escapeHtml(CYCLE_X) + '</b> (' + x + ') and <b>' + escapeHtml(CYCLE_Y) + '</b> (' + y + ') buy in real time, assuming ' + CYCLE_DAYLIGHT + 'h of in-game daylight. Edit them in the document below.</p>'
-    + '<div class="cyc-out" id="cycOut">' + cycleOutHtml(x, y) + '</div>'
-    + '<div class="cyc-foot"><span class="cyc-note">Applies at the next restart — Apply-ServerCfg compiles serverDZ.cfg from this file at prestart. Map selection is unaffected (that is map.env).</span></div>'
-    + '</div>';
-}
 function jsonFieldsHtml(row, eff, text, defaultText) {
   let fileObj = null;
   if (text !== null) { try { fileObj = bigParse(text); } catch { fileObj = null; } }
