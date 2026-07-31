@@ -105,13 +105,20 @@ foreach ($s in $surfaces) {
 }
 Write-Host "  staged $stagedDefaults baseline target(s) + $stagedSeeds seed-only file(s)"
 
-# Declared, on-disk missions (same rule the applier uses: mpmissions.<mission> manifest keys).
-$mf = Get-Content -Raw -LiteralPath $overridesDoc | ConvertFrom-Json
-$declared = @()
-if ($mf.PSObject.Properties.Name -contains 'mpmissions') {
-    $declared = @($mf.mpmissions.PSObject.Properties.Name | Where-Object { $_ -ne 'common' -and -not $_.StartsWith('_') })
-}
+# Declared, on-disk missions - derived from the REGISTRY's `scope: map:<mission>` rows.
+# This used to read `mpmissions.<mission>` keys out of config-overrides.json. That coupled the
+# gate's coverage to the override document: on 2026-07-31 a cutover emptied two mission layers
+# and the gate silently dropped from 3 missions to 1 while still reporting "passed". A3 deletes
+# that document outright, which would have left the gate with NO missions and a green tick.
+# The registry is the declaration point for config surfaces, so it is the honest source here.
+$allSurfaces = @((Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json).surfaces)
+$declared = @($allSurfaces
+    | ForEach-Object { "$($_.scope)" }
+    | Where-Object { $_ -like 'map:*' }
+    | ForEach-Object { $_.Substring(4) }
+    | Select-Object -Unique)
 $missions = @($declared | Where-Object { Test-Path (Join-Path $StagingDir "mpmissions/$_") })
+if (-not $missions.Count) { Show-Fail "no missions resolved from config-registry.json 'map:<mission>' scopes - the gate would test nothing" }
 
 # Pass 3: prestart-engine inputs that are NOT box-mirrored config.
 #   - custom-ce/ (manifest + our own types source) ships from deploy/ as CODE; stage it so
@@ -178,13 +185,21 @@ if ($softMiss.Count) {
     $softMiss | ForEach-Object { Write-Host "         $_" -ForegroundColor DarkYellow }
 }
 
-# 2. The force-create payoff, proven offline: the spawnTypes toggles are in the built file.
-$aib = Join-Path $StagingDir "profiles/AI_Bandits/common/DynamicAIB.common.json"
-if (Test-Path $aib) {
+# 2. DynamicAIB.common.json left the override engine on 2026-07-31 (A2 cutover) - it is an OWNED
+# file now, so nothing BUILDS it and there is no force-create to prove. What still matters is that
+# the cutover did not silently drop the tuning it used to force-create: the repo mirror must still
+# carry flags.spawnTypes. Verified on the box at cutover time (live file byte-identical, 12 types
+# present); this keeps that honest offline, against the mirror, for good.
+# Resolve the repo copy from the REGISTRY row's own 'seed' rather than guessing a path - the
+# registry is the declaration point, and a hardcoded guess here silently no-ops if it is wrong.
+$aibRow = @($allSurfaces | Where-Object { "$($_.box)" -eq 'profiles/AI_Bandits/common/DynamicAIB.common.json' })[0]
+$aib = if ($aibRow -and $aibRow.seed) { Join-Path $PSScriptRoot "$($aibRow.seed)" } else { $null }
+if (-not $aib -or -not (Test-Path $aib)) { Show-Fail "DynamicAIB.common.json: no resolvable repo copy from its registry seed - cannot verify the A2 cutover kept its tuning" }
+elseif (Test-Path $aib) {
     $doc = Get-Content -Raw $aib | ConvertFrom-Json
     $st = $doc.flags.spawnTypes
-    if ($st) { Show-Pass "flags.spawnTypes present in the built DynamicAIB.common.json ($(@($st.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) type(s))" }
-    else { Show-Fail "flags.spawnTypes MISSING from the built DynamicAIB.common.json (force-create did not land)" }
+    if ($st) { Show-Pass "flags.spawnTypes survives in the OWNED DynamicAIB.common.json ($(@($st.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) type(s))" }
+    else { Show-Fail "flags.spawnTypes MISSING from DynamicAIB.common.json - the A2 cutover dropped tuning it used to force-create" }
     # Reality the composed output depends on: 124 spawn points do nothing if this gate is off.
     if ($null -ne $doc.flags.useSpawnLocations -and [int]$doc.flags.useSpawnLocations -eq 0) {
         Write-Host "  [note] flags.useSpawnLocations = 0 -> dynamic AI bandit spawns compose EMPTY (spawn-points inert). Intentional?" -ForegroundColor DarkYellow
@@ -233,8 +248,6 @@ foreach ($m in $missions) {
         }
     }
 
-    # Bubaku composer RETIRED 2026-07-24 (@babaku disabled in mods.conf) - its prestart step is
-    # commented out, so the gate no longer exercises it. Restore alongside the prestart un-comment.
 
     # Custom CE: register <ce folder="custom"> into the (fixture) mission cfgeconomycore.xml.
     try { $null = & (Join-Path $PSScriptRoot "Apply-CustomCE.ps1") -ServerDir $StagingDir -Mission $m -Fix 6>&1 }
@@ -399,6 +412,75 @@ if (Test-Path $deployScript) {
         if ($unshipped.Count) { Show-Fail "Deploy `$items reference file(s) that the payload rsync never ships: $($unshipped -join ', ') - add them to the root-file list in Deploy-DayZServer.ps1" }
         else { Show-Pass "every '../' deploy payload source ($($needed.Count)) is in the rsync ship list" }
     }
+}
+
+# --- ONE OWNER for mod enablement (structural rule, GameServices/CLAUDE.md) ------------------
+# mods.conf is the only place a mod is turned on or off. Every consumer DERIVES from it.
+# The pattern this catches: disabling a mod by COMMENTING OUT its prestart call or its deploy
+# $items row. That makes each file a private, hand-synced copy of mods.conf - nothing keeps
+# them in agreement, toggling a mod silently misses one, and the last-shipped script is left
+# on the box as an orphan the deploy no longer manages. Gate it, or it comes back.
+# --- OVERRIDE NICHE must not regrow whole documents -----------------------------------------
+# CONFIG-ARCHITECTURE.md Phase 2 moved every chaotic whole-document target OFF the delta engine
+# and left a small FIELD-PATCH niche (~19 files / 175 leaves). Its stated guard was "the worklist
+# classification" - a paragraph in a doc, which per the structural rule means no guard at all.
+# It regrew to 548 leaves, 359 of them in ONE Loadout that Phase 2 had already migrated out.
+# A file carrying a whole document's worth of leaves belongs in the OWNED two-copy model, where
+# the editor shows it whole and diffs it against a frozen default. Two consequences when it does
+# not: the override doc becomes unreviewable again, AND editor.js:248 keeps `ownFile` false for
+# that surface, so the CodeMirror own-editor is suppressed and the admin only ever sees deltas.
+$MAX_NICHE_LEAVES = 60      # largest legitimate niche entry today is SpawnSettings at 40
+$ovrPath = Join-Path $PSScriptRoot 'config-overrides.json'
+if (-not (Test-Path $ovrPath)) { Show-Fail "config-overrides.json missing - cannot check the override niche" }
+else {
+    function Measure-Leaves($x) {
+        if ($x -is [System.Management.Automation.PSCustomObject]) {
+            return @($x.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') } | ForEach-Object { Measure-Leaves $_.Value } | Measure-Object -Sum).Sum
+        }
+        if ($x -is [System.Collections.IEnumerable] -and $x -isnot [string]) {
+            return @($x | ForEach-Object { Measure-Leaves $_ } | Measure-Object -Sum).Sum
+        }
+        return 1
+    }
+    $ovr = Get-Content -Raw -LiteralPath $ovrPath | ConvertFrom-Json
+    $fat = @()
+    foreach ($scope in 'files', 'mpmissions') {
+        $node = $ovr.$scope
+        if (-not $node) { continue }
+        foreach ($p in $node.PSObject.Properties) {
+            if ($p.Name.StartsWith('_')) { continue }
+            if ($scope -eq 'files') {
+                $n = [int](Measure-Leaves $p.Value)
+                if ($n -gt $MAX_NICHE_LEAVES) { $fat += [pscustomobject]@{ path = "files/$($p.Name)"; leaves = $n } }
+            } else {
+                foreach ($f in $p.Value.PSObject.Properties) {
+                    if ($f.Name.StartsWith('_')) { continue }
+                    $n = [int](Measure-Leaves $f.Value)
+                    if ($n -gt $MAX_NICHE_LEAVES) { $fat += [pscustomobject]@{ path = "$($p.Name)/$($f.Name)"; leaves = $n } }
+                }
+            }
+        }
+    }
+    if ($fat.Count) {
+        Show-Fail "override niche REGROWN - $($fat.Count) file(s) exceed $MAX_NICHE_LEAVES leaves. A whole-document patch belongs in the owned two-copy model (category:'owned'), not the delta engine:"
+        $fat | Sort-Object -Property leaves -Descending | ForEach-Object { Write-Host "         $($_.leaves) leaves  $($_.path)" -ForegroundColor Yellow }
+    } else { Show-Pass "override niche holds: no file exceeds $MAX_NICHE_LEAVES leaves (field patches only)" }
+}
+
+$prestartPath = Join-Path $PSScriptRoot 'deploy/prestart.sh'
+if (-not (Test-Path $prestartPath)) { Show-Fail "deploy/prestart.sh missing - cannot check the mod-enablement invariant" }
+else {
+    $ptext = Get-Content -Raw -LiteralPath $prestartPath
+    $lines = $ptext -split "`r?`n"
+    # a) no commented-out builder/applier invocation may remain
+    $deadCalls = @($lines | Where-Object { $_ -match '^\s*#\s*(if\s+\[|pwsh\b).*(Build-|Apply-)[A-Za-z]+\.ps1' })
+    if ($deadCalls.Count) {
+        Show-Fail "prestart.sh disables step(s) by COMMENTING OUT instead of gating on mods.conf - $($deadCalls.Count) line(s). Use `mod_enabled '@folder'`:"
+        $deadCalls | ForEach-Object { Write-Host "         $($_.Trim())" -ForegroundColor Yellow }
+    } else { Show-Pass "prestart.sh disables no step by comment-out (mods.conf is the only owner)" }
+    # b) the gate function itself must exist - every mod-specific step depends on it
+    if ($ptext -match '(?m)^mod_enabled\(\)') { Show-Pass "prestart.sh defines mod_enabled() (derives execution from mods.conf)" }
+    else { Show-Fail "prestart.sh has no mod_enabled() - mod-gated steps have nothing to derive from" }
 }
 
 # --- Web-edited CE types surfaces (registry web:'types') -------------------------------------

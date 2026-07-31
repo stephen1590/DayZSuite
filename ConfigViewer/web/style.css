@@ -243,6 +243,12 @@
   .ovr-sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 9px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); font-size: 12.5px; color: var(--muted); }
   .stat { display: inline-flex; align-items: center; gap: 7px; } .stat b { color: var(--fg); font-variant-numeric: tabular-nums; } .stat.d b { color: var(--delta); }
   .dot { width: 8px; height: 8px; border-radius: 50%; } .dot.d { background: var(--delta); } .dot.b { background: var(--faint); }
+  /* "About this file" - registry about/aboutUrl, rendered under the filename in every chrome */
+  .ovr-about { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; padding: 8px 22px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .ovr-about .about-lbl { flex: none; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .ovr-about .about-txt { min-width: 0; }
+  .ovr-about .about-src { flex: none; color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+  .ovr-about .about-src:hover { text-decoration: none; opacity: .8; }
   .ovr-body { flex: 1; }
   .ovr-note { padding: 11px 22px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--border-soft); } .ovr-note b { color: var(--fg); }
 
@@ -557,12 +563,14 @@
   .wf-hint { flex: 1 1 260px; color: var(--muted); font-size: 12px; }
   .wf-ta { width: 100%; min-height: 380px; resize: vertical; box-sizing: border-box;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5;
-    padding: 10px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); border-radius: 7px; white-space: pre; overflow: auto; }
-  .wf-ta:focus { outline: none; border-color: var(--accent); }
+    padding: 10px; background: var(--pre-bg); color: var(--pre-fg); border: none; border-left: 2px solid var(--border); border-radius: 0; white-space: pre; overflow: auto; }
+  .wf-ta:focus { outline: none; border-left-color: var(--accent); }
   /* structured-editor host (the json-editor mounts inside): its own scroll box so the sticky path
      bar pins to the top and a deep/large file scrolls within the frame instead of the whole page. */
-  .wf-json { border: 1px solid var(--border); border-radius: 7px; background: var(--card);
-    padding: 8px 10px; min-height: 200px; max-height: 64vh; overflow: auto; }
+  /* Third edit surface, same treatment as .own-cm / .wf-ta: left thread rule, no box. */
+  .wf-json { border: none; border-left: 2px solid var(--border); border-radius: 0; background: var(--card);
+    padding: 8px 10px 8px 12px; min-height: 200px; max-height: 64vh; overflow: auto; }
+  .wf-json:focus-within { border-left-color: var(--accent); }
   .wf-preview { border-top: 1px solid var(--border); padding-top: 8px; }
   .wf-preview:empty { display: none; }
   .wf-ptitle { font-weight: 600; margin: 2px 0 4px; font-size: 13px; }
@@ -762,7 +770,11 @@
      highlighting in own-editor.js. style.css stays the single owner of all colors. */
   .own-bar { display: flex; align-items: center; gap: 10px; padding: 10px 22px 6px; flex-wrap: wrap; }
   .own-bar .spacer { flex: 1; }
-  .own-cm { margin: 8px 22px 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--pre-bg); }
+  /* Edit surfaces carry a single left "thread" rule, never a full box - a boxed editor reads as
+     a widget on the page instead of the page's content, and the four borders fight the gutter.
+     Same treatment on .wf-ta so both edit paths look identical. */
+  .own-cm { margin: 8px 22px 16px; border: none; border-left: 2px solid var(--border); border-radius: 0; overflow: hidden; background: var(--pre-bg); }
+  .own-cm:focus-within { border-left-color: var(--accent); }
   .own-cm .cm-editor { height: min(68vh, 860px); font-size: 12.5px; background: var(--pre-bg); color: var(--pre-fg); }
   .own-cm .cm-editor .cm-scroller { overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .own-cm .cm-gutters { background: var(--pre-bg); color: var(--faint); border-right: 1px solid rgba(255,255,255,0.08); }

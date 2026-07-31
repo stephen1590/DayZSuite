@@ -16,6 +16,22 @@ KEEP=10        # storage backups per mission
 KEEP_LOGS=40   # raw RPT/ADM safety net only — dayz-logarchive.timer zips dead logs daily; this must stay well above one day's boot count so pruning never beats the archiver
 UPDATE_TIMEOUT=2400   # hard ceiling (40m) for an armed update; MUST stay below the unit's TimeoutStartSec so systemd never kills us mid-download
 
+# mods.conf is the ONE owner of mod enablement (GameServices/CLAUDE.md structural rule).
+# Every consumer DERIVES from it: Deploy-Api renders dayz-ctl's DISABLED_TARGETS from it, the
+# web editor drops a surface whose registry 'mod' is disabled, and prestart gates mod-specific
+# build steps through this function. Never hand-sync a second copy of this fact.
+#
+# Enabled = a line whose FIRST token is exactly the @folder. The word boundary matters:
+# a bare substring match would let '@expansioncore' satisfy a check for '@expansion' and
+# silently keep a retired step running. Commented lines (leading #, indented or not) are
+# disabled, which is exactly how mods.conf already expresses "off".
+# FAIL-OPEN when mods.conf is absent: prestart must never block boot on a missing file
+# (a failing ExecStartPre took the server down 2026-07-07).
+mod_enabled() {
+    [ -f "$SERVER/mods.conf" ] || return 0
+    grep -qE "^[[:space:]]*$1([[:space:]]|\$)" "$SERVER/mods.conf"
+}
+
 # Installed game-server APP build id, straight from the Steam manifest on disk. Shared by
 # the deferred-update block below and mirrored by update-check.sh / dayz-ctl update-status.
 installed_build() {
@@ -90,6 +106,16 @@ if [ -f "$SERVER/messages.xml" ]; then
     cp -f "$SERVER/messages.xml" "$MISSIONS/$TARGET/db/messages.xml"
 fi
 
+# Two-copy model: seed the frozen `default` companion for any OWNED surface that has none,
+# BEFORE the applier runs. Order matters - Apply-ConfigOverrides patches live files, so
+# capturing afterwards would bake those patches into the supposedly pristine baseline. The
+# script skips override targets (the applier owns their companions) and never overwrites an
+# existing default, so on a settled box this is a no-op; it only fires when a NEW owned
+# surface is declared. Same `|| true` fail-soft rule as every other prestart step.
+if [ -f "$SERVER/Capture-OwnedDefaults.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Capture-OwnedDefaults.ps1" -ServerDir "$SERVER" -Fix || true
+fi
+
 # Field-level config overrides: patch our deltas (config-overrides.json) into the live
 # CE/mod files NOW, before the engine reads them at boot, so overrides survive mod/game
 # updates and an admin can just edit the manifest + restart. The applier is fail-soft
@@ -116,15 +142,14 @@ if [ ! -f "$SERVER/serverDZ.cfg" ]; then
     echo "prestart: FATAL - serverDZ.cfg is missing and Apply-ServerCfg could not render it (check host.env: DEPLOY_ADMIN_PASSWORD must be non-empty; DEPLOY_SERVER_PASSWORD= empty is fine = open server). The engine cannot start without it - this boot WILL fail and systemd will keep retrying." >&2
 fi
 
-# Bubaku (SpawnerBubaku) composer RETIRED 2026-07-24: @babaku is disabled in mods.conf (it hung off
-# the BanditAI cluster - all co-disabled), so composing its fixed-path spawn file every boot was dead
-# work the unloaded mod never reads. Build-BabakuSpawns.ps1 + the per-map SpawnerBubaku sources stay
-# in the repo (reversible, like the AI_Bandits tree). To restore: re-enable @babaku in mods.conf,
-# un-comment the two lines below, its Test-Configs gate step, and its Deploy-DayZServer $items ship.
-# The stale copy on the box is inert - remove whenever.
-#if [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-#    pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
-#fi
+# Bubaku (SpawnerBubaku) composer - gated on @babaku being ENABLED in mods.conf, nothing else.
+# Disabling the mod is now ONE edit (comment the line in mods.conf); this step, the config
+# surfaces the web editor shows, and dayz-ctl's write guard all derive from that single fact.
+# It used to take three hand-synced edits (mods.conf + this call site + the deploy ship list)
+# and nothing kept them in agreement.
+if mod_enabled '@babaku' && [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
+fi
 
 # AI bandit configs (DynamicAIB/StaticAIB) are RAW per-map world coords, but the mod reads one
 # fixed path. Compose the active map's flat config from common + maps/$TARGET NOW, before the

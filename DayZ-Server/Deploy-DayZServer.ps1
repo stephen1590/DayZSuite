@@ -235,7 +235,7 @@ if (-not $Local) {
     # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
-                   'Apply-ServerCfg.ps1',
+                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1',
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
@@ -498,6 +498,7 @@ $items = @(
     # the pull above mirrors it back, and it is only ever SEEDED to a box that has none
     # (fresh box / disaster recovery: the mirror carries every web edit back onto the box).
     @{ Src = "../Apply-ConfigOverrides.ps1"; Dst = Join-Path $ServerDir "Apply-ConfigOverrides.ps1"; Sudo = $false; Exec = $true }
+    @{ Src = "../Capture-OwnedDefaults.ps1"; Dst = Join-Path $ServerDir "Capture-OwnedDefaults.ps1"; Sudo = $false; Exec = $true }
     # (config-overrides.json itself is box-owned content — seeded from config-registry.json below,
     #  not shipped here; the engine above is code and ships on drift.)
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
@@ -539,10 +540,12 @@ $items = @(
     # 33 tuned types differ between the Chernarus and Enoch variants, so one shared file would
     # restore Tier4 on Enoch and kill them there.
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
-    # Bubaku spawner composer RETIRED 2026-07-24 (@babaku disabled in mods.conf; prestart call
-    # commented out). No longer shipped - Build-BabakuSpawns.ps1 stays in the repo, reversible.
-    # Restore this $items row alongside the prestart + Test-Configs un-comment when @babaku returns.
-    # @{ Src = "Build-BabakuSpawns.ps1"; Dst = Join-Path $ServerDir "Build-BabakuSpawns.ps1"; Sudo = $false; Exec = $false }
+    # Bubaku spawner composer. ALWAYS SHIPPED - the deploy ships CODE unconditionally and lets
+    # mods.conf decide EXECUTION (prestart's mod_enabled '@babaku' gate). A script on the box
+    # that never runs costs nothing; a ship list that mirrors mods.conf by hand costs a silent
+    # drift every time a mod is toggled, and leaves the last-shipped copy behind as an orphan
+    # the deploy no longer manages. One owner: mods.conf.
+    @{ Src = "Build-BabakuSpawns.ps1"; Dst = Join-Path $ServerDir "Build-BabakuSpawns.ps1"; Sudo = $false; Exec = $false }
     @{ Src = "dayz-server.service"; Dst = $UnitPath;                            Sudo = $true;  Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.service"; Dst = "/etc/systemd/system/dayz-logarchive.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.timer";   Dst = "/etc/systemd/system/dayz-logarchive.timer";   Sudo = $true; Exec = $false }

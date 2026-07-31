@@ -269,11 +269,11 @@ _override_generated_hits() {
 # produced, so no caller-invented path can ever escape.
 emit_allowed() {
   if [ -n "$CONFIG_MAP" ]; then
-    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel _grp _label _ro _kind; do
+    printf '%s\n' "$CONFIG_MAP" | while IFS=$'\t' read -r _name _rel _grp _label _ro _kind _about _abouturl; do
       [ -n "$_name" ] || continue
       [ -n "$_grp" ]   || _grp='General'
       [ -n "$_label" ] || _label="$_name"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_grp" "$_name" "$_rel" "$_label" "${_ro:-0}" "${_kind:-file}"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$_grp" "$_name" "$_rel" "$_label" "${_ro:-0}" "${_kind:-file}" "$_about" "$_abouturl"
     done
   fi
   if [ -n "$CONFIG_DIRS" ]; then
@@ -643,7 +643,7 @@ case "$verb" in
     ;;
 
   config-list)
-    # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind" for every retrievable config:
+    # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl" per config:
     # explicit files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
     # a file across its read alias, folder listing and any config-overrides target; ro='1'
     # tells the editor to lock the row read-only; kind (the registry 'web' value) lets it pick a
@@ -651,7 +651,7 @@ case "$verb" in
     # pure enumeration of the rendered allowlist. Hard-capped at 3000 lines so the reply can never
     # overflow the API's 1MB read buffer (retrieval still works for names past the cap —
     # `config` matches the full set, not this list).
-    emit_allowed | awk -F'\t' 'NF>=5{print $1"\t"$2"\t"$4"\t"$3"\t"$5"\t"$6}' | head -n 3000 || true
+    emit_allowed | awk -F'\t' 'NF>=5{print $1"\t"$2"\t"$4"\t"$3"\t"$5"\t"$6"\t"$7"\t"$8}' | head -n 3000 || true
     ;;
 
   config-generated)

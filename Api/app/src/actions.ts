@@ -596,18 +596,23 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       destructive: false,
       readOnly: true,
       describe: 'list the config files available to retrieve (names for the "configs/get" action)',
-      schema: { response: { type: 'object', properties: { configs: { type: 'array', items: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, label: { type: 'string' }, path: { type: 'string' }, readonly: { type: 'boolean' }, kind: { type: 'string' } } } } } } },
+      schema: { response: { type: 'object', properties: { configs: { type: 'array', items: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, label: { type: 'string' }, path: { type: 'string' }, readonly: { type: 'boolean' }, kind: { type: 'string' }, about: { type: 'string' }, aboutUrl: { type: 'string' } } } } } } },
       async run() {
         const r = await dayz.ctl('config-list');
         if (r.code !== 0) throw fail(502, `config-list failed: ${(r.stderr || r.stdout).trim()}`);
         const safe = /^[A-Za-z0-9_./-]+$/;
-        // dayz-ctl emits "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind" per file (single
-        // files + expanded folder contents). The relpath is the UI's dedup key across a file's
-        // read alias / folder listing / override target; ro='1' marks a web:'view' surface the
-        // editor locks read-only; kind is the registry 'web' value (view/file/patch/types/...)
-        // so the editor can pick a surface-specific view (e.g. 'types' -> the CE types editor).
+        // dayz-ctl emits "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl"
+        // per file (single files + expanded folder contents). The relpath is the UI's dedup key
+        // across a file's read alias / folder listing / override target; ro='1' marks a web:'view'
+        // surface the editor locks read-only; kind is the registry 'web' value (view/file/patch/
+        // types/...) so the editor can pick a surface-specific view (e.g. 'types' -> the CE types
+        // editor); about + aboutUrl are the "About this file" line under the filename and its
+        // citation link (folder-expanded rows carry neither and emit empty fields).
         // Tolerate short lines from an older ctl (ro/kind absent -> false/'file'). Drop names
         // we couldn't serve.
+        // aboutUrl is re-validated here even though Deploy-Api already checks it: the editor
+        // renders it as an href, so http(s)-only is enforced at BOTH ends, never once.
+        const httpUrl = /^https?:\/\/[^\s<>"']+$/;
         const configs = r.stdout
           .split('\n')
           .map((l) => l.replace(/\r$/, ''))
@@ -615,8 +620,8 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           .map((line) => {
             const p = line.split('\t');
             return p.length >= 3
-              ? { group: p[0], name: p[1], label: p[2], path: p[3] && safe.test(p[3]) ? p[3] : p[1], readonly: p[4] === '1', kind: p[5] && /^[a-z]+$/.test(p[5]) ? p[5] : 'file' }
-              : { group: 'General', name: p[0], label: p[0], path: p[0], readonly: false, kind: 'file' };
+              ? { group: p[0], name: p[1], label: p[2], path: p[3] && safe.test(p[3]) ? p[3] : p[1], readonly: p[4] === '1', kind: p[5] && /^[a-z]+$/.test(p[5]) ? p[5] : 'file', about: (p[6] || '').trim(), aboutUrl: httpUrl.test((p[7] || '').trim()) ? (p[7] || '').trim() : '' }
+              : { group: 'General', name: p[0], label: p[0], path: p[0], readonly: false, kind: 'file', about: '', aboutUrl: '' };
           })
           .filter((c) => c.name && safe.test(c.name));
         return { configs };

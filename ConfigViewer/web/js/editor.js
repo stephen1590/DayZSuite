@@ -44,7 +44,7 @@ let ownedDirs = [];         // /dayz/configs/owned — folders whose json/xml fi
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
-let ovrView = 'file';   // 'fields' | 'file'
+let ovrView = 'file';   // 'edit' (default for editable rows) | 'file' | 'types'. 'fields' is RETIRED - see E1.
 let ovrFilter = '';     // Fields-view text filter — matches on the key/path
 let ovrCapOpen = false; // Fields-view "show all" toggle, past the render cap
 let ovrLeafMap = new Map();
@@ -177,6 +177,11 @@ function buildRows(items, writable, doc, mission) {
     const rel = c.path || c.name;
     if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
     const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
+    // about/aboutUrl come from the registry row via CONFIG_MAP -> config-list. Set here rather
+    // than inside makeRow because this is the ONLY call site that has the API payload (synth()
+    // fabricates rows for override targets the curated list never returned). Absent = no block.
+    row.about = (c.about || '').trim();
+    row.aboutUrl = (c.aboutUrl || '').trim();
     const w = wByKey.get(c.name) || wByKey.get(rel) || null;
     // c.readonly = the registry's web:'view' surfaces (custom-ce types, mods.conf, messages.xml),
     // marked read-only by dayz-ctl's config-list. Locked like the Map-store, but its own copy so
@@ -325,7 +330,22 @@ function selectRow(key) {
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
   if (row.access === 'own') { el.editorPage.classList.remove('types-mode'); selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
-  ovrView = row.types ? 'types' : row.kind === 'other' ? 'file' : 'fields';
+  // EDIT is the default view for every OWNED surface, XML included (owner call 2026-07-31,
+  // Scale-Ready E1). The Fields view is retired for those: it renders the override DELTA, and
+  // the delta engine is being deleted (A3), so a field grid is a view onto something going away.
+  //
+  // server-settings.json is the ONE exception and it is not an exception to the rule - it is a
+  // different KIND of surface. It is not a file the game reads; it is the INPUT set that
+  // Apply-ServerCfg turns into serverDZ.cfg (which is itself a read-only generated artifact).
+  // That is Category B in CONFIG-ARCHITECTURE.md's target table: "UI: edits the inputs".
+  // Its form is purpose-built for generator parameters - custom fields that drive other things -
+  // so whole-file editing would be meaningless here and would let an admin type keys the
+  // renderer's allowlist silently drops. It keeps its form.
+  // A locked row has nothing to edit, so it falls back to the read-only file view.
+  ovrView = row.types ? 'types'
+    : isCycleRow(row) ? 'fields'
+    : (row.access === 'lock' || row.kind === 'other') ? 'file'
+    : 'edit';
   renderFilesNav();
   showFilesSurface();
   el.edEmpty.classList.add('hidden');
@@ -444,8 +464,22 @@ function typesChrome(row) {
       '<div class="seg" id="ovrSeg"><button data-v="types" class="' + (ovrView === 'types' ? 'on' : '') + '">Types editor</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
+    aboutBlock(row) +
     '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>web-edited CE types override layer — each entry fully replaces the same-named upstream type</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
+}
+// "About this file" - the registry's plain-English description, rendered UNDER the filename with
+// a citation link. ONE helper for all three chromes (types / owned / override) so the block can
+// never drift between surface types. Empty string when the row has no about text, so a surface
+// without one renders exactly as before. The href is http(s)-only by the time it reaches here:
+// Deploy-Api throws on a non-http aboutUrl and the Api re-validates it on the way out.
+function aboutBlock(row) {
+  if (!row || !row.about) return '';
+  const link = row.aboutUrl
+    ? '<a class="about-src" href="' + attr(row.aboutUrl) + '" target="_blank" rel="noopener noreferrer">source</a>'
+    : '';
+  return '<div class="ovr-about"><span class="about-lbl">About</span>' +
+    '<span class="about-txt">' + escapeHtml(row.about) + '</span>' + link + '</div>';
 }
 function ownChrome(row) {
   return '<div class="ovr-phead">' +
@@ -454,6 +488,7 @@ function ownChrome(row) {
       '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
+    aboutBlock(row) +
     '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>owned file — edited whole; the diff vs the frozen default is display-only</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
@@ -479,14 +514,16 @@ function editorChrome(row) {
     '<div class="ovr-pact">' +
       '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '"><span class="ud-dot"></span>Unsaved changes</span>' +
       layerSel +
-      // server-settings.json is fields-only: the whole-file views would expose the same 14
-      // toggles a second way, and "Edit file" could add keys the renderer's allowlist refuses.
+      // Owned surfaces get two views (E1): Edit is the default, View file is the read-only render.
+      // server-settings.json gets NO switcher - it is a generator input, not a file to own, so
+      // there is no "whole file" to edit and no second way to reach the same parameters.
       (isCycleRow(row) ? '' :
-        '<div class="seg" id="ovrSeg"><button data-v="fields" class="' + (ovrView === 'fields' ? 'on' : '') + '">Fields</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button>' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '" title="Edit the whole file — Save derives the minimal override delta">Edit file</button>') + '</div>') +
+        '<div class="seg" id="ovrSeg">' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '">Edit</button>') + '<button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>') +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
       (locked ? '' : '<button class="btn-sm" id="ovrDiscard" type="button">Discard</button>') +
       (locked ? '' : '<button class="btn-sm primary" id="ovrSave">Save ' + nOver + ' delta' + (nOver === 1 ? '' : 's') + '</button>') +
     '</div></div>' +
+    aboutBlock(row) +
     '<div class="ovr-sum">' + summary + '<span class="stat" style="margin-left:auto">' + (locked ? '' : 'Restart to apply') + '</span></div>';
 }
 function editorFoot(row) {
@@ -545,7 +582,8 @@ async function renderBody(row) {
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
   const eff = effectivePatches(row);
-  // Fields-only rows ignore whatever view the last row left in ovrView (it is module state).
+  // The generator-input form is the only view server-settings.json has - it never falls through
+  // to whole-file edit, whatever view the previously-selected row left in ovrView (module state).
   const view = isCycleRow(row) ? 'fields' : ovrView;
   if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
   if (view === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
@@ -973,11 +1011,11 @@ function wfApply(row) {
     // and skips this file's patches). It won't track baseline/mod updates — that's the trade.
     ovrSetPath(['wholeFiles', ...path], wfDraft != null ? wfDraft : '');
     ovrDelPath(path);
-    msg = 'Stored a whole-file override — this file is now owned wholesale (won’t track baseline updates). Review in Fields, then Save.';
+    msg = 'Stored a whole-file override — this file is now owned wholesale (won’t track baseline updates). Review, then Save.';
   }
   wfReset();
   updateDirtyUi();
-  ovrView = 'fields';
+  ovrView = 'edit';
   renderFilesNav(); renderEditor();
   setGlobalMsg(msg, false);
 }

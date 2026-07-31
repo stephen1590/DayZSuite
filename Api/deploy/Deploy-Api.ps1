@@ -95,7 +95,7 @@ if (-not (Test-Path $registryPath)) {
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {
     if ($_.dir) { [pscustomobject]@{ group = $_.group; dir = $_.dir; subfolders = $_.subfolders } }
-    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view'); kind = "$($_.web)" } }
+    else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view'); kind = "$($_.web)"; about = $_.about; aboutUrl = $_.aboutUrl } }
 }
 $fileEntries  = @($allConfigs | Where-Object { $_.path })
 $dirEntries   = @($allConfigs | Where-Object { $_.dir -and -not $_.path })
@@ -106,6 +106,12 @@ foreach ($c in $fileEntries) {
     # so neither may carry a TAB or newline (a group with a tab would split into a phantom field).
     if ("$($c.label)" -match "[`t`n]") { throw "Api Configs: label for '$($c.name)' must not contain tabs/newlines: '$($c.label)'." }
     if ("$($c.group)" -match "[`t`n]") { throw "Api Configs: group for '$($c.name)' must not contain tabs/newlines: '$($c.group)'." }
+    # about + aboutUrl ride the same TAB-delimited line (fields 7-8) and render under the
+    # filename in the editor. Same TAB/newline trap as label/group; aboutUrl is additionally
+    # constrained to http(s) so a registry typo can never emit a javascript:/data: link.
+    if ("$($c.about)" -match "[`t`n]") { throw "Api Configs: about for '$($c.name)' must not contain tabs/newlines: '$($c.about)'." }
+    if ("$($c.aboutUrl)" -match "[`t`n]") { throw "Api Configs: aboutUrl for '$($c.name)' must not contain tabs/newlines: '$($c.aboutUrl)'." }
+    if ("$($c.aboutUrl)".Trim() -and "$($c.aboutUrl)".Trim() -notmatch '^https?://') { throw "Api Configs: aboutUrl for '$($c.name)' must start with http:// or https://: '$($c.aboutUrl)'." }
     # kind rides the TAB-delimited CONFIG_MAP verbatim and dayz-ctl gates types-write on it -
     # anything but a bare lowercase word is either a typo'd registry 'web' value or an injection.
     if ("$($c.kind)" -notmatch '^[a-z]+$') { throw "Api Configs: web kind for '$($c.name)' must be a lowercase word: '$($c.kind)'." }
@@ -119,17 +125,19 @@ foreach ($c in $dirEntries) {
         if ("$s" -match "[,`t`n]") { throw "Api Configs: subfolder must not contain comma/tab/newline: '$s' (in '$($c.group)')." }
     }
 }
-# CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind". name is the API key
-# (stable); group + label are display-only (default 'General' / name); ro='1' locks the row
-# read-only in the editor (web:'view' surfaces); kind is the registry 'web' value verbatim so
-# dayz-ctl types-write can gate on kind 'types' and the editor can pick a surface-specific
-# view. dayz-ctl parses all six; config/config-target still key off fields 1-2, so appending
-# 3-6 is backward-safe.
+# CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl".
+# name is the API key (stable); group + label are display-only (default 'General' / name);
+# ro='1' locks the row read-only in the editor (web:'view' surfaces); kind is the registry
+# 'web' value verbatim so dayz-ctl types-write can gate on kind 'types' and the editor can pick
+# a surface-specific view; about + aboutUrl (2026-07-30) render as the "About this file" line
+# under the filename, with aboutUrl as its citation link. dayz-ctl parses all eight;
+# config/config-target still key off fields 1-2, so appending 3-8 is backward-safe, and a row
+# with no about simply emits two empty trailing fields.
 $configMap  = ($fileEntries | ForEach-Object {
     $g   = if ("$($_.group)".Trim()) { "$($_.group)".Trim() } else { 'General' }
     $lbl = if ("$($_.label)".Trim()) { "$($_.label)".Trim() } else { "$($_.name)" }
     $ro  = if ($_.ro) { '1' } else { '0' }
-    "$($_.name)`t$($_.path)`t$g`t$lbl`t$ro`t$($_.kind)"
+    "$($_.name)`t$($_.path)`t$g`t$lbl`t$ro`t$($_.kind)`t$("$($_.about)".Trim())`t$("$($_.aboutUrl)".Trim())"
 }) -join "`n"
 # CONFIG_DIRS: "group<TAB>reldir<TAB>subfolders". Files come from the dir root
 # (non-recursive) plus each named subfolder's root. Empty subfolders = root only.

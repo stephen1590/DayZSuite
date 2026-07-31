@@ -100,3 +100,46 @@
 .jn-spin{ position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--muted); font-size:13px; font-weight:600; letter-spacing:.3px; background:color-mix(in srgb,var(--card) 84%,transparent); backdrop-filter:blur(1px); border-radius:8px; }
 .jn-spin .jn-sp{ width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:jn-spin .7s linear infinite; flex:none; }
 @keyframes jn-spin{ to{ transform:rotate(360deg); } }
+
+/* ── Nesting: ONE left rule per tier, never a box ─────────────────────────────────────────
+   json-editor emits a container per node (class names vary by version/theme), and several of
+   them carry their own border/background. The result is a box around every object AND another
+   around each sub-object - visual noise that hides the structure instead of showing it.
+   Kill every container box inside the mount, then draw a single vertical guide on the left of
+   each NESTED node. Depth then reads as a stack of parallel rules, one per tier.
+   [data-schemapath] is json-editor's own per-node hook, so this does not depend on class names. */
+.je-mount div,
+.je-mount fieldset,
+.je-mount section,
+.je-mount table, .je-mount thead, .je-mount tbody, .je-mount tr, .je-mount td, .je-mount th {
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+/* Controls keep their own chrome - the reset above is for CONTAINERS only. */
+.je-mount input:not([type=checkbox]):not([type=radio]),
+.je-mount select,
+.je-mount textarea {
+  border: 1px solid var(--border) !important;
+  border-radius: 5px !important;
+  background: var(--panel2) !important;
+}
+.je-mount input:focus, .je-mount select:focus, .je-mount textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 0 0 1px var(--accent) !important;
+}
+.je-mount button {
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  background: var(--panel2) !important;
+}
+.je-mount .json-editor-btntype-toggle { border: none !important; background: none !important; }
+/* The tier guide: one rule, left side, on every nested node. Root gets none. */
+.je-mount [data-schemapath]:not([data-schemapath=""]):not([data-schemapath="root"]) {
+  border-left: 1px solid var(--border) !important;
+  padding-left: 10px;
+  margin-left: 3px;
+}
+/* Drift nodes (schema-unknown) keep their amber guide - same single-rule language. */
+.je-mount .je-child-editor-holder:has(> b) { border-left: 2px solid var(--drift,#c2570b) !important; }

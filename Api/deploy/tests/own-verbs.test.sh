@@ -27,7 +27,7 @@ tpl, out, sd = sys.argv[1], sys.argv[2], sys.argv[3]
 t = open(tpl).read()
 vals = {
   '__UNIT__': 'fake.service', '__SERVER_DIR__': sd,
-  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch',
+  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch\tSets global economy parameters\thttps://low.ms/knowledgebase/dayz-server-configuration',
   '__CONFIG_DIRS__': '', '__IGNORE_EXT__': '', '__WRITE_MAP__': '',
   '__GENERATED__': 'profiles/AI_Shared/map-points.generated.json',
   '__DISABLED_TARGETS__': 'profiles/ExpansionMod/Settings/AISettings.json',
@@ -117,5 +117,16 @@ printf '<a><b>'     | $CTL own-write - profiles/ExpansionMod/Loadouts/probe.xml 
 [ $rc -ne 0 ] && ok "own-write refuses malformed XML" || bad "malformed XML accepted"
 
 echo
+# 17-19. config-list carries about + aboutUrl as fields 7-8 (2026-07-30). The editor renders
+# these UNDER the filename, so a dropped column silently blanks the About block for every file.
+out="$($CTL config-list 2>/dev/null | grep '^General	Server-settings	')"
+n="$(printf '%s' "$out" | awk -F'\t' '{print NF}')"
+[ "$n" = "8" ] && ok "config-list emits 8 TAB fields (about/aboutUrl appended)" \
+  || bad "config-list field count is $n, want 8"
+[ "$(printf '%s' "$out" | cut -f7)" = "Sets global economy parameters" ] \
+  && ok "config-list field 7 = about text" || bad "config-list field 7 (about) wrong: $(printf '%s' "$out" | cut -f7)"
+[ "$(printf '%s' "$out" | cut -f8)" = "https://low.ms/knowledgebase/dayz-server-configuration" ] \
+  && ok "config-list field 8 = aboutUrl" || bad "config-list field 8 (aboutUrl) wrong: $(printf '%s' "$out" | cut -f8)"
+
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]
