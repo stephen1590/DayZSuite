@@ -250,7 +250,7 @@ if (-not $Local) {
     # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
-                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1',
+                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1', 'Convert-ToOwned.ps1',
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
@@ -514,6 +514,10 @@ $items = @(
     # (fresh box / disaster recovery: the mirror carries every web edit back onto the box).
     @{ Src = "../Apply-ConfigOverrides.ps1"; Dst = Join-Path $ServerDir "Apply-ConfigOverrides.ps1"; Sudo = $false; Exec = $true }
     @{ Src = "../Capture-OwnedDefaults.ps1"; Dst = Join-Path $ServerDir "Capture-OwnedDefaults.ps1"; Sudo = $false; Exec = $true }
+    # The override->owned cutover (A3). Runs ON THE BOX because the box owns config-overrides.json
+    # and only the box has the live tree the freeze must be verified against. Never called by
+    # prestart - it is an operator tool, report-only unless given -Fix.
+    @{ Src = "../Convert-ToOwned.ps1"; Dst = Join-Path $ServerDir "Convert-ToOwned.ps1"; Sudo = $false; Exec = $true }
     # (config-overrides.json itself is box-owned content — seeded from config-registry.json below,
     #  not shipped here; the engine above is code and ships on drift.)
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
