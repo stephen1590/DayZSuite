@@ -26,7 +26,6 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
 
 $registry  = Get-Content -Raw (Join-Path $root 'config-registry.json') | ConvertFrom-Json
-$overrides = Get-Content -Raw (Join-Path $root 'config-overrides.json') | ConvertFrom-Json
 
 $pass = 0; $fail = 0
 function Check([bool]$ok, [string]$what) {
@@ -73,13 +72,8 @@ foreach ($m in $missions) {
         # a 'view' row must never also be writable - web:'view' is enforced read-only end to end
         if ($e.web -eq 'view') { Check (-not $row.writable) "$rel : view row is not 'writable'" }
 
-        # an OWNED row must not carry a wholeFiles blob - that is the deprecated pattern
-        $wf = $overrides.wholeFiles
-        $hasBlob = $false
-        if ($wf -and $wf.mpmissions -and $wf.mpmissions.$m) {
-            $hasBlob = ($wf.mpmissions.$m.PSObject.Properties.Name -contains $e.f)
-        }
-        Check (-not $hasBlob) "$rel : no wholeFiles blob in config-overrides.json (deprecated whole-file pattern)"
+        # (2026-07-31) The wholeFiles-blob check lived here. config-overrides.json is deleted,
+        # so the pattern it guarded against cannot exist: there is no document to hold a blob.
     }
 }
 

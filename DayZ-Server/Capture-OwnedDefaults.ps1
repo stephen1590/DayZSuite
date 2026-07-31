@@ -7,16 +7,14 @@
 .DESCRIPTION
   The two-copy model says an owned file keeps two whole copies - a frozen `default`
   reference and the `live` file - and the UI DISPLAYS the diff (never applies it).
-  Nothing built that first copy for files outside the patch niche: the only writer of a
-  `<stem>.defaults.<ext>` companion is Apply-ConfigOverrides, and it writes one only for
-  files it PATCHES. An owned file with no override rows therefore has no default at all,
-  so the own-editor renders "no frozen default captured, plain edit" and there is nothing
-  to compare. This closes that gap - one mechanism for every owned row, not a per-file copy.
+
+  This is now the ONLY writer of a `<stem>.defaults.<ext>` companion. It used to share that
+  job with Apply-ConfigOverrides, which captured a baseline for the files it patched and
+  therefore had to be skipped here; that engine is deleted (2026-07-31), so every owned row
+  is captured by one mechanism with one rule. The skip that existed for override targets is
+  gone with it - a file that used to be patched is now simply an owned file like any other.
 
   For each registry row with category 'owned' and a 'box' path:
-    - SKIP if the file is targeted by config-overrides.json (mission layer, common layer, or
-      wholeFiles). Apply-ConfigOverrides owns that companion, and capturing a POST-patch live
-      file would bake the patches into the supposedly pristine baseline.
     - SKIP if a default already exists. SEED-IF-MISSING ONLY: the default is the frozen
       reference, and re-capturing it from live would silently erase the delta being compared.
       (Same doctrine as the deploy's config seeding - never overwrite box-owned content.)
@@ -34,14 +32,12 @@
 param(
     [Parameter(Mandatory)][string]$ServerDir,
     [string]$Registry,
-    [string]$Manifest,
     [Alias('Apply')][switch]$Fix,
     [switch]$NoLog
 )
 $ErrorActionPreference = 'Stop'
 
 if (-not $Registry) { $Registry = Join-Path $ServerDir 'config-registry.json' }
-if (-not $Manifest) { $Manifest = Join-Path $ServerDir 'config-overrides.json' }
 if (-not (Test-Path -LiteralPath $ServerDir)) { Write-Error "ServerDir not found: $ServerDir"; exit 1 }
 if (-not (Test-Path -LiteralPath $Registry))  { Write-Error "config-registry.json not found: $Registry"; exit 1 }
 
@@ -61,38 +57,11 @@ function Get-DefaultsPath([string]$rel) {
 }
 
 $registryDoc = Get-Content -Raw -LiteralPath $Registry | ConvertFrom-Json
-$manifestDoc = if (Test-Path -LiteralPath $Manifest) { Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json } else { $null }
-
-function Test-HasProp($obj, [string]$name) {
-    if ($null -eq $obj) { return $false }
-    return ($obj.PSObject.Properties.Name -contains $name)
-}
-
-# Is this ServerDir-relative path targeted by the override engine (any layer, incl. wholeFiles)?
-function Test-IsOverrideTarget([string]$rel) {
-    if ($null -eq $manifestDoc) { return $false }
-    $m = [regex]::Match($rel, '^mpmissions/([^/]+)/(.+)$')
-    foreach ($root in @($manifestDoc, $manifestDoc.wholeFiles)) {
-        if ($null -eq $root) { continue }
-        if ($m.Success) {
-            $mission = $m.Groups[1].Value
-            $sub     = $m.Groups[2].Value
-            if (Test-HasProp $root 'mpmissions') {
-                foreach ($layer in @($mission, 'common')) {
-                    if ((Test-HasProp $root.mpmissions $layer) -and (Test-HasProp $root.mpmissions.$layer $sub)) { return $true }
-                }
-            }
-        } else {
-            if ((Test-HasProp $root 'files') -and (Test-HasProp $root.files $rel)) { return $true }
-        }
-    }
-    return $false
-}
 
 $owned = @($registryDoc.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.box })
 Show-Info "Owned surfaces declared: $($owned.Count)$(if (-not $Fix) { '  (report only - re-run with -Fix to capture)' })"
 
-$captured = 0; $skipExisting = 0; $skipOverride = 0; $skipAbsent = 0
+$captured = 0; $skipExisting = 0; $skipAbsent = 0
 $rows = @()
 foreach ($row in $owned) {
     $rel     = "$($row.box)"
@@ -100,11 +69,6 @@ foreach ($row in $owned) {
     $defRel   = Get-DefaultsPath $rel
     $defPath  = Join-Path $ServerDir $defRel
 
-    if (Test-IsOverrideTarget $rel) {
-        $skipOverride++; $rows += [pscustomobject]@{ rel = $rel; action = 'skip-override-target' }
-        Show-Info "  [skip] $rel - an override target; Apply-ConfigOverrides owns its default"
-        continue
-    }
     if (Test-Path -LiteralPath $defPath) {
         $skipExisting++; $rows += [pscustomobject]@{ rel = $rel; action = 'skip-default-exists' }
         continue
@@ -131,5 +95,5 @@ if (-not $NoLog) {
 }
 
 $verb = if ($Fix) { 'captured' } else { 'to capture' }
-Show-Info "`nCapture-OwnedDefaults: $(if ($Fix) { $captured } else { @($rows | Where-Object action -eq 'would-capture').Count }) $verb, $skipExisting already had a default, $skipOverride override-owned, $skipAbsent not on disk"
+Show-Info "`nCapture-OwnedDefaults: $(if ($Fix) { $captured } else { @($rows | Where-Object action -eq 'would-capture').Count }) $verb, $skipExisting already had a default, $skipAbsent not on disk"
 exit 0

@@ -13,12 +13,17 @@ import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const JS = readFileSync(join(root, 'web/js/editor.js'), 'utf8');
+const OWN = readFileSync(join(root, 'web/js/own-editor.js'), 'utf8');
 const CSS = readFileSync(join(root, 'web/style.css'), 'utf8');
 
-test('E6: the file view renders BOTH copies, not one chosen by a toggle', () => {
-  assert.match(JS, /fv-split/, 'need a two-pane split in the file view');
-  assert.match(JS, /fv-cap">Default/, 'the default pane must be labelled');
-  assert.match(JS, /fv-cap">Live/, 'the live pane must be labelled');
+// The owner's requirement outlived the mechanism that first carried it. The override editor's
+// side-by-side file view is deleted; the SAME guarantee now has to hold in the owned editor,
+// which is the only place an editable file is shown at all.
+test('E6: an owned file is shown against its frozen default, with no toggle to choose one', () => {
+  assert.match(OWN, /unifiedMergeView\(\{ original: st\.defText/,
+    'the frozen default must be rendered against the live document, not behind a switch');
+  assert.match(OWN, /defaultsPathOf/, 'the default must be FETCHED alongside the live copy');
+  assert.doesNotMatch(OWN, /wfShowDefault|showDefault/, 'no view-switcher state may come back');
 });
 
 test('E6: the Live/Default toggle and its state are GONE, not just hidden', () => {
@@ -29,9 +34,9 @@ test('E6: the Live/Default toggle and its state are GONE, not just hidden', () =
   assert.equal(decl, null, 'wfShowDefault must not be declared anywhere');
 });
 
-test('E6: both panes can scroll independently', () => {
-  assert.match(CSS, /\.fv-split\s*\{[^}]*grid-template-columns/, 'two columns');
-  assert.match(CSS, /\.fv-pane pre\s*\{[^}]*overflow:\s*auto/, 'each pane scrolls on its own');
+test('E6: the diff is display-only - the box never applies it', () => {
+  assert.match(OWN, /mergeControls: false/,
+    'accept/reject controls would make the diff a write path; the two-copy model forbids that');
 });
 
 test('E7: EVERY nav row states its access - no silent fallback to no badge', () => {
@@ -81,11 +86,7 @@ test('the sliders write through the editor document, never override rows', () =>
 // present? Make it make sense!" The count and the file's existence were rendered by two
 // unrelated pieces of code, so they contradicted each other. Both now go through
 // override-status.js. These guard the wiring; the wording itself is unit-tested there.
-test('the override summary and the file-view panel share ONE wording source', () => {
-  assert.match(JS, /import \{ overrideStatus \} from '\.\/override-status\.js'/);
-  const uses = JS.match(/overrideStatus\(/g) || [];
-  assert.ok(uses.length >= 2, `only ${uses.length} call site(s); the chrome AND the file panel must both use it`);
-});
+
 
 test('the hardcoded "still override-managed" claim is gone from the chrome', () => {
   assert.doesNotMatch(JS, /still override-managed/,
@@ -100,17 +101,6 @@ test('the hardcoded "still override-managed" claim is gone from the chrome', () 
   }
 });
 
-test('the status is re-rendered once the box answers, not left at its cold guess', () => {
-  assert.match(JS, /function refreshOverrideStatus/);
-  assert.match(JS, /refreshOverrideStatus\(row\);/, 'must be called after the file fetch resolves');
-});
 
-test('an absent file with no default still LISTS its override rows', () => {
-  // Hiding them behind the missing-file note is how "2 overrides" became unexplainable.
-  const i = JS.indexOf('function fileViewHtml');
-  const body = JS.slice(i, i + 900);
-  const headAt = body.indexOf('const head =');
-  const bailAt = body.indexOf('!canDef) return');
-  assert.ok(headAt !== -1 && bailAt !== -1 && headAt < bailAt,
-    'the override context must be built BEFORE the absent-file early return, and included in it');
-});
+
+

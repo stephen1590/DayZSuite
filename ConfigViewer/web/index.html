@@ -10,13 +10,13 @@
   full-width content area. Two pages — Server Files and API (Swagger).
 
   Server Files model: every row is a FILE (deduped by server-relative path across its
-  read alias, folder listing and any config-overrides target). Every JSON/XML file
-  opens the same Fields ⇄ File editor: overridden fields are highlighted deltas, the
-  rest is context, and editing a context field ADDS an override. Mission files carry
-  LAYERS — 'all missions' (mpmissions.common) and the mission's own layer (mission
-  wins) — chips mark common rows and a selector picks where new overrides land.
-  Box-owned writable files (rw) open a whole-file editor; non-JSON/XML files are
-  locked (ro): viewable, not patchable.
+  read alias and folder listing). A row opens exactly one of three things, decided by its
+  config-registry.json row and nothing else:
+    owned  -> the whole-file editor, live document diffed against its frozen default
+    types  -> the CE types table
+    other  -> a read-only view
+  There is no field-patch editor. The override engine was deleted 2026-07-31 (owner: "No
+  Overrides. Just whole file ownership and modifying with a better UI/Syntax manager").
 
   Auth: paste the Key ID + secret from a key minted via /keys/create. An OBSERVE key
   can view + read; a FULL-scope key also writes. Credentials live in a cookie and are
@@ -50,9 +50,9 @@
   <h2>Enter your API key</h2>
   <p class="hint">
     Paste a Key&nbsp;ID and secret minted with the Keys API. An <strong>observe</strong> key
-    views files and overrides; a broader-scoped key also writes overrides and unlocks the
-    write endpoints in the <strong>API</strong> page. Credentials stay in a cookie on this
-    device and clear automatically if the server rejects them.
+    views files; a broader-scoped key also edits them and unlocks the write endpoints in the
+    <strong>API</strong> page. Credentials stay in a cookie on this device and clear
+    automatically if the server rejects them.
   </p>
   <form id="loginForm" autocomplete="off">
     <label for="keyId">Key ID</label>
@@ -85,8 +85,8 @@
     </nav>
     <div class="side-hr"></div>
     <div class="side-scroll">
-      <!-- ONE merged tree: every readable server file, one row each. Badges: green N =
-           captured overrides, rw = box-owned whole-file editable, ro = locked. -->
+      <!-- ONE merged tree: every readable server file, one row each.
+           Badges: rw = editable (owned/types), ro = read-only. -->
       <div id="filesNav"><span class="meta" style="padding:10px;display:block">Loading…</span></div>
       <div id="apiNav" class="hidden"><span class="meta">The API explorer opens on the right. Calls are signed with your key.</span></div>
       <!-- Mod Docs tab: readmes/notices/example configs bundled inside the @mod folders, grouped by mod. -->
@@ -118,14 +118,10 @@
   </aside>
 
   <main id="workspace">
-    <!-- Server Files: landing + the shared Fields ⇄ File editor -->
+    <!-- Server Files: landing + the editor the selected row routes to -->
     <section id="editorPage" class="hidden">
-      <div id="edEmpty" class="empty ovr-empty">Pick a file on the left — every JSON/XML file opens the Fields ⇄ File editor; editing a field captures it as an override.</div>
+      <div id="edEmpty" class="empty ovr-empty">Pick a file on the left. Files we own open in the whole-file editor, shown against their frozen default; everything else opens read-only.</div>
       <div id="edEditor" class="hidden"></div>
-      <details class="ovr-history">
-        <summary>Version history — roll back the whole overrides doc (restart to apply)</summary>
-        <div id="ovrVersions"><span class="meta">—</span></div>
-      </details>
     </section>
 
     <!-- Server Files: BOX-OWNED file editor (whole-file replace: ban/allow lists) -->
@@ -646,7 +642,7 @@ import { detectLang, highlight } from './js/highlight.js';
   }
   function toggleTheme() { applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
 
-  // Server Files tab (tree + Fields<->File override editor + box-owned editor) -> js/editor.js
+  // Server Files tab (the merged tree + routing to the owned/types/read-only editors) -> js/editor.js
 
   // Map tab (terrain canvas + overlays + spawn editor) -> js/map.js (wired by initMap()).
 
@@ -730,7 +726,7 @@ import { detectLang, highlight } from './js/highlight.js';
   initMap();   // Map tab: canvas camera + overlay/edit controls wired in js/map.js
   window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) applyRoute(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAllPolling(); else resumeAllPolling(); });
-  // Unsaved-changes guard: reloading or closing the tab drops in-memory override OR spawn edits.
+  // Unsaved-changes guard: reloading or closing the tab drops in-memory file OR spawn edits.
   window.addEventListener('beforeunload', (e) => { if (isDirty() || mapIsDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
   initEditor();  // Server Files tree + editor controls wired in js/editor.js

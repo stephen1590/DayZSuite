@@ -5,19 +5,21 @@
   FAIL (script missing).
 
   THE GAP IT CLOSES (found 2026-07-31): the two-copy model says an OWNED file keeps a frozen
-  `default` beside its `live` copy, and the own-editor diffs them. But the ONLY thing that
-  ever writes a `<stem>.defaults.<ext>` companion is Apply-ConfigOverrides, and it writes one
-  only for files it PATCHES. An owned file with no override rows therefore has no default at
-  all, so the editor shows "no frozen default captured, plain edit" and there is nothing to
-  compare against. Six of the eight newly-declared mission surfaces were in exactly that state.
+  `default` beside its `live` copy, and the own-editor diffs them. Nothing captured that first
+  copy for most owned files, so the editor showed "no frozen default captured, plain edit" with
+  nothing to compare against. Six of the eight newly-declared mission surfaces were like that.
+
+  UPDATED 2026-07-31 (engine deletion): this script is now the SOLE writer of a defaults
+  companion. It used to share the job with Apply-ConfigOverrides and had to skip that engine's
+  files; the engine is deleted, so the skip is deleted with it and every owned row is captured
+  by one rule. A file that used to be patched is now an owned file like any other.
 
   Contract:
    - report-only by default; -Fix writes (project rule: modifications need an explicit flag)
    - for every registry row with category 'owned' AND a 'box' path, capture live -> default
    - SEED-IF-MISSING ONLY: an existing default is NEVER overwritten (it is the frozen
      reference; re-capturing from live would silently erase the very delta being compared)
-   - SKIP any file the override manifest targets - Apply-ConfigOverrides owns those companions,
-     and capturing post-patch live would bake the patches into the "pristine" baseline
+   - ONE rule for every owned row: no second writer, so no per-file exemption
    - never invent a default for a file that is not on disk
 #>
 $ErrorActionPreference = 'Stop'
@@ -52,11 +54,7 @@ $M = 'mpmissions/dayzOffline.sakhal'
     )
 } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $work 'config-registry.json')
 
-# db/types.xml IS an override target -> Apply-ConfigOverrides owns its companion, skip it
-@{ mpmissions = @{ 'dayzOffline.sakhal' = @{ 'db/types.xml' = @{ "//type[@name='A']/lifetime" = 100 } } } } |
-    ConvertTo-Json -Depth 8 | Set-Content (Join-Path $work 'config-overrides.json')
-
-$common = @{ ServerDir = $work; Registry = (Join-Path $work 'config-registry.json'); Manifest = (Join-Path $work 'config-overrides.json') }
+$common = @{ ServerDir = $work; Registry = (Join-Path $work 'config-registry.json') }
 
 # 1. REPORT mode writes nothing
 $out = & $tool @common 6>&1 | Out-String
@@ -73,8 +71,10 @@ Check ((Get-Content -Raw (Join-Path $work "$M/cfgweather.defaults.xml")).Trim() 
 # 3. an EXISTING default is never overwritten
 Check ((Get-Content -Raw (Join-Path $work "$M/cfgeconomycore.defaults.xml")) -match 'PRISTINE') "fix: existing default NOT clobbered (seed-if-missing)"
 
-# 4. an override-manifest target is skipped (Apply-ConfigOverrides owns that companion)
-Check (-not (Test-Path (Join-Path $work "$M/db/types.defaults.xml"))) "fix: SKIPS db/types.xml (an override target)"
+# 4. a file that used to be an override target is now captured like any other owned row.
+# This assertion is INVERTED from its original form on purpose: it used to prove the skip
+# existed. With one writer there is no skip, and a formerly-patched file must get a default.
+Check (Test-Path (Join-Path $work "$M/db/types.defaults.xml")) "fix: captures db/types.xml - no override exemption any more"
 
 # 5. category 'reference' is not captured, and a missing file is not invented
 Check (-not (Test-Path (Join-Path $work "$M/mapgroupproto.defaults.xml"))) "fix: skips category 'reference'"

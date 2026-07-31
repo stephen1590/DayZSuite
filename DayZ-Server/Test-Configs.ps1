@@ -6,9 +6,9 @@
 .DESCRIPTION
     "Box builds, dev validates" done properly: not a prediction, an actual build. The box
     rebuilds every patched file as frozen-default + override patches at prestart, then composes
-    the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines + config-overrides.json
+    the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines
     + the AI_Bandits source tree + spawn-points + Babaku sources + the custom-CE manifest) and
-    the SAME engines the box runs at prestart (Apply-ConfigOverrides,
+    the SAME engines the box runs at prestart (
     Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
     from the mirrors, runs the ACTUAL build chain against it, and validates the produced artifacts.
     If it passes, the live deploy runs the identical scripts on the identical inputs — the result
@@ -23,7 +23,7 @@
         the box's reversible-default rebuild.
       - registry seed rows WITHOUT a captured baseline (classification, StaticAIB, Babaku,
         messages) are placed from their repo seed - identical to a box that has them.
-    Then per declared mission, the full prestart config chain: Apply-ConfigOverrides -Fix
+    Then per declared mission, the full prestart config chain:
     (force-create), Apply-CustomCE, Build-TransferSpawns.
 
     Two prestart inputs are GAME-OWNED mission files (cfgeconomycore.xml, cfgplayerspawnpoints.xml)
@@ -41,7 +41,6 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$OverridesDoc = (Join-Path $PSScriptRoot "config-overrides.json"),   # test a candidate doc without touching the mirror
     [string]$StagingDir,
     [switch]$KeepStaging,
     [switch]$NoLog
@@ -54,10 +53,9 @@ function Show-Pass([string]$m) { $script:pass++; Write-Host "  [PASS] $m" -Foreg
 function Show-Fail([string]$m) { $script:fail++; Write-Host "  [FAIL] $m" -ForegroundColor Red }
 
 $defaultsDir  = Join-Path $PSScriptRoot "config-defaults"
-$overridesDoc = $OverridesDoc
 $registryPath = Join-Path $PSScriptRoot "config-registry.json"
 $deployDir    = Join-Path $PSScriptRoot "deploy"
-foreach ($p in @($defaultsDir, $overridesDoc, $registryPath)) {
+foreach ($p in @($defaultsDir, $registryPath)) {
     if (-not (Test-Path $p)) { Write-Error "missing mirror/input: $p (run Pull-Configs.ps1 -Execute first)"; exit 2 }
 }
 if (-not $StagingDir) {
@@ -156,34 +154,13 @@ foreach ($m in $missions) {
 Write-Host "  staged custom-ce/ + $stagedFixtures game-file fixture(s) across $($missions.Count) mission(s)"
 
 # --- Run the REAL build chain against the staged dir ----------------------------------------
-Write-Host "`nRunning the build chain (Apply-ConfigOverrides + the prestart compilers) against staging" -ForegroundColor Cyan
-# Capture the information stream (6>&1) so the [WARN] lines are inspectable, AND keep the
-# RETURNED stats object - the authoritative counts. NEVER derive the verdict from Write-Host
-# text (2>&1 doesn't capture the host stream - that false-passed the zero-MISS check once).
-$applyCap    = & (Join-Path $PSScriptRoot "Apply-ConfigOverrides.ps1") -ServerDir $StagingDir -Manifest $overridesDoc -Fix 6>&1
-$applyResult = @($applyCap | Where-Object { $_ -is [System.Management.Automation.PSCustomObject] }) | Select-Object -Last 1
-$warnLines   = @($applyCap | Where-Object { "$_" -match '\[WARN\]' } | ForEach-Object { ("$_" -replace '.*\[WARN\]\s*', '').Trim() })
-Write-Host ("  apply: {0} changed, {1} created, {2} same, {3} warning(s)" -f $applyResult.Changed, $applyResult.Created, $applyResult.Same, $applyResult.Warn)
+# (2026-07-31) Apply-ConfigOverrides ran first here and its warning count drove a zero-MISS
+# check. The applier is deleted: config files are owned whole, so there is no patch pass and
+# nothing that can silently miss. The compilers below are the whole chain now.
+Write-Host "`nRunning the build chain (the prestart compilers) against staging" -ForegroundColor Cyan
 
 # --- Validate the produced artifacts --------------------------------------------------------
 Write-Host "`nValidating built artifacts" -ForegroundColor Cyan
-
-# 1. Zero-MISS. Force-created keys are [NEW], never warnings. Split what remains:
-#    a bad SELECTOR / key on a file that IS present is a HARD fail (a dead override that would
-#    silently do nothing on the box). a "file not found" is SOFT - a common override into a
-#    mission that simply lacks that file (e.g. parked Chernarus has no Expansion MapSettings).
-#    Surface the soft ones, block only on the hard ones.
-$softMiss = @($warnLines | Where-Object { $_ -match 'file not found' })
-$hardMiss = @($warnLines | Where-Object { $_ -notmatch 'file not found' })
-if ($hardMiss.Count -eq 0) { Show-Pass "zero-MISS: every override on a present file applies" }
-else {
-    Show-Fail "$($hardMiss.Count) dead override(s) - would silently do nothing on the box; fix before deploy:"
-    $hardMiss | ForEach-Object { Write-Host "         $_" -ForegroundColor Red }
-}
-if ($softMiss.Count) {
-    Write-Host "  [note] $($softMiss.Count) override(s) skipped a mission lacking the target file (benign):" -ForegroundColor DarkYellow
-    $softMiss | ForEach-Object { Write-Host "         $_" -ForegroundColor DarkYellow }
-}
 
 # 2. DynamicAIB.common.json left the override engine on 2026-07-31 (A2 cutover) - it is an OWNED
 # file now, so nothing BUILDS it and there is no force-create to prove. What still matters is that
@@ -414,58 +391,9 @@ if (Test-Path $deployScript) {
     }
 }
 
-# --- ONE OWNER for mod enablement (structural rule, GameServices/CLAUDE.md) ------------------
-# mods.conf is the only place a mod is turned on or off. Every consumer DERIVES from it.
-# The pattern this catches: disabling a mod by COMMENTING OUT its prestart call or its deploy
-# $items row. That makes each file a private, hand-synced copy of mods.conf - nothing keeps
-# them in agreement, toggling a mod silently misses one, and the last-shipped script is left
-# on the box as an orphan the deploy no longer manages. Gate it, or it comes back.
-# --- OVERRIDE NICHE must not regrow whole documents -----------------------------------------
-# CONFIG-ARCHITECTURE.md Phase 2 moved every chaotic whole-document target OFF the delta engine
-# and left a small FIELD-PATCH niche (~19 files / 175 leaves). Its stated guard was "the worklist
-# classification" - a paragraph in a doc, which per the structural rule means no guard at all.
-# It regrew to 548 leaves, 359 of them in ONE Loadout that Phase 2 had already migrated out.
-# A file carrying a whole document's worth of leaves belongs in the OWNED two-copy model, where
-# the editor shows it whole and diffs it against a frozen default. Two consequences when it does
-# not: the override doc becomes unreviewable again, AND editor.js:248 keeps `ownFile` false for
-# that surface, so the CodeMirror own-editor is suppressed and the admin only ever sees deltas.
-$MAX_NICHE_LEAVES = 60      # largest legitimate niche entry today is SpawnSettings at 40
-$ovrPath = Join-Path $PSScriptRoot 'config-overrides.json'
-if (-not (Test-Path $ovrPath)) { Show-Fail "config-overrides.json missing - cannot check the override niche" }
-else {
-    function Measure-Leaves($x) {
-        if ($x -is [System.Management.Automation.PSCustomObject]) {
-            return @($x.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') } | ForEach-Object { Measure-Leaves $_.Value } | Measure-Object -Sum).Sum
-        }
-        if ($x -is [System.Collections.IEnumerable] -and $x -isnot [string]) {
-            return @($x | ForEach-Object { Measure-Leaves $_ } | Measure-Object -Sum).Sum
-        }
-        return 1
-    }
-    $ovr = Get-Content -Raw -LiteralPath $ovrPath | ConvertFrom-Json
-    $fat = @()
-    foreach ($scope in 'files', 'mpmissions') {
-        $node = $ovr.$scope
-        if (-not $node) { continue }
-        foreach ($p in $node.PSObject.Properties) {
-            if ($p.Name.StartsWith('_')) { continue }
-            if ($scope -eq 'files') {
-                $n = [int](Measure-Leaves $p.Value)
-                if ($n -gt $MAX_NICHE_LEAVES) { $fat += [pscustomobject]@{ path = "files/$($p.Name)"; leaves = $n } }
-            } else {
-                foreach ($f in $p.Value.PSObject.Properties) {
-                    if ($f.Name.StartsWith('_')) { continue }
-                    $n = [int](Measure-Leaves $f.Value)
-                    if ($n -gt $MAX_NICHE_LEAVES) { $fat += [pscustomobject]@{ path = "$($p.Name)/$($f.Name)"; leaves = $n } }
-                }
-            }
-        }
-    }
-    if ($fat.Count) {
-        Show-Fail "override niche REGROWN - $($fat.Count) file(s) exceed $MAX_NICHE_LEAVES leaves. A whole-document patch belongs in the owned two-copy model (category:'owned'), not the delta engine:"
-        $fat | Sort-Object -Property leaves -Descending | ForEach-Object { Write-Host "         $($_.leaves) leaves  $($_.path)" -ForegroundColor Yellow }
-    } else { Show-Pass "override niche holds: no file exceeds $MAX_NICHE_LEAVES leaves (field patches only)" }
-}
+# (2026-07-31) A ratchet capped the field-patch niche at 60 leaves per file. There is no niche:
+# config-overrides.json is deleted and tests/override-engine-deleted.test.ps1 asserts it stays
+# deleted, which is a stronger guarantee than a size cap on a document that may not exist.
 
 $prestartPath = Join-Path $PSScriptRoot 'deploy/prestart.sh'
 if (-not (Test-Path $prestartPath)) { Show-Fail "deploy/prestart.sh missing - cannot check the mod-enablement invariant" }

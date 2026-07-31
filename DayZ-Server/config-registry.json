@@ -88,15 +88,6 @@
   ],
   "surfaces": [
     {
-      "name": "overrides",
-      "box": "config-overrides.json",
-      "scope": "shared",
-      "seed": "config-overrides.json",
-      "mirror": "overrides",
-      "web": "patch",
-      "check": "json"
-    },
-    {
       "name": "map",
       "label": "Active Map",
       "box": "map.env",

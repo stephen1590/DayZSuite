@@ -12,7 +12,6 @@
 
     Registry-driven - the fifth consumer of config-registry.json (the one contract). The source
     set is exactly the rows that carry box-owned live state:
-      overrides    config-overrides.json                  (the override document)
       spawns       profiles/AI_Shared/map-points.json      (the spawn-point store)
       live FILE    the web-edited expansion_types_tuning pair
       live FOLDER  the LIVE mission config (mpmissions/<map>/{db,env,expansion/settings}/*.json)
@@ -141,12 +140,11 @@ if (-not $Fix) {
 }
 
 # --- marker (lets the staging deploy require a fresh sync) + restart ------------------------
-$ovrSha = (Get-Stdout { ssh @cm $prodT "sha256sum '$RemotePath/config-overrides.json' 2>/dev/null | cut -c1-64" } | Out-String).Trim()
 $stamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-$marker = "synced_at=$stamp`nprod_host=$($prod.Host)`nprod_overrides_sha=$ovrSha`nfiles_copied=$copied`n"
+$marker = "synced_at=$stamp`nprod_host=$($prod.Host)`nfiles_copied=$copied`n"
 $marker | ssh @cm $stgT "cat > '$RemotePath/.prod-sync'"
 Show-Ok "wrote staging marker $RemotePath/.prod-sync (synced_at=$stamp)"
-Log 'sync' "copied=$copied same=$same prod=$($prod.Host) ovrSha=$ovrSha"
+Log 'sync' "copied=$copied same=$same prod=$($prod.Host)"
 
 if ($NoRestart) {
     Write-Host "`n-NoRestart: files are in place; they apply on the next staging boot." -ForegroundColor Yellow

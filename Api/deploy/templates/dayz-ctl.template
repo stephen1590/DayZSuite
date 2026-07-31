@@ -14,7 +14,7 @@ CONFIG_MAP='__CONFIG_MAP__'        # rendered "name<TAB>relpath<TAB>group<TAB>la
 CONFIG_DIRS='__CONFIG_DIRS__'      # rendered "group<TAB>reldir<TAB>subfolders" folder allowlist
 IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from FOLDER listings
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
-GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; override-write refuses to target them
+GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; own-write refuses to target them
 DISABLED_TARGETS='__DISABLED_TARGETS__'  # rendered relpaths of config surfaces whose owning mod is DISABLED in mods.conf (config-registry.json "mod" x deploy/mods.conf, resolved at deploy time) - the web editor DROPS these rows
 OWNED_FILES='__OWNED_FILES__'      # rendered relpaths of registry FILE rows with category:'owned' - the generic own-read/own-write allowlist (CONFIG-ARCHITECTURE.md two-copy model, Phase 1)
 OWNED_DIRS='__OWNED_DIRS__'        # rendered reldirs of registry FOLDER rows with category:'owned' - files under these are own-read/own-write reachable (json/xml only, replace-only)
@@ -27,28 +27,10 @@ LOG_SOURCES='__LOG_SOURCES__'      # rendered "id<TAB>reldir<TAB>glob<TAB>label"
 
 die() { echo "dayz-ctl: $*" >&2; exit 1; }
 
-OVERRIDES="$SERVER_DIR/config-overrides.json"
-OVR_VERSIONS="$SERVER_DIR/.overrides-versions"
 # The SHARED spawn store: one neutral file feeding BOTH AIB and Expansion (Build-AIBandits,
 # Build-AILocations, Build-AIPatrols all read it). Neutral location, not under any one mod's folder.
 SPAWNS="$SERVER_DIR/profiles/AI_Shared/map-points.json"
 SPAWN_VERSIONS="$SERVER_DIR/.spawn-versions"
-
-# How many override snapshots the BOX keeps. Deliberately matches Sync-ConfigOverrides.ps1's
-# KeepVersions on the repo side, so "how far back can I roll an override?" has one answer
-# wherever you ask it. Raised 10 -> 30 on 2026-07-22.
-OVR_KEEP=30
-# Snapshot the current config-overrides.json into the versions dir (keep the newest $OVR_KEEP),
-# restoring the server-dir owner so a later ubuntu-run deploy can still replace it. Best-effort.
-snapshot_overrides() {
-  [ -f "$OVERRIDES" ] || return 0
-  mkdir -p "$OVR_VERSIONS"
-  cp -p "$OVERRIDES" "$OVR_VERSIONS/config-overrides.$(date -u +%Y%m%dT%H%M%S%NZ).json"
-  find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' | sort -r | tail -n +$((OVR_KEEP + 1)) \
-    | while IFS= read -r _old; do rm -f "$_old"; done
-  _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
-  [ -n "$_own" ] && chown -R "$_own" "$OVR_VERSIONS" 2>/dev/null || true
-}
 
 # Same pattern for the map-points store (keep the 10 newest). A save is reversible from these.
 snapshot_spawns() {
@@ -98,97 +80,7 @@ log_source_lookup() {
   printf '%s\n' "$_hit"
 }
 
-# Read config-overrides.json and print its TARGET-FILE keys as TAB tokens:
-#   F <TAB> <filerel>              (files.<filerel>)
-#   M <TAB> <mission> <TAB> <filerel>  (mpmissions.<mission>.<filerel>; mission may be 'common')
-#   D <TAB> <mission>              (a DECLARED mission key - even an empty {} slot)
-# The D lines drive the common-layer expansion: common targets resolve only into declared
-# missions (same rule as Apply-ConfigOverrides), so a foreign dir under mpmissions/ (a side
-# project, an admin copy) never enters the read allowlist. No empty fields (read treats TAB
-# as whitespace). _-prefixed keys are skipped. jq preferred, python3 fallback; no tool = none.
-_extract_targets() {
-  # Emit tokens from BOTH the selector-patch layers (root .files/.mpmissions) and the whole-file
-  # layers (.wholeFiles.files/.mpmissions) so a file owned wholesale stays readable/editable.
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '
-      def emit($o):
-        ($o.files // {} | keys[] | select(startswith("_")|not) | "F\t" + .),
-        ($o.mpmissions // {} | keys[] | select(. != "common") | select(startswith("_")|not) | "D\t" + .),
-        ($o.mpmissions // {} | to_entries[] | .key as $m
-           | (.value // {} | keys[] | select(startswith("_")|not) | "M\t" + $m + "\t" + .));
-      emit(.), emit(.wholeFiles // {})
-    ' 2>/dev/null || true
-  elif command -v python3 >/dev/null 2>&1; then
-    python3 -c '
-import sys, json
-try: d = json.load(sys.stdin)
-except Exception: sys.exit(0)
-def ks(o): return [k for k in o.keys() if not k.startswith("_")] if isinstance(o, dict) else []
-def emit(o):
-    if not isinstance(o, dict): return
-    for k in ks(o.get("files") or {}): print("F\t" + k)
-    mp = o.get("mpmissions") or {}
-    if isinstance(mp, dict):
-        for m in mp.keys():
-            if m != "common" and not m.startswith("_"): print("D\t" + m)
-        for m, v in mp.items():
-            if m.startswith("_"): continue
-            for k in ks(v or {}): print("M\t" + m + "\t" + k)
-emit(d); emit(d.get("wholeFiles") or {})
-' 2>/dev/null || true
-  fi
-}
 
-# Emit every EXISTING file targeted by config-overrides.json in emit_allowed's 4-col
-# format (group=Overrides). files.<rel> -> <rel>; mpmissions.<mission>.<rel> ->
-# mpmissions/<mission>/<rel>; mpmissions.common.<rel> -> that file under EACH mission dir.
-# Only files that actually exist are emitted, so the allowlist stays real paths only.
-# <name>.<ext> -> <name>.defaults.<ext> (the frozen-default companion Apply-ConfigOverrides
-# writes beside each patched file). Extensionless -> <name>.defaults.
-_defaults_path() {
-  case "$1" in
-    *.*) printf '%s.defaults.%s' "${1%.*}" "${1##*.}" ;;
-    *)   printf '%s.defaults' "$1" ;;
-  esac
-}
-_emit_target() {
-  [ -n "$1" ] || return 0
-  [ -f "$SERVER_DIR/$1" ] || return 0
-  printf 'Overrides\t%s\t%s\t%s\n' "$1" "$1" "$1"
-  # Also expose the frozen default companion if present, so the editor can show default values.
-  # Hidden from config-list (emit_allowed skips *.defaults.*); readable only via config-target.
-  _def="$(_defaults_path "$1")"
-  [ -n "$_def" ] && [ -f "$SERVER_DIR/$_def" ] && printf 'Overrides\t%s\t%s\t%s\n' "$_def" "$_def" "$_def"
-}
-emit_override_targets() {
-  [ -f "$OVERRIDES" ] || return 0
-  _tokens="$(_extract_targets < "$OVERRIDES")"
-  # Declared missions (D lines) - the only dirs the common layer may resolve into.
-  _declared="$(printf '%s\n' "$_tokens" | awk -F'\t' '$1=="D" && $2 !~ /[\/]|\.\./ {print $2}')"
-  printf '%s\n' "$_tokens" | while IFS=$'\t' read -r -a _f; do
-    case "${_f[0]:-}" in
-      F)
-        _filerel="${_f[1]:-}"
-        case "$_filerel" in ''|*..*) continue ;; esac
-        _emit_target "$_filerel"
-        ;;
-      M)
-        _mission="${_f[1]:-}"; _filerel="${_f[2]:-}"
-        case "$_filerel" in ''|*..*) continue ;; esac
-        case "$_mission" in ''|*/*|*..*) continue ;; esac   # mission is a single dir name
-        if [ "$_mission" = common ]; then
-          for _m in $_declared; do
-            [ -d "$SERVER_DIR/mpmissions/$_m" ] || continue
-            _emit_target "mpmissions/$_m/$_filerel"
-          done
-        else
-          _emit_target "mpmissions/$_mission/$_filerel"
-        fi
-        ;;
-    esac
-  done
-  return 0
-}
 
 # --- Generated-artifact guard -----------------------------------------------------------------
 # A prestart COMPILER writes these (config-registry.json "generated"); they are read-only outputs,
@@ -238,24 +130,6 @@ EOF
   return 0
 }
 
-# Read an override document on stdin; emit the generated relpath(s) it TARGETS, one per line, sorted
-# unique. An F target is its own relpath; an M target resolves to mpmissions/<mission>/<filerel>
-# (mission 'common' -> mpmissions/common/..., which the '*' wildcard still matches, so a common-layer
-# patch on a generated file is caught too). Empty output = the document touches no generated file.
-_override_generated_hits() {
-  # `if...fi` (not `_is_generated && printf`): under `set -euo pipefail` a while-loop whose last
-  # body command returns non-zero (the common case - most targets are NOT generated) makes the loop,
-  # and via pipefail the whole pipeline, exit non-zero, which would abort override-write in a `$(...)`.
-  # The if-statement always returns 0, so a clean doc yields empty output and exit 0.
-  _extract_targets | while IFS=$'\t' read -r _k _a _b; do
-    case "$_k" in
-      F) _rel="$_a" ;;
-      M) _rel="mpmissions/$_a/$_b" ;;
-      *) continue ;;
-    esac
-    if _is_generated "$_rel"; then printf '%s\n' "$_rel"; fi
-  done | LC_ALL=C sort -u
-}
 
 # Emit the full set of retrievable configs, one file per line, TAB-separated:
 #   group <TAB> name <TAB> relpath <TAB> label <TAB> ro
@@ -645,7 +519,7 @@ case "$verb" in
   config-list)
     # Emit "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl" per config:
     # explicit files PLUS every file under each allowlisted folder. The relpath lets the UI dedup
-    # a file across its read alias, folder listing and any config-overrides target; ro='1'
+    # a file across its read alias and folder listing; ro='1'
     # tells the editor to lock the row read-only; kind (the registry 'web' value) lets it pick a
     # surface-specific view (e.g. 'types' -> the CE types editor). No caller input reaches this —
     # pure enumeration of the rendered allowlist. Hard-capped at 3000 lines so the reply can never
@@ -657,7 +531,7 @@ case "$verb" in
   config-generated)
     # Emit the read-only COMPILER-OUTPUT globs (rendered GENERATED), one ServerDir-relative glob
     # per line. The web editor marks any file matching one of these read-only (no edit/no save);
-    # override-write refuses to target one. Pure enumeration of the rendered mask - no caller input.
+    # own-write refuses to target one. Pure enumeration of the rendered mask - no caller input.
     if [ -n "$GENERATED" ]; then printf '%s\n' "$GENERATED"; fi
     ;;
 
@@ -665,7 +539,7 @@ case "$verb" in
     # Emit the OWNED-surface masks (rendered from registry category:'owned' at deploy time):
     # 'F<TAB><relpath>' per owned file row, 'D<TAB><reldir>' per owned folder row. The web editor
     # uses these to route a row to the whole-file two-copy editor (own-read/own-write) instead of
-    # the override editor. Pure enumeration of the rendered masks - no caller input.
+    # the whole-file editor. Pure enumeration of the rendered masks - no caller input.
     if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES" | while IFS= read -r _l; do [ -n "$_l" ] && printf 'F\t%s\n' "$_l"; done; fi
     if [ -n "$OWNED_DIRS" ];  then printf '%s\n' "$OWNED_DIRS"  | while IFS= read -r _l; do [ -n "$_l" ] && printf 'D\t%s\n' "$_l"; done; fi
     ;;
@@ -673,8 +547,8 @@ case "$verb" in
   config-disabled)
     # Emit the config surfaces whose owning mod is DISABLED in mods.conf (rendered DISABLED_TARGETS
     # from config-registry.json 'mod' fields cross-referenced with deploy/mods.conf at deploy time),
-    # one ServerDir-relative relpath per line. The web editor DROPS any row (curated OR override-synth)
-    # matching one, so a mod turned off stops surfacing its config files and override-patch targets -
+    # one ServerDir-relative relpath per line. The web editor DROPS any row matching one,
+    # so a mod turned off stops surfacing its config files -
     # the box-owned patches stay intact, just hidden. Pure enumeration of the rendered mask - no caller input.
     if [ -n "$DISABLED_TARGETS" ]; then printf '%s\n' "$DISABLED_TARGETS"; fi
     ;;
@@ -693,19 +567,6 @@ case "$verb" in
     print_config_file "$rel"
     ;;
 
-  config-target)
-    # config-target <relpath> — read ONE config-overrides TARGET file in full, for the
-    # overrides editor's whole-file context. Same enumerated-allowlist guarantee as config,
-    # but the set ALSO includes every file config-overrides.json patches (emit_override_targets):
-    # self-maintaining, so whatever we override we can read. A relpath neither emit_allowed nor
-    # emit_override_targets produced simply doesn't match — no caller-invented path escapes.
-    [ -n "$arg" ] || die "config-target needs a relpath"
-    case "$arg" in *..*) die "invalid config name" ;; esac
-    case "$arg" in *[!A-Za-z0-9_./-]*) die "invalid config name" ;; esac
-    rel="$({ emit_allowed; emit_override_targets; } | awk -F'\t' -v n="$arg" '$2==n{print $3; exit}')"
-    [ -n "$rel" ] || { echo "dayz-ctl: unknown config target: $arg" >&2; exit 2; }
-    print_config_file "$rel"
-    ;;
 
   doc-list)
     # Enumerate documentation files across the configured mod-folder roots (DOCS_ROOTS globs),
@@ -833,96 +694,7 @@ case "$verb" in
     fi
     ;;
 
-  override-read)
-    # override-read — the live config-overrides.json with its content HASH on line 1, so a writer
-    # can prove it edited the version it loaded (override-write base=<hash> rejects a stale write —
-    # the two-admin lost-update guard). Line 1 = sha256 (empty when the file is absent), rest = doc.
-    if [ -f "$OVERRIDES" ]; then
-      sha256sum "$OVERRIDES" | awk '{print $1}'
-      cat "$OVERRIDES"
-    else
-      echo ''
-    fi
-    ;;
 
-  override-write)
-    # override-write <json> — replace config-overrides.json with the JSON document in $2 (the
-    # service computed it: current file + one node change). PRIVILEGED write only. Validates it
-    # is JSON (jq or python3), snapshots the current file (keep 10), writes ATOMICALLY, restores
-    # the server-dir owner. Target is fixed — no caller path input.
-    # A literal '-' document means "read it from stdin" — Linux caps one argv string at
-    # ~128KB (MAX_ARG_STRLEN), which a real override doc can exceed. head caps the read one
-    # byte over the size limit so an oversize doc still fails the explicit check below.
-    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
-    [ -n "$arg" ] || die "override-write needs the new document"
-    if command -v jq >/dev/null 2>&1; then
-      printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "override-write: input is not valid JSON"
-    elif command -v python3 >/dev/null 2>&1; then
-      printf '%s' "$arg" | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 || die "override-write: input is not valid JSON"
-    else
-      die "override-write: no JSON validator (jq/python3) on the box"
-    fi
-    sz="$(printf '%s' "$arg" | wc -c)"
-    [ "$sz" -le 2097152 ] || die "override-write: too large ($sz bytes)"
-    # Generated-file guard: a prestart compiler OWNS these outputs (config-registry.json
-    # "generated"), so an override targeting one would be silently clobbered at the next boot.
-    # Refuse the whole write with a DISTINCT exit (6) so the editor shows a clear "this file is
-    # generated - read-only" message instead of accepting a patch that will vanish. Server-side on
-    # purpose: protects against every writer, not just the web editor.
-    if [ -n "$GENERATED" ]; then
-      _ghits="$(printf '%s' "$arg" | _override_generated_hits || true)"
-      if [ -n "$_ghits" ]; then
-        echo "dayz-ctl: refusing override on generated file(s): $(printf '%s' "$_ghits" | tr '\n' ' ')- compiled at boot from map-points + the frozen base; edit the source, not the output" >&2
-        exit 6
-      fi
-    fi
-    # Optimistic concurrency + flag parse (order-independent). The caller may pass base=<sha256>
-    # (the version it loaded via override-read); if the file changed since, another admin wrote
-    # first — refuse with a DISTINCT exit so the editor says "reload" instead of silently
-    # clobbering. 'force' is the shrink-override flag. No base= given = no check (back-compat).
-    _force=0; _base='__none__'
-    for _f in "${@:3}"; do case "$_f" in force) _force=1 ;; base=*) _base="${_f#base=}" ;; esac; done
-    if [ "$_base" != '__none__' ] && [ -f "$OVERRIDES" ]; then
-      _cur="$(sha256sum "$OVERRIDES" | awk '{print $1}')"
-      [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: config-overrides.json changed since you loaded it — reload and re-apply" >&2; exit 5; }
-    fi
-    # Shrink circuit-breaker (2026-07-16: a partial save gutted 1361 overrides to 85 and the
-    # next boot reverted everything to defaults). Whole-file replace stays the model, but a
-    # document that DROPS more than half the current override values is refused unless the
-    # caller passes a literal 3rd arg "force" — a deliberate mass-delete is one explicit flag
-    # away, an accidental one is impossible. Counts scalar leaves (each concrete override
-    # value); guard only arms at >=20 so small/young manifests never trip it. Server-side on
-    # purpose: protects against every writer, not just the web editor.
-    _count_leaves() {
-      if command -v jq >/dev/null 2>&1; then
-        jq '[paths(scalars)] | length' 2>/dev/null || echo 0
-      else
-        python3 -c '
-import sys,json
-def n(v):
-    if isinstance(v,dict): return sum(n(x) for x in v.values())
-    if isinstance(v,list): return sum(n(x) for x in v)
-    return 1
-print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
-      fi
-    }
-    if [ -f "$OVERRIDES" ] && [ "$_force" != 1 ]; then
-      _oldn="$(_count_leaves < "$OVERRIDES")"
-      _newn="$(printf '%s' "$arg" | _count_leaves)"
-      case "$_oldn$_newn" in *[!0-9]*) _oldn=0; _newn=0 ;; esac
-      if [ "$_oldn" -ge 20 ] && [ "$_newn" -lt $((_oldn / 2)) ]; then
-        die "shrink-guard: new document carries $_newn override values, current file has $_oldn — refusing the replace (re-send with force to confirm a deliberate mass-delete)"
-      fi
-    fi
-    snapshot_overrides
-    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
-    tmp="$(mktemp "$SERVER_DIR/.override-write.XXXXXX")"
-    printf '%s' "$arg" > "$tmp"
-    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
-    chmod 644 "$tmp"
-    mv -f "$tmp" "$OVERRIDES"
-    printf 'ok\n%s\n' "$(sha256sum "$OVERRIDES" | awk '{print $1}')"   # line 2 = the new version, so the caller can rebase without a reload
-    ;;
 
   spawn-write)
     # spawn-write <json> — replace the SHARED map-points store (profiles/AI_Shared/map-points.json)
@@ -932,7 +704,7 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     # restores the server-dir owner. Target is fixed — no caller path input. Takes effect at the
     # next restart (prestart Build-AIBandits/AIPatrols recompose from it).
     # '-' = read the document from stdin (argv is capped at ~128KB per string; 5000 spawn
-    # points clear that easily). Same pattern as override-write.
+    # points clear that easily). Same pattern as own-write.
     if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
     [ -n "$arg" ] || die "spawn-write needs the new document"
     if command -v jq >/dev/null 2>&1; then
@@ -956,13 +728,6 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
     echo ok
     ;;
 
-  override-versions)
-    # List snapshots newest-first, one <version> token per line (the service builds the rollback
-    # list from this). No input.
-    [ -d "$OVR_VERSIONS" ] || exit 0
-    find "$OVR_VERSIONS" -maxdepth 1 -name 'config-overrides.*.json' -printf '%f\n' 2>/dev/null \
-      | sort -r | sed -E 's/^config-overrides\.(.*)\.json$/\1/'
-    ;;
 
   file-list)
     # Enumerate the box-owned files an admin may REPLACE (the rendered WRITE_MAP), one
@@ -1028,15 +793,15 @@ print(n(json.load(sys.stdin)))' 2>/dev/null || echo 0
 
   types-write)
     # types-write <xml|-> <name> [base=<sha256>] — REPLACE one CE types file whole (the
-    # ConfigViewer types editor computed it: base file + the edited <type> override blocks).
-    # ARG ORDER: the document rides $2 like every stdin write verb (override-write/spawn-write) -
+    # ConfigViewer types editor computed it: base file + the edited <type> blocks).
+    # ARG ORDER: the document rides $2 like every stdin write verb (own-write/spawn-write) -
     # the API's ctlStdin always places '-' at $2 - so the NAME comes third. The name must be a
     # CONFIG_MAP row of kind 'types' (registry web:'types' - this verb is the ONLY writer for
-    # those rows; file-write/override-write can't reach them). The path comes from the map,
+    # those rows; file-write/own-write can't reach them). The path comes from the map,
     # NEVER the caller. Replace-only (the file is seeded by the deploy - a typo'd name can't
     # create files). '-' = read the document from stdin: the tuning file is ~73KB and grows per
-    # override, and Linux caps one argv string at ~128KB (MAX_ARG_STRLEN). Same 2MB cap +
-    # base= optimistic concurrency as override-write.
+    # a big document, and Linux caps one argv string at ~128KB (MAX_ARG_STRLEN). Same 2MB cap +
+    # base= optimistic concurrency as own-write.
     # Validated STRUCTURALLY before the write: well-formed XML, root <types>, every child
     # element a <type name="...">  - so a half-pasted document can never reach the CE.
     # Takes effect at the next restart (prestart Apply-CustomCE copies it into the mission).
@@ -1073,7 +838,7 @@ for c in r:
     fi
     # Optimistic concurrency: the caller may pass base=<sha256> (the version it loaded); if the
     # file changed since, another admin wrote first — refuse with the same DISTINCT exit (5) as
-    # override-write so the editor says "reload" instead of silently clobbering.
+    # own-write so the editor says "reload" instead of silently clobbering.
     _base='__none__'
     for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
     if [ "$_base" != '__none__' ]; then
@@ -1081,7 +846,7 @@ for c in r:
       [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
     fi
     # Snapshot the outgoing version (keep the 30 newest per file - loot policy, same retention
-    # as the overrides document), owner restored.
+    # as the config document), owner restored.
     TYPES_VERSIONS="$SERVER_DIR/.types-versions"
     mkdir -p "$TYPES_VERSIONS"
     cp -p "$file" "$TYPES_VERSIONS/$name.$(date -u +%Y%m%dT%H%M%S%NZ).xml"
@@ -1192,7 +957,7 @@ for c in r:
     # settings file for <key> whole. ONE generalized writer for AIPatrolSettings/AILocationSettings/...
     # - the ONLY per-file facts (relpath, required array, whether Names must be unique) come from the
     # key table below; every guard is shared. The mod reads these live files directly (out of the
-    # override system so map edits persist across restarts). Document at $2 ('-'), key at $3, mission
+    # patch system so map edits persist across restarts). Document at $2 ('-'), key at $3, mission
     # at $4. Path from a VALIDATED key + mission, NEVER the caller. 2MB cap, base= concurrency,
     # snapshot-first (.settings-versions, keep 30), atomic, replace-only. Applies at next restart.
     key="${3:-}"; mission="${4:-}"
@@ -1260,19 +1025,6 @@ if uniq:
     printf 'ok\n%s\n' "$(sha256sum "$file" | awk '{print $1}')"   # line 2 = the new version
     ;;
 
-  override-rollback)
-    # override-rollback <version> — restore a snapshot (snapshots the current file first, so a
-    # rollback is itself reversible). <version> validated to timestamp characters only.
-    case "$arg" in ''|*[!0-9TZ]*) die "override-rollback: invalid version" ;; esac
-    src="$OVR_VERSIONS/config-overrides.$arg.json"
-    [ -f "$src" ] || { echo "dayz-ctl: unknown version: $arg" >&2; exit 2; }
-    snapshot_overrides
-    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
-    cp -f "$src" "$OVERRIDES"
-    [ -n "$_own" ] && chown "$_own" "$OVERRIDES" 2>/dev/null || true
-    chmod 644 "$OVERRIDES"
-    echo ok
-    ;;
 
   update-arm)
     # update-arm [reason] — ARM a deferred update: write .update-pending so the NEXT server
@@ -1312,6 +1064,6 @@ if uniq:
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled config-target doc-list doc-read info override-write override-versions override-rollback spawn-write file-list file-write types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled doc-list doc-read info spawn-write file-list file-write types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
     ;;
 esac

@@ -22,7 +22,7 @@ export const el = {
   logStatus: $('logStatus'), logFollow: $('logFollow'), logRefresh: $('logRefresh'),
   logPane: $('logPane'), logEmpty: $('logEmpty'), logLines: $('logLines'),
   workspace: $('workspace'),
-  editorPage: $('editorPage'), edEmpty: $('edEmpty'), edEditor: $('edEditor'), ovrVersions: $('ovrVersions'),
+  editorPage: $('editorPage'), edEmpty: $('edEmpty'), edEditor: $('edEditor'),
   ownfile: $('ownfile'), ownPath: $('ownPath'), ownTa: $('ownTa'), ownSave: $('ownSave'),
   apitab: $('apitab'), swagger: $('swagger'), docstab: $('docstab'), docView: $('docView'), docsHead: $('docsHead'),
   maptab: $('maptab'), mapSel: $('mapSel'), mapRefresh: $('mapRefresh'), mapSum: $('mapSum'),

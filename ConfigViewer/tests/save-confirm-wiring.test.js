@@ -12,11 +12,13 @@ const JS = join(dirname(fileURLToPath(import.meta.url)), '../web/js');
 const read = (f) => readFileSync(join(JS, f), 'utf8');
 
 // file -> the save function that must confirm first
+// 2026-07-31: editor.js:saveOverrides was the fourth entry. It is DELETED with the override
+// engine - editor.js holds no save path at all now, it only routes a row to one of these.
 const SAVE_PATHS = [
-  ['editor.js', 'saveOverrides'],       // the overrides doc (names the edited files, not the transport)
   ['own-editor.js', 'doSave'],          // whole owned file
   ['types-editor.js', 'doSave'],        // types tuning
   ['map.js', 'savePatrolEdit'],         // patrols (whole AIPatrolSettings doc)
+  ['editor.js', 'saveOwnFile'],         // bans/priority/whitelist text files (configs/set-file)
 ];
 
 // Body of `async function <name>(` up to the next top-level `\n}` - good enough for a
@@ -45,5 +47,19 @@ for (const [file, fn] of SAVE_PATHS) {
 test('the dirty pill markup is rendered from ONE helper, not copied per chrome', () => {
   const src = read('editor.js');
   const inlineCopies = (src.match(/class="ovr-unsaved/g) || []).length;
-  assert.equal(inlineCopies, 1, 'ovr-unsaved markup must exist once (dirtyPillHtml) - three copies is the god-file pattern E4 removed');
+  assert.equal(inlineCopies, 1, 'ovr-unsaved markup must exist once (dirtyPillHtml) - a copy per chrome is the god-file pattern this removed');
+});
+
+// The point of deleting the override engine: editor.js ROUTES, it does not write. If a save
+// path reappears here, the god-file is growing back.
+// editor.js keeps exactly ONE write - the bans/whitelist text files. Everything that was
+// override machinery is gone; if any of these strings comes back, the god-file is regrowing.
+test('the override write paths are gone from editor.js', () => {
+  const src = read('editor.js');
+  // Match the CALL, not the word: a comment explaining what was removed is documentation and
+  // should survive; an apiPost to a deleted endpoint is a 404 waiting for a user.
+  for (const ep of ['set-overrides', 'preview-override', 'override-rollback', 'target']) {
+    assert.ok(!src.includes(`/dayz/configs/${ep}`),
+      `editor.js calls /dayz/configs/${ep} - that endpoint is deleted; it would 404 at runtime`);
+  }
 });

@@ -12,8 +12,6 @@ import type { DayzBridge } from './dayz.js';
 import type { HeightmapStore } from './heightmap.js';
 import { sanitizeText } from './dayz.js';
 import { bigStringify } from './lossless-json.js';
-import { deriveJsonOverride } from './override-diff.js';
-import { deriveXmlOverride } from './override-diff-xml.js';
 import { SETTINGS_KEYS, isSettingsKey } from './settings-keys.js';   // generalized AI-settings write allowlist (patrols/locations)
 
 export interface ActionError extends Error {
@@ -37,15 +35,6 @@ function humanDuration(sec: number): string {
   return `${m}m`;
 }
 
-// The frozen-default companion path for a config-overrides target — MUST match dayz-ctl's
-// _defaults_path exactly (that shell helper is what names the file on the box): insert
-// `.defaults` before the final extension, or append it when there's no dot.
-//   profiles/AI_Bandits/common/DynamicAIB.common.json -> ...DynamicAIB.common.defaults.json
-//   mpmissions/dayzOffline.sakhal/db/globals.xml       -> .../globals.defaults.xml
-function defaultsPath(rel: string): string {
-  const dot = rel.lastIndexOf('.');
-  return dot >= 0 ? `${rel.slice(0, dot)}.defaults${rel.slice(dot)}` : `${rel}.defaults`;
-}
 
 /** OpenAPI fragment for an action. The spec is GENERATED from these and the dev-mode
  *  check validates the handler against `response`, which describes `result` (the fields
@@ -603,7 +592,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         const safe = /^[A-Za-z0-9_./-]+$/;
         // dayz-ctl emits "group<TAB>name<TAB>label<TAB>relpath<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl"
         // per file (single files + expanded folder contents). The relpath is the UI's dedup key
-        // across a file's read alias / folder listing / override target; ro='1' marks a web:'view'
+        // across a file's read alias and folder listing; ro='1' marks a web:'view'
         // surface the editor locks read-only; kind is the registry 'web' value (view/file/patch/
         // types/...) so the editor can pick a surface-specific view (e.g. 'types' -> the CE types
         // editor); about + aboutUrl are the "About this file" line under the filename and its
@@ -631,7 +620,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/get': {
       destructive: false,
       readOnly: true,
-      describe: 'retrieve one allowlisted config file (params: { "name": "overrides" }; see the "configs/list" action for names)',
+      describe: 'retrieve one allowlisted config file (params: { "name": "serverSettings" }; see the "configs/list" action for names)',
       schema: {
         query: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
         response: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' } } },
@@ -651,98 +640,8 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/target': {
-      destructive: false,
-      readOnly: true,
-      describe: 'retrieve one config-overrides TARGET file in full, by relpath (whole-file context for the overrides editor)',
-      schema: {
-        query: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: 'server-dir-relative path of a file config-overrides.json patches' } } },
-        response: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' } } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
-        const r = await dayz.ctl('config-target', name);
-        if (r.code === 2) throw fail(404, `unknown config target '${name}' (not an override target or allowlisted config)`);
-        if (r.code === 3) throw fail(413, `config target '${name}' is too large to retrieve`);
-        if (r.code !== 0) throw fail(502, `config-target failed: ${(r.stderr || r.stdout).trim()}`);
-        // dayz-ctl's contract: line 1 = the resolved path, the rest = the contents.
-        const nl = r.stdout.indexOf('\n');
-        const path = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
-        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
-        return { name, path, content };
-      },
-    },
 
-    'configs/default': {
-      destructive: false,
-      readOnly: true,
-      describe: 'retrieve the FROZEN DEFAULT (baseline) of one config-overrides target — the file the whole-file editor shows and diffs against to derive a delta. hasDefault=false means no default is captured yet, so that target edits in whole-file mode. Secrets are masked, same as any config read.',
-      schema: {
-        query: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: 'server-dir-relative path of a config-overrides target (the same name configs/target takes)' } } },
-        response: { type: 'object', properties: {
-          name: { type: 'string' }, hasDefault: { type: 'boolean' },
-          path: { type: 'string', nullable: true }, content: { type: 'string', nullable: true },
-        } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
-        // The default is read by its own relpath via config-target (_emit_target exposes the
-        // ".defaults" companion). code 2 = no default captured yet -> whole-file mode, not an error.
-        const r = await dayz.ctl('config-target', defaultsPath(name));
-        if (r.code === 2) return { name, hasDefault: false, path: null, content: null };
-        if (r.code === 3) throw fail(413, `default for '${name}' is too large to retrieve`);
-        if (r.code !== 0) throw fail(502, `config-target failed: ${(r.stderr || r.stdout).trim()}`);
-        const nl = r.stdout.indexOf('\n');
-        const path = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
-        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
-        return { name, hasDefault: true, path, content };
-      },
-    },
 
-    'configs/preview-override': {
-      destructive: false,
-      readOnly: true, // derives only — the COMMIT is the existing configs/set-overrides write
-      describe: 'Preview what a WHOLE-FILE edit of a config-overrides target becomes: diff the edited content against the frozen default and return either a minimal delta (selector→value patches that PROVABLY round-trip through the same apply engine) or a whole-file verdict with a plain reason. Read-only; the UI commits a delta via configs/set-overrides. JSON and XML by extension; no default, a deleted baseline key, or a reshaped structure all yield mode=wholefile.',
-      schema: {
-        body: { type: 'object', required: ['name', 'content'], properties: {
-          name: { type: 'string', description: 'config-overrides target relpath (same name configs/target takes)' },
-          content: { type: 'string', description: 'the full edited file content' },
-        } },
-        response: { type: 'object', properties: {
-          name: { type: 'string' }, kind: { type: 'string', enum: ['json', 'xml', 'other'] },
-          hasDefault: { type: 'boolean' }, mode: { type: 'string', enum: ['delta', 'wholefile'] },
-          changed: { type: 'integer', nullable: true },
-          delta: { type: 'object', nullable: true, additionalProperties: true },
-          reason: { type: 'string', nullable: true },
-        } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.includes('..')) throw fail(400, 'invalid or missing "name"');
-        if (params.content === undefined) throw fail(400, 'missing "content"');
-        const content = String(params.content);
-        const ext = (name.split('.').pop() ?? '').toLowerCase();
-        const kind: 'json' | 'xml' | 'other' = ext === 'json' ? 'json' : ext === 'xml' ? 'xml' : 'other';
-
-        // Frozen default is the diff base. code 2 = none captured yet → null → whole-file mode.
-        const r = await dayz.ctl('config-target', defaultsPath(name));
-        let defaultText: string | null = null;
-        let hasDefault = false;
-        if (r.code === 0) { const nl = r.stdout.indexOf('\n'); defaultText = nl >= 0 ? r.stdout.slice(nl + 1) : ''; hasDefault = true; }
-        else if (r.code === 3) throw fail(413, `default for '${name}' is too large to diff`);
-        else if (r.code !== 2) throw fail(502, `config-target failed: ${(r.stderr || r.stdout).trim()}`);
-
-        const result = kind === 'json' ? deriveJsonOverride(defaultText, content)
-          : kind === 'xml' ? deriveXmlOverride(defaultText, content)
-          : { mode: 'wholefile' as const, reason: `unsupported file type '.${ext}' — only JSON and XML derive deltas` };
-
-        return result.mode === 'delta'
-          ? { name, kind, hasDefault, mode: 'delta', changed: result.changed, delta: result.delta, reason: null }
-          : { name, kind, hasDefault, mode: 'wholefile', changed: null, delta: null, reason: result.reason };
-      },
-    },
 
     // Mod-docs browser — the read-only analogue of configs/list + configs/get, but the files
     // live INSIDE the @mod folders (readmes, notices, example configs), discovered by dayz-ctl.
@@ -816,7 +715,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/readonly': {
       destructive: false,
       readOnly: true,
-      describe: 'list the generated (compiler-output) config globs the web editor must render read-only; override-write refuses to target any of them',
+      describe: 'list the generated (compiler-output) config globs the web editor must render read-only; own-write refuses to target any of them',
       schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } } } },
       async run() {
         const r = await dayz.ctl('config-generated');
@@ -832,7 +731,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/disabled': {
       destructive: false,
       readOnly: true,
-      describe: 'list config surface relpaths whose owning mod is disabled in mods.conf; the web editor drops these rows so a turned-off mod stops surfacing its config files and override-patch targets (the box-owned patches stay intact)',
+      describe: 'list config surface relpaths whose owning mod is disabled in mods.conf; the web editor drops these rows so a turned-off mod stops surfacing its config files (the box-side files stay intact)',
       schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } } } },
       async run() {
         const r = await dayz.ctl('config-disabled');
@@ -971,7 +870,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         if (params.content.length > 2097152) throw fail(413, '"content" too large (max 2MB)');
         // Content travels over STDIN (ctlStdin puts '-' at $2), so the name rides third —
         // types-write's arg order. base=<hash> is the same optimistic-concurrency contract
-        // as override-write (exit 5 -> 409 "reload").
+        // as own-write (exit 5 -> 409 "reload").
         const extra: string[] = [name];
         if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
         const r = await dayz.ctlStdin('types-write', params.content, ...extra);
@@ -987,7 +886,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/owned': {
       destructive: false,
       readOnly: true,
-      describe: 'the owned-surface masks (registry category:\'owned\'): files = exact relpaths, dirs = folders whose json/xml files are owned. The web editor routes matching rows to the whole-file two-copy editor (configs/own + configs/set-own) instead of the override editor.',
+      describe: 'the owned-surface masks (registry category:\'owned\'): files = exact relpaths, dirs = folders whose json/xml files are owned. The web editor routes matching rows to the whole-file two-copy editor (configs/own + configs/set-own) instead of a raw text edit.',
       schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, dirs: { type: 'array', items: { type: 'string' } } } } },
       async run() {
         const r = await dayz.ctl('config-owned');
@@ -1054,66 +953,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/overrides': {
-      destructive: false,
-      readOnly: true,
-      describe: 'the live config-overrides.json plus its version hash. Load overrides through this and pass the version back to configs/set-overrides as baseVersion — the box then rejects a save (409) when another admin changed the file since, instead of silently overwriting their edit. Pass ifVersion=<the hash you hold> for a conditional read: an unchanged doc answers { version, unchanged: true } with NO content, so the full document only travels when it actually changed.',
-      schema: {
-        query: { type: 'object', properties: { ifVersion: { type: 'string', description: 'the version hash the caller already holds a parsed copy of — matching hash skips the payload' } } },
-        response: { type: 'object', properties: { version: { type: 'string' }, content: { type: 'string' }, unchanged: { type: 'boolean' } } },
-      },
-      async run(params) {
-        const r = await dayz.ctl('override-read');
-        if (r.code !== 0) throw fail(502, `override-read failed: ${(r.stderr || r.stdout).trim()}`);
-        // dayz-ctl's contract: line 1 = sha256 (empty if absent), rest = the document.
-        const nl = r.stdout.indexOf('\n');
-        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
-        // Conditional read: the doc crossed 1MB on 2026-07-23 and every tab entry re-downloaded
-        // it whole. The box-local read above is cheap; the HTTP hop + browser re-parse are not —
-        // a matching hash keeps both off the wire. Empty version (no doc yet) never matches.
-        const ifVersion = typeof params.ifVersion === 'string' ? params.ifVersion.trim() : '';
-        if (ifVersion && version && ifVersion === version) return { version, unchanged: true };
-        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
-        return { version, content };
-      },
-    },
 
-    'configs/set-overrides': {
-      destructive: false,
-      readOnly: false,
-      describe: 'replace config-overrides.json with a new document (snapshots first; restart to apply). Pass baseVersion (from configs/overrides) for optimistic concurrency.',
-      schema: {
-        body: { type: 'object', required: ['document'], properties: {
-          document: { type: 'object', description: 'the full config-overrides.json document' },
-          baseVersion: { type: 'string', description: 'the version hash from configs/overrides this edit was based on — the box rejects the write with 409 if config-overrides.json changed since, so a concurrent admin edit is not silently overwritten. Omit to skip the check (last-write-wins).' },
-          confirmShrink: { type: 'boolean', description: 'set true to confirm a document that drops more than half the current override values — without it the box refuses the replace (shrink guard)' },
-        } },
-        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
-      },
-      async run(params) {
-        const doc = params.document;
-        if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) throw fail(400, '"document" must be a JSON object');
-        // Flags to dayz-ctl (order-independent): 'force' clears the shrink guard (a partial save
-        // wiped 1361 overrides down to 85 on 2026-07-16); base=<hash> is the optimistic-concurrency
-        // check so a second admin's stale save is refused (exit 5) rather than clobbering the first.
-        const extra: string[] = [];
-        if (params.confirmShrink === true) extra.push('force');
-        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
-        // bigStringify: sentinel-preserved integers (Steam64 IDs etc.) land on disk as the
-        // exact bare literals the admin typed — never a rounded double.
-        const r = await dayz.ctlStdin('override-write', bigStringify(doc, 4), ...extra);
-        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
-        if (r.code === 6) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // patch targets a generated (read-only) file
-        if (r.code !== 0) {
-          const msg = (r.stderr || r.stdout).trim();
-          if (msg.includes('shrink-guard:')) throw fail(409, msg.replace(/^dayz-ctl:\s*/, ''));
-          throw fail(502, `override-write failed: ${msg}`);
-        }
-        // stdout = "ok\n<newVersion>" — hand the new version back so the caller can rebase.
-        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
-        return { message: 'overrides saved; restart the server to apply', version: lines.length > 1 ? lines[1] : '' };
-      },
-    },
 
     'configs/set-spawns': {
       destructive: false,
@@ -1196,17 +1036,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/override-versions': {
-      destructive: false,
-      readOnly: true,
-      describe: 'list config-overrides.json snapshots (newest first) for rollback',
-      schema: { response: { type: 'object', properties: { versions: { type: 'array', items: { type: 'string' } } } } },
-      async run() {
-        const r = await dayz.ctl('override-versions');
-        if (r.code !== 0) throw fail(502, `override-versions failed: ${(r.stderr || r.stdout).trim()}`);
-        return { versions: r.stdout.split('\n').map((s) => s.trim()).filter(Boolean) };
-      },
-    },
 
     // Terrain group — baked-heightmap lookups, no game-server involvement. Slashed
     // names route as /dayz/terrain/<name> via the grouped dispatcher in commands.ts.
@@ -1281,23 +1110,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/override-rollback': {
-      destructive: false,
-      readOnly: false,
-      describe: 'restore a config-overrides.json snapshot (restart to apply)',
-      schema: {
-        body: { type: 'object', required: ['version'], properties: { version: { type: 'string' } } },
-        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
-      },
-      async run(params) {
-        const version = String(params.version ?? '');
-        if (!/^[0-9TZ]+$/.test(version)) throw fail(400, 'invalid version');
-        const r = await dayz.ctl('override-rollback', version);
-        if (r.code === 2) throw fail(404, `unknown version '${version}'`);
-        if (r.code !== 0) throw fail(502, `override-rollback failed: ${(r.stderr || r.stdout).trim()}`);
-        return { message: `rolled back to ${version}; restart to apply`, version };
-      },
-    },
 
   };
 }

@@ -9,7 +9,6 @@
     is one `Deploy-DayZServer.ps1 -Fix` away from its config state (docs/RECOVERY.md).
     This runs every mirror pull in sequence:
 
-      Sync-ConfigOverrides.ps1   config-overrides.json        (the overrides document)
       Sync-ConfigDefaults.ps1    config-defaults/**           (frozen <stem>.defaults<ext> baselines)
       (inline)                   config-mirror/**             (LIVE files of registry folder rows
                                                                tagged "mirror":"live" - mission
@@ -35,7 +34,7 @@
     pull family.
 
     Exits non-zero if any sync fails or blocks (e.g. the box-ownership guard on hand-edited
-    mirrors — see Sync-ConfigOverrides.ps1).
+    mirrors — see Sync-ConfigDefaults.ps1).
 .EXAMPLE
     ./Pull-Configs.ps1              # dry-run: what each mirror pull would change
 .EXAMPLE
@@ -50,8 +49,9 @@ param(
     [switch]$NoLog
 )
 
+# Sync-ConfigOverrides.ps1 was the first entry until 2026-07-31. It pulled config-overrides.json,
+# which no longer exists. One sync left: the frozen defaults behind every owned surface.
 $syncs = @(
-    "Sync-ConfigOverrides.ps1"
     "Sync-ConfigDefaults.ps1"
 )
 
@@ -172,11 +172,11 @@ Write-Host ""
 # user directive 2026-07-16; Deploy-DayZServer.ps1 -Fix does the same). Pathspec-limited:
 # only the mirrors this script pulls are committed, never unrelated working-tree changes.
 if ($Execute) {
-    $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror') + $liveFilePaths
+    $mirrorPaths = @('deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror') + $liveFilePaths
     git -C $PSScriptRoot add -- $mirrorPaths 2>$null
     if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
         git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
-        Write-Host "Pull-Configs: all syncs OK - config backup committed (git log -- config-overrides.json for history)" -ForegroundColor Green
+        Write-Host "Pull-Configs: all syncs OK - config backup committed (git log -- config-mirror for history)" -ForegroundColor Green
     } else {
         Write-Host "Pull-Configs: all syncs OK - no config changes since last commit" -ForegroundColor Green
     }

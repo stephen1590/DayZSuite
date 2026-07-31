@@ -142,22 +142,9 @@ if (-not $Local) {
     # on the box to pull. Sync-SpawnPoints.ps1 is archived; the committed mirror stays as the
     # frozen reference. (Was: pull box map-points.json down before pushing.)
 
-    # Config overrides: the live box is authoritative (the web editor writes the document at
-    # runtime). Pull the box's config-overrides.json DOWN into the repo MIRROR — the committed
-    # backup, and the seed a fresh box gets. Read-only unless -Fix; the sync validates JSON and
-    # snapshots the mirror before overwriting. The deploy below only ever SEEDS this file to a
-    # box that doesn't have one — it never overwrites a live document.
-    $ovrSync = Join-Path $PSScriptRoot "Sync-ConfigOverrides.ps1"
-    if ($Env -eq 'prod' -and (Test-Path $ovrSync)) {
-        Write-Host "--- config overrides (pull: box authoritative, repo = mirror/seed) ---"
-        if ($Fix) { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog -Execute }
-        else      { & $ovrSync -RemoteHost $RemoteHost -RemoteUser $RemoteUser -NoLog:$NoLog }
-        # The sync exits non-zero when it REFUSES to run: hand edits on the box-owned mirror
-        # (exit 3). Proceeding would ship a mirror that silently loses either the hand edits or
-        # the box's state — stop the whole deploy and surface its message instead.
-        if ($LASTEXITCODE) { Write-Error "config-overrides sync blocked the deploy (exit $LASTEXITCODE) — see above."; exit $LASTEXITCODE }
-        Write-Host ""
-    }
+    # (2026-07-31) The config-overrides pull was here. The override engine is deleted - owner's
+    # ruling "No Overrides. Just whole file ownership". Owned files are pulled by the
+    # config-mirror / config-defaults syncs below; there is no separate override document.
 
     # Frozen defaults: the box-born baselines behind the reversible overrides (config-defaults/).
     # Same pull: the mirror follows the box (new captures and re-captures come down); the -Local
@@ -203,17 +190,17 @@ if (-not $Local) {
     }
 
     # Committed config history: each PROD -Fix deploy commits the just-pulled box config
-    # state, so `git log -- config-overrides.json` is the browsable history of what actually
+    # state, so `git log -- config-mirror` is the browsable history of what actually
     # ran on the box ("backup the configs to the repo; commit the history on sync" — user
     # directive 2026-07-16). Pathspec-limited on purpose: only the pulled mirrors are ever
     # committed here, never unrelated working-tree changes. Prod-only, same reason as the
     # pulls above: staging state must never enter the prod mirror history.
     if ($Fix -and $Env -eq 'prod') {
-        $mirrorPaths = @('config-overrides.json', 'deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror')
+        $mirrorPaths = @('deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror')
         git -C $PSScriptRoot add -- $mirrorPaths 2>$null
         if (git -C $PSScriptRoot status --porcelain -- $mirrorPaths) {
             git -C $PSScriptRoot commit -q -m "config backup: box state $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -- $mirrorPaths
-            Write-Host "config backup committed (git log -- config-overrides.json for history)`n"
+            Write-Host "config backup committed (git log -- config-mirror for history)`n"
         } else {
             Write-Host "config backup: no changes since last commit`n"
         }
@@ -249,10 +236,9 @@ if (-not $Local) {
     # never reaches deploy-stage and the copy fails ON THE BOX, mid-deploy (the Test-Path below
     # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
-    foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-ConfigOverrides.ps1', 'Apply-CustomCE.ps1',
-                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1', 'Convert-ToOwned.ps1',
+    foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-CustomCE.ps1',
+                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1',
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
-                   'config-overrides.json',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo',
                    'serverMods/FlyingDutchman/.hemttout/build/addons/FlyingDutchman_main.pbo') {
@@ -507,19 +493,7 @@ $items = @(
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
-    # Override engine lives in the SERVER dir so prestart.sh applies the overrides document on
-    # every start (Src '..' = tooling root, the parent of deploy/). The engine is CODE (ships,
-    # overwrites); the DOCUMENT is box-owned config content - the web editor writes it live,
-    # the pull above mirrors it back, and it is only ever SEEDED to a box that has none
-    # (fresh box / disaster recovery: the mirror carries every web edit back onto the box).
-    @{ Src = "../Apply-ConfigOverrides.ps1"; Dst = Join-Path $ServerDir "Apply-ConfigOverrides.ps1"; Sudo = $false; Exec = $true }
     @{ Src = "../Capture-OwnedDefaults.ps1"; Dst = Join-Path $ServerDir "Capture-OwnedDefaults.ps1"; Sudo = $false; Exec = $true }
-    # The override->owned cutover (A3). Runs ON THE BOX because the box owns config-overrides.json
-    # and only the box has the live tree the freeze must be verified against. Never called by
-    # prestart - it is an operator tool, report-only unless given -Fix.
-    @{ Src = "../Convert-ToOwned.ps1"; Dst = Join-Path $ServerDir "Convert-ToOwned.ps1"; Sudo = $false; Exec = $true }
-    # (config-overrides.json itself is box-owned content — seeded from config-registry.json below,
-    #  not shipped here; the engine above is code and ships on drift.)
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     # serverDZ.cfg renderer (template + host.env secrets + server-settings.json). Lives in the
@@ -766,25 +740,6 @@ if ($missingMods.Count) {
     } else {
         Write-Warning "unit references mods not present under ${ServerDir}: $($missingMods -join ', ') — the next '-Fix' will auto-download them via update.sh."
     }
-}
-
-# --- Config overrides: the AUTHORITATIVE apply now happens at RUNTIME in prestart.sh, which
-# patches the live CE/mod files on every server start (before the engine reads them). So an
-# admin can edit config-overrides.json and just restart — no deploy needed. Here we only
-# REPORT the pending diff (what the coming restart's prestart will apply), never write, so a
-# deploy shows the field-level changes without a second writer. FAIL-SOFT is prestart's job.
-$applier = Join-Path $PSScriptRoot "Apply-ConfigOverrides.ps1"
-if (Test-Path $applier) {
-    Write-Host "`n--- Config overrides (pending — applied by prestart on next start) ---"
-    # Pull-only model: prestart applies the BOX's own document ($ServerDir/config-overrides.json),
-    # so report against that copy. Fall back to the repo mirror only when the box has none yet
-    # (fresh box — the mirror is exactly what -Fix seeds there).
-    $liveManifest = Join-Path $ServerDir 'config-overrides.json'
-    if (-not (Test-Path $liveManifest)) { $liveManifest = Join-Path $PSScriptRoot 'config-overrides.json' }
-    $ovr = & $applier -ServerDir $ServerDir -Manifest $liveManifest      # report-only, no -Fix
-    if ($ovr.Warn -gt 0) { Write-Warning "config overrides: $($ovr.Warn) override(s) will fail at apply time (see [WARN] lines above)." }
-} else {
-    Write-Warning "Apply-ConfigOverrides.ps1 not found next to Deploy — skipping config override report."
 }
 
 $restarted = $false

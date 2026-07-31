@@ -1,28 +1,23 @@
-// editor.js — the Server Files tab: the merged file tree, the Fields<->File override editor
-// (config-overrides.json field patches with per-mission layers), and the box-owned whole-file
-// editor (bans/allowlist). Extracted from index.html (P1 modular split).
+// editor.js — the Server Files tab: the merged file tree, and the routing from a selected row
+// to its editor. Three destinations, no fourth:
+//   owned   -> own-editor.js   (whole file, live beside its frozen default, configs/set-own)
+//   types   -> types-editor.js (the CE types table, configs/set-types)
+//   the rest-> a read-only file view
+// The field-override editor that used to live here is DELETED (2026-07-31, owner: "No Overrides.
+// Just whole file ownership and modifying with a better UI/Syntax manager"). Nothing in this
+// module writes config-overrides.json, because there is no such document any more.
 import { $, el } from './dom.js';
-import { toast, setGlobalMsg, escapeHtml, attr, stripBom } from './ui.js';
-import { apiPost, rateLimited } from './api-client.js';
+import { setGlobalMsg, escapeHtml, attr, stripBom } from './ui.js';
+import { apiPost } from './api-client.js';
 import { loadCred, handle } from './auth.js';
-import { detectLang, highlight, hlJson } from './highlight.js';
-import { isOperator, getActiveMission, setActiveMission } from './state.js';
-// Lossless big-int JSON: JS doubles corrupt integers >2^53 (a Steam64 ID typed …750 saved
-// as …740, 2026-07-17). Every parse of CONFIG CONTENT goes through bigParse (big literals
-// become sentinel strings, no double ever created); every display/serialize goes through
-// bigStringify/restoreBigInts (exact literals back out). The API server normalizes to bare
-// literals on disk. Plain JSON.parse/stringify remain ONLY for internal snapshots.
-import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
+import { detectLang, highlight } from './highlight.js';
+import { getActiveMission, setActiveMission } from './state.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
-// own module with its OWN save path (configs/set-types), never config-overrides.json.
+// own module with its OWN save path (configs/set-types).
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
 import { renderOwnEditor, ownAnyDirty, ownDirtyNames, ownJsonHandle } from './own-editor.js';
-import { changedFiles, formatUnsaved, confirmSave } from './dirty-files.js';   // E4
-import { overrideStatus } from './override-status.js';   // one wording for what override rows actually do
-// Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
-// Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
-// (getValue -> jsonEnc -> the same preview-override -> set-overrides flow the textarea fed).
-import { mountJsonNavigator } from './json-editor-ui.js';
+// Named-dirty: the header pill and the unload guard say WHICH files are unsaved.
+import { formatUnsaved, confirmSave } from './dirty-files.js';
 
 let shellHooks = { syncHash: () => {} };
 export function setEditorHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -32,10 +27,6 @@ let pendingFile = null;
 export function setPendingFile(v) { pendingFile = v || null; }
 
 // ===================== Server Files: state =====================
-// overridesDoc is the in-memory copy the editor mutates; Save ships the WHOLE doc to
-// configs/set-overrides (the box snapshots + validates + writes). Whole files are fetched
-// for context via the curated read (alias) or configs/target (relpath); only deltas saved.
-let overridesDoc = {};
 // activeMission -> js/state.js (shared: editor resolves 'common' against it, map defaults to it)
 let configItems = [];     // /dayz/configs/list — now carries each file's relpath
 let boxFiles = [];        // /dayz/configs/writable [{name, path}]
@@ -46,54 +37,15 @@ let ownedDirs = [];         // /dayz/configs/owned — folders whose json/xml fi
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
-let ovrView = 'file';   // 'edit' (default for editable rows) | 'file' | 'types'. 'fields' is RETIRED - see E1.
-let ovrFilter = '';     // Fields-view text filter — matches on the key/path
-let ovrCapOpen = false; // Fields-view "show all" toggle, past the render cap
-let ovrLeafMap = new Map();
+let edView = 'file';      // which view a row shows: 'types' (the CE table) | 'file'
 let lastFileText = null;  // last fetched whole-file text (for Copy)
 const fileCache = {};
-// Whole-file Edit mode (distinct from the read-only View): edit the entire file, the API diffs
-// it against the frozen default to derive a minimal delta, then Apply merges that delta into
-// overridesDoc so the normal Save path commits it. (wfShowDefault retired with the Live/Default
-// toggle - the file view shows both copies side by side now, E6.)
-let wfDraft = null, wfPreview = null, wfBusy = false;
-let wfJsonHandle = null;   // the mounted json-editor handle in Edit mode (JSON files); getValue at Preview time
-function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfJsonHandle = null; }
 
-// Dirty tracking: overridesDoc vs its last loaded/saved state. Drives the unsaved
-// notification — the header pill, and the beforeunload guard so a reload/close can't
-// silently drop edits. (In-memory edits survive a file/tab switch; only a reload or a
-// fresh reload-from-server drops them.)
-let savedSnapshot = '{}';
-// Save gate: true only after config-overrides.json has loaded AND parsed in this session.
-// Saving ships the WHOLE doc, so a save before a successful load would replace the box
-// manifest with the empty {} above — this is the client half of the shrink guard
-// (2026-07-16: a partial save gutted the manifest and a reboot reverted every override).
-let overridesLoaded = false;
-// Optimistic concurrency: the version hash config-overrides.json had when we loaded it. Sent
-// back on Save so the box rejects (409) if another admin wrote in between — no silent clobber.
-let ovrBaseVersion = null;
-// Overrides-doc dirtiness alone — the guard for adopting/skipping a fresh overrides pull and
-// for the Discard flow. The exported isDirty() ORs in the types editor so the header pill and
-// the beforeunload guard cover every unsaved edit, whichever editor holds it.
-function ovrDirtyOnly() { return JSON.stringify(overridesDoc) !== savedSnapshot; }
-export function isDirty() { return ovrDirtyOnly() || typesAnyDirty() || ownAnyDirty(); }
-// E4: the same dirtiness, BY NAME. One list, three sources - the header pill and the
-// shell's beforeunload guard both read it, so "unsaved changes" can finally say which.
-export function dirtyNames() {
-  return [...changedFiles(JSON.parse(savedSnapshot), overridesDoc), ...typesDirtyNames(), ...ownDirtyNames()];
-}
-function markClean() { savedSnapshot = JSON.stringify(overridesDoc); updateDirtyUi(); }
-// Revert every unsaved edit back to the last saved config-overrides.json (the snapshot).
-function discardChanges() {
-  if (!ovrDirtyOnly()) { setGlobalMsg('No unsaved override changes to discard.', false); return; }
-  if (!window.confirm('Discard all unsaved override changes? This reverts to the last saved config-overrides.json.')) return;
-  overridesDoc = JSON.parse(savedSnapshot);
-  updateDirtyUi(); renderFilesNav(); renderEditor();
-  setGlobalMsg('Unsaved changes discarded.', false, true);
-}
-// E4: ONE pill renderer for all three chromes (they held three copies of this markup).
-// Named files when dirty, the old generic text when clean.
+// Unsaved state now has exactly TWO owners - the owned editor and the types editor. This module
+// holds none of its own: with the override document gone there is nothing here left to dirty.
+export function isDirty() { return typesAnyDirty() || ownAnyDirty(); }
+export function dirtyNames() { return [...typesDirtyNames(), ...ownDirtyNames()]; }
+// ONE pill renderer for both chromes (they used to hold three copies of this markup).
 function dirtyPillText() { return formatUnsaved(dirtyNames()) || 'Unsaved changes'; }
 export function dirtyPillHtml() {
   return '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '" title="' +
@@ -108,49 +60,7 @@ function updateDirtyUi() {
 }
 
 function kindOf(p) { const s = (p || '').toLowerCase(); return s.endsWith('.xml') ? 'xml' : s.endsWith('.json') ? 'json' : 'other'; }
-function jsonEnc(v) { return restoreBigInts(JSON.stringify(v)); }   // sentinel big-ints display as bare digits
-function valPreview(v) {
-  if (v === null || typeof v !== 'object') return jsonEnc(v);
-  const n = Array.isArray(v) ? v.length : Object.keys(v).length;
-  return (Array.isArray(v) ? '[ ' : '{ ') + n + (Array.isArray(v) ? ' item' : ' field') + (n === 1 ? '' : 's') + (Array.isArray(v) ? ' ]' : ' }');
-}
 
-// ===================== layers over config-overrides.json =====================
-// A row's patches come in LAYERS: server-dir files have one ('files'); mission files
-// have up to two — 'common' (applies to ALL missions) then 'mission' (wins on clash).
-function docLayer(layer, fileKey, mission) {
-  const mp = overridesDoc.mpmissions || {};
-  if (layer === 'files') return (overridesDoc.files || {})[fileKey] || null;
-  if (layer === 'common') return (mp.common || {})[fileKey] || null;
-  return ((mp[mission] || {}))[fileKey] || null;
-}
-// Effective patch set for a row: Map selector -> { value, layer }. Mission layer wins.
-function effectivePatches(row) {
-  const out = new Map();
-  const put = (map, layer) => {
-    if (!map || typeof map !== 'object') return;
-    for (const [k, v] of Object.entries(map)) { if (!k.startsWith('_')) out.set(k, { value: v, layer }); }
-  };
-  if (row.scope === 'files') put(docLayer('files', row.fileKey), 'files');
-  else { put(docLayer('common', row.fileKey), 'common'); if (row.mission) put(docLayer('mission', row.fileKey, row.mission), 'mission'); }
-  return out;
-}
-// The writable {selector: value} map for a layer of a row (creates parents).
-function layerMapRW(row, layer) {
-  const path = layer === 'files' ? ['files', row.fileKey]
-    : layer === 'common' ? ['mpmissions', 'common', row.fileKey]
-    : ['mpmissions', row.mission, row.fileKey];
-  let cur = overridesDoc;
-  for (const k of path) { if (cur[k] === null || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; }
-  return cur;
-}
-// Which layer NEW overrides go to for this row (the chrome's selector for mission files).
-function newLayerFor(row) {
-  if (row.scope === 'files') return 'files';
-  if (!row.mission) return 'common';
-  const sel = $('ovrLayerSel');
-  return sel && sel.value === 'common' ? 'common' : 'mission';
-}
 
 // ===================== the merged tree =====================
 // One row per FILE, deduped by relpath. Sources: the curated /dayz/configs/list list (now
@@ -211,7 +121,7 @@ function buildRows(items, writable, doc, mission) {
       : w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
     if (c.readonly) row.readonly = true;
     // c.kind 'types' (registry web:'types') = a CE types file the types-table editor writes via
-    // its OWN save path (configs/set-types). access stays 'edit' but renderBody/editorChrome
+    // its OWN save path (configs/set-types). access stays 'edit' but renderBody/typesChrome
     // branch to the types view; the standard Save-deltas chrome never renders for these rows.
     if (c.kind === 'types' && !c.readonly) row.types = true;
     if (w) row.writableName = w.name;
@@ -279,19 +189,11 @@ function buildRows(items, writable, doc, mission) {
   return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
 function activeMissionRel(mission, fileKey) { return mission ? 'mpmissions/' + mission + '/' + fileKey : null; }
-// The row's OWN layer map (what the tree badge counts): common rows count the common
-// layer, mission rows ONLY their mission layer, server-dir rows the files layer.
-function ownLayerCount(row) {
-  const map = row.scope === 'files' ? docLayer('files', row.fileKey)
-    : row.mission === null ? docLayer('common', row.fileKey)
-    : docLayer('mission', row.fileKey, row.mission);
-  return map ? Object.keys(map).filter((k) => !k.startsWith('_')).length : 0;
-}
 function rowByKey(k) { return rows.find((r) => r.key === k) || null; }
 function currentRow() { return selKey ? rowByKey(selKey) : null; }
 
 function renderFilesNav() {
-  rows = buildRows(configItems, boxFiles, overridesDoc, getActiveMission());
+  rows = buildRows(configItems, boxFiles, getActiveMission());
   // Preserve the user's expand/collapse choices across rerenders.
   const openState = new Map();
   el.filesNav.querySelectorAll('details.side-grp[data-g]').forEach((d) => openState.set(d.dataset.g, d.open));
@@ -336,7 +238,6 @@ function renderFilesNav() {
   }
   if (!rows.length) html = '<span class="meta" style="padding:10px;display:block">No files exposed.</span>';
   el.filesNav.innerHTML = html + '<div class="ovr-add" id="ovrAddFile"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add a file to override…</div>';
-  const a = $('ovrAddFile'); if (a) a.onclick = addFileFlow;
 }
 
 export function showFilesSurface() {
@@ -349,8 +250,6 @@ function selectRow(key) {
   if (!row) return;
   selKey = key;
   shellHooks.syncHash();                                     // reflect the open file in the URL (#files/<key>)
-  ovrFilter = ''; ovrCapOpen = false;             // fresh file starts unfiltered and capped
-  wfReset();                                       // fresh file: drop any whole-file draft/preview
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
   if (row.access === 'own') { el.editorPage.classList.remove('types-mode'); selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
@@ -366,7 +265,7 @@ function selectRow(key) {
   // so whole-file editing would be meaningless here and would let an admin type keys the
   // renderer's allowlist silently drops. It keeps its form.
   // A locked row has nothing to edit, so it falls back to the read-only file view.
-  ovrView = row.types ? 'types'
+  edView = row.types ? 'types'
     : (row.access === 'lock' || row.kind === 'other') ? 'file'
     : 'edit';
   renderFilesNav();
@@ -391,14 +290,8 @@ export async function loadFiles(preserve) {
   const cred = loadCred();
   if (!cred) return;
   try {
-    // Conditional overrides pull: we already hold a parsed doc keyed by ovrBaseVersion, so send
-    // that hash — an unchanged box doc answers { unchanged: true } with no payload instead of
-    // re-shipping the whole document (it crossed 1MB on 2026-07-23; tab re-entries and the
-    // post-save refresh were re-downloading it every time).
-    const ovrQ = (overridesLoaded && ovrBaseVersion) ? '?ifVersion=' + encodeURIComponent(ovrBaseVersion) : '';
-    const [cfgR, ovrR, boxR, roR, disR, ownR] = await Promise.all([
+    const [cfgR, boxR, roR, disR, ownR] = await Promise.all([
       apiPost('/dayz/configs/list', cred),
-      apiPost('/dayz/configs/overrides' + ovrQ, cred),   // content + version hash (optimistic concurrency)
       apiPost('/dayz/configs/writable', cred).catch(() => ({ files: [] })),
       apiPost('/dayz/configs/readonly', cred).catch(() => ({ files: [] })),   // generated (read-only) globs; [] on an older API
       apiPost('/dayz/configs/disabled', cred).catch(() => ({ files: [] })),   // disabled-mod relpaths to drop; [] on an older API
@@ -410,13 +303,6 @@ export async function loadFiles(preserve) {
     disabledSet = new Set(disR.files || []);
     ownedFiles = new Set(ownR.files || []);
     ownedDirs = ownR.dirs || [];
-    // On a plain tab re-entry (preserve) keep unsaved override edits — only reload the doc from
-    // the server on the initial load, after a save, or after a rollback. unchanged = the box
-    // still holds exactly the doc we parsed; nothing to adopt.
-    if (!(preserve && ovrDirtyOnly()) && !ovrR.unchanged) {
-      try { overridesDoc = bigParse(stripBom(ovrR.content || '{}')); ovrBaseVersion = ovrR.version ?? null; overridesLoaded = true; markClean(); }
-      catch { el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">config-overrides.json is not valid JSON.</span>'; return; }
-    }
   } catch (err) {
     if (handle(err)) return;
     el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">Could not load: ' + escapeHtml(err.message) + '</span>';
@@ -431,15 +317,16 @@ export async function loadFiles(preserve) {
   if (selMode === 'edit' && currentRow()) { el.edEmpty.classList.add('hidden'); el.edEditor.classList.remove('hidden'); renderEditor(); }
   else if (selMode !== 'own') { el.editorPage.classList.remove('types-mode'); el.edEditor.classList.add('hidden'); el.edEmpty.classList.remove('hidden'); }
   consumePendingFile();   // a #files/<key> deep link selects its file now that the tree exists
-  loadVersions();
 }
 
 // ===================== whole-file fetching =====================
 // XML files written by the box (XmlDocument.Save) carry a UTF-8 BOM; as a JS string
 // that's a leading U+FEFF, which breaks JSON.parse and can confuse DOMParser.
 // stripBom -> js/ui.js (shared with the map's JSON loads).
-// A row's content comes from its curated read alias when it has one, else configs/target
-// by relpath (override targets are always in that allowlist).
+// A row's content comes from its curated read alias. The configs/target fallback that used to
+// sit here is gone with the override engine: it existed to read files the MANIFEST named but the
+// registry did not. Every registry row carries a read alias (asserted by the registry contract
+// test), so a row without one is a declaration bug, not a path to route around.
 async function fetchRowFile(row) {
   const ck = 'f|' + row.key;
   if (fileCache[ck]) return fileCache[ck];
@@ -448,45 +335,25 @@ async function fetchRowFile(row) {
   try {
     let r;
     if (row.name) r = await apiPost('/dayz/configs/get?name=' + encodeURIComponent(row.name), cred);
-    else if (row.relpath) r = await apiPost('/dayz/configs/target?name=' + encodeURIComponent(row.relpath), cred);
-    else return { text: null, err: 'no active mission — start the server to resolve common/ files' };
+    else return { text: null, err: 'this row has no read alias - its registry entry is incomplete' };
     return (fileCache[ck] = { text: stripBom(r.content ?? ''), path: r.path || row.relpath });
   } catch (err) {
     if (err.status === 401) { handle(err); return { text: null, err: 'signed out' }; }
     // 404 = the path is allowlisted but nothing is there. Saying "not readable" reads like a
-    // permission fault; the usual cause is a file its mod only writes at runtime (E10).
+    // permission fault; the usual cause is a file its mod only writes at runtime.
     return { text: null, err: err.status === 404 ? 'ABSENT' : err.message };
   }
-}
-// The frozen-default companion (<name>.defaults<ext>) — the true default, since the live
-// file is default+patches. 404 = no default captured yet: omit the default column quietly.
-function defaultRelpath(rel) {
-  const dot = rel.lastIndexOf('.'), slash = rel.lastIndexOf('/');
-  return dot > slash ? rel.slice(0, dot) + '.defaults' + rel.slice(dot) : rel + '.defaults';
-}
-async function fetchDefaultFile(row) {
-  if (!row.relpath) return { text: null };
-  const drel = defaultRelpath(row.relpath);
-  const ck = 'f|' + drel;
-  if (fileCache[ck]) return fileCache[ck];
-  const cred = loadCred();
-  if (!cred) return { text: null };
-  try {
-    const r = await apiPost('/dayz/configs/target?name=' + encodeURIComponent(drel), cred);
-    return (fileCache[ck] = { text: stripBom(r.content ?? '') });
-  } catch (err) { if (err.status === 401) handle(err); return (fileCache[ck] = { text: null }); }
 }
 
 // ===================== the Fields ⇄ File editor =====================
 // Chrome for a types row: its own segment pair (the types editor owns Save/Discard in its own
-// toolbar, so the overrides Save-deltas / Discard buttons NEVER render here — they act on
-// config-overrides.json, a different document).
+// toolbar; this chrome only carries the view switcher and Copy).
 function typesChrome(row) {
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">files/</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
       dirtyPillHtml() +
-      '<div class="seg" id="ovrSeg"><button data-v="types" class="' + (ovrView === 'types' ? 'on' : '') + '">Types editor</button><button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>' +
+      '<div class="seg" id="ovrSeg"><button data-v="types" class="' + (edView === 'types' ? 'on' : '') + '">Types editor</button><button data-v="file" class="' + (edView === 'file' ? 'on' : '') + '">View file</button></div>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
     aboutBlock(row) +
@@ -494,7 +361,7 @@ function typesChrome(row) {
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
 // "About this file" - the registry's plain-English description, rendered UNDER the filename with
-// a citation link. ONE helper for all three chromes (types / owned / override) so the block can
+// a citation link. ONE helper for every chrome (types / owned / read-only) so the block can
 // never drift between surface types. Empty string when the row has no about text, so a surface
 // without one renders exactly as before. The href is http(s)-only by the time it reaches here:
 // Deploy-Api throws on a non-http aboutUrl and the Api re-validates it on the way out.
@@ -517,83 +384,26 @@ function ownChrome(row) {
     '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>owned file — edited whole; the diff vs the frozen default is display-only</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
-// The row's box copy IF we already fetched it this session, else null. The chrome paints before
-// renderBody's fetch resolves, so on a cold row the status starts 'unknown' and is replaced in
-// place by refreshOverrideStatus() the moment the box answers. It never guesses in between.
-function cachedRowFile(row) { return fileCache['f|' + row.key] || null; }
-// ONE renderer for "what do these override rows do", used by the chrome summary and re-run
-// after the fetch. Wording lives in override-status.js so the file view cannot contradict it.
-function overrideStatusHtml(row, eff) {
-  const s = overrideStatus(eff.size, cachedRowFile(row));
-  const cls = s.warn ? 'stat w' : s.kind === 'live' ? 'stat d' : 'stat';
-  const dot = s.warn ? 'dot w' : s.kind === 'live' ? 'dot d' : 'dot b';
-  return '<span id="ovrStatus" class="' + cls + '" title="' + attr([...eff.keys()].join('\n')) + '">' +
-    '<span class="' + dot + '"></span>' + escapeHtml(s.text) + '</span>';
-}
-// Called once the box has answered, so a row whose file turns out to be ABSENT stops claiming
-// its overrides are being applied. Cheap: it swaps one span, no re-render, no lost scroll.
-function refreshOverrideStatus(row) {
-  const cur = $('ovrStatus');
-  if (cur) cur.outerHTML = overrideStatusHtml(row, effectivePatches(row));
-}
-function editorChrome(row) {
-  if (row.ownFile) return ownChrome(row);
-  if (row.types) return typesChrome(row);
-  const eff = effectivePatches(row);
-  const nOver = eff.size;
-  const locked = row.access === 'lock';
-  const crumb = row.scope === 'files' ? 'files/' : ('mpmissions · ' + (row.mission || 'all missions') + '/');
-  const layerSel = (row.scope === 'mission' && !locked)
-    ? '<span class="lay-wrap">New overrides:<select id="ovrLayerSel" class="lay-sel"><option value="mission"' + (row.mission ? '' : ' disabled') + '>this mission only</option><option value="common"' + (row.mission ? '' : ' selected') + '>all missions</option></select></span>'
-    : '';
-  const summary = row.generated
-    ? '<span class="stat"><span class="dot b"></span>generated file — built at boot from map-points + the frozen base; read-only here</span>'
-    : row.readonly
-    ? '<span class="stat"><span class="dot b"></span>read-only reference file — shipped with the deploy; view only</span>'
-    : locked
-    ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
-    : overrideStatusHtml(row, eff);
+// A read-only row (registry reference/browse surfaces): filename, About, and the file itself.
+// No save path, because nothing here is writable - the owned and types editors own every write.
+function viewChrome(row) {
+  const crumb = row.scope === 'files' ? 'files/' : ('mpmissions \u00b7 ' + (row.mission || 'all missions') + '/');
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
-    '<div class="ovr-pact">' +
-      dirtyPillHtml() +
-      layerSel +
-      // Owned surfaces get two views (E1): Edit is the default, View file is the read-only render.
-      // server-settings.json gets NO switcher - it is a generator input, not a file to own, so
-      // there is no "whole file" to edit and no second way to reach the same parameters.
-      (isCycleRow(row) ? '' :
-        '<div class="seg" id="ovrSeg">' + (locked ? '' : '<button data-v="edit" class="' + (ovrView === 'edit' ? 'on' : '') + '">Edit</button>') + '<button data-v="file" class="' + (ovrView === 'file' ? 'on' : '') + '">View file</button></div>') +
-      '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
-      (locked ? '' : '<button class="btn-sm" id="ovrDiscard" type="button">Discard</button>') +
-      (locked ? '' : '<button class="btn-sm primary" id="ovrSave">Save ' + nOver + ' delta' + (nOver === 1 ? '' : 's') + '</button>') +
-    '</div></div>' +
-    aboutBlock(row) +
-    '<div class="ovr-sum">' + summary + '<span class="stat" style="margin-left:auto">' + (locked ? '' : 'Restart to apply') + '</span></div>';
-}
-function editorFoot(row) {
-  if (row.access === 'lock' || row.types || row.ownFile) return '';   // types/own rows: the note below is about override DELTAS, wrong for a whole-file writer
-  const style = ' style="border-top:1px solid var(--border);border-bottom:none"';
-  // Same trap as the summary bar: this promised the box would apply what you save. It cannot
-  // apply anything to a file it does not have - it logs "file not found" and moves on. Saving
-  // here would be a write with no effect, so say that instead of inviting it.
-  const f = cachedRowFile(row);
-  if (f && f.text == null && f.err === 'ABSENT') {
-    return '<div class="ovr-note"' + style + '>' +
-      '<b style="color:var(--drift)">This file is not on the box.</b> An override saved here is recorded in the manifest and then skipped at every restart - the box logs "file not found". Nothing you save on this screen will take effect until the file exists.</div>';
-  }
-  return '<div class="ovr-note"' + style + '>' +
-    '<b style="color:var(--delta)">This file is not owned yet.</b> Saving records only your changed values as overrides, and the box re-applies them at every restart. Cut the file over to own it whole and this editor saves the real file.</div>';
+    '<div class="ovr-pact">' + dirtyPillHtml() + '<button class="btn-sm" id="ovrCopy" type="button">Copy</button></div>' +
+    '</div>' + aboutBlock(row) +
+    '<div class="ovr-sum"><span class="stat"><span class="dot b"></span>' +
+    (row.generated ? 'generated file — built at boot from its declared inputs; edit those, not this'
+                   : 'read-only reference file — shipped with the deploy; view only') +
+    '</span></div>';
 }
 async function renderEditor() {
   const row = currentRow();
   if (!row || row.access === 'own') return;
-  el.edEditor.innerHTML = editorChrome(row) + '<div class="ovr-body" id="ovrBody"></div>' + editorFoot(row);
+  const chrome = row.ownFile ? ownChrome(row) : row.types ? typesChrome(row) : viewChrome(row);
+  el.edEditor.innerHTML = chrome + '<div class="ovr-body" id="ovrBody"></div>';
   const seg = $('ovrSeg');
-  if (seg) seg.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ovrView = b.dataset.v; renderEditor(); };
-  const save = $('ovrSave');
-  if (save) save.onclick = () => saveOverrides();
-  const discard = $('ovrDiscard');
-  if (discard) discard.onclick = () => discardChanges();
+  if (seg) seg.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; edView = b.dataset.v; renderEditor(); };
   const copy = $('ovrCopy');
   if (copy) copy.onclick = async () => {
     try { await navigator.clipboard.writeText(lastFileText ?? ''); copy.textContent = 'Copied'; }
@@ -623,12 +433,12 @@ async function renderBody(row) {
     }
     return;
   }
-  const typesTable = !!row.types && ovrView !== 'file';
+  const typesTable = !!row.types && edView !== 'file';
   el.editorPage.classList.toggle('types-mode', typesTable);
   // Types rows: the table editor is its own view with its own load/save (types-editor.js).
-  // The 'file' segment still falls through to the normal read-only whole-file view below.
+  // The 'file' segment still falls through to the read-only whole-file view below.
   if (typesTable) {
-    body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading types…</span>';
+    body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading types\u2026</span>';
     const text = await renderTypesEditor(row, body, {
       onDirty: updateDirtyUi,
       onSaved: () => { delete fileCache['f|' + row.key]; },   // the File view refetches the saved doc
@@ -636,103 +446,22 @@ async function renderBody(row) {
     if (text != null && selKey === row.key) lastFileText = text;   // feed the Copy button
     return;
   }
-  body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading file…</span>';
-  const [file, def] = await Promise.all([fetchRowFile(row), row.access === 'lock' ? { text: null } : fetchDefaultFile(row)]);
+  // Everything else is READ-ONLY now. A row is either owned (handled above), types (handled
+  // above), or a reference/generated file we only display. There is no third editable state -
+  // that was the override editor, and it is gone.
+  body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading file\u2026</span>';
+  const file = await fetchRowFile(row);
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
-  refreshOverrideStatus(row);   // the box has answered: the summary can now say if the rows are inert
-  const eff = effectivePatches(row);
-  const view = ovrView;
-  if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
-  if (view === 'edit' && row.access !== 'lock') {
-    body.innerHTML = editFileHtml(row, file);
-    wireEditFile(row);
-    // The cycle editor belongs to the FILE, not to a particular view - it shows wherever
-    // server-settings.json is being edited (owner: "THAT WAS USEFUL VISUALLY. Keep it.").
-    if (isCycleRow(row) && file.text != null) {
-      let doc = null; try { doc = JSON.parse(stripBom(file.text)); } catch { /* unparseable: skip */ }
-      if (doc) { body.insertAdjacentHTML('afterbegin', cycleHtml(doc)); wireCycle(row); }
-    }
+  if (file.text === null) { body.innerHTML = '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>'; return; }
+  if (row.mapOwned) {
+    body.innerHTML = '<div class="ovr-note"><b>Edited on the Map tab.</b> Patrols are edited individually on the map (click a patrol \u2192 Edit fields); the map-wide defaults via the map\'s <b>Global settings</b>. This file is read-only here so a raw edit can\'t break spawns.</div>'
+      + '<div class="fileview"><pre>' + highlight(file.text, detectLang(row.relpath || row.label)) + '</pre></div>';
     return;
   }
-  if (row.access === 'lock') {
-    body.innerHTML = row.mapOwned
-      ? '<div class="ovr-note"><b>Edited on the Map tab.</b> Patrols are edited individually on the map (click a patrol → Edit fields); the map-wide defaults via the map\'s <b>Global settings</b>. This file is read-only here so a raw edit can\'t break spawns. See the <b>File</b> view for its contents.</div>'
-      : '<div class="ovr-note">This file type can\'t take field overrides — see the <b>File</b> view for its contents.</div>';
-    return;
-  }
-  const wfNote = wholeFileOf(row) !== undefined
-    ? '<div class="ovr-note wf-active"><b>Whole-file override active</b> — the box writes this file verbatim and ignores the field patches below. <button type="button" class="btn-sm" id="wfClear">Revert to field patches</button></div>'
-    : '';
-  // Fields first: jsonFieldsHtml populates ovrLeafMap, which the cycle panel reads for the
-  // live values. The panel still renders ABOVE the list.
-  const fieldsHtml = (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
-  body.innerHTML = wfNote + (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
-    '<div class="fld-filter"><input id="ovrFilter" type="text" placeholder="Filter fields by name…" spellcheck="false" autocomplete="off"><span id="ovrFilterNote" class="meta">no matching fields</span></div>' +
-    fieldsHtml;
-  const wfClr = $('wfClear'); if (wfClr) wfClr.onclick = () => wholeFileClear(row);
-  wireFields(row);
-  applyFieldVisibility();
-}
-// Fields-view visibility: filter by key substring, and cap the "rest of the file" list until expanded.
-function applyFieldVisibility() {
-  const body = $('ovrBody'); if (!body) return;
-  const q = ovrFilter.trim().toLowerCase();
-  let shown = 0;
-  body.querySelectorAll('.fld').forEach((r) => {
-    const kEl = r.querySelector('.k');
-    // Match either what is shown or the real cfg key, so searching "whitelist" still finds
-    // the field that now reads "enableAllowList".
-    const txt  = (kEl?.textContent || '').toLowerCase();
-    const real = (kEl?.dataset.key || '').toLowerCase();
-    const vis = q ? (txt.includes(q) || real.includes(q)) : (ovrCapOpen || !r.classList.contains('cap-hide'));
-    r.style.display = vis ? '' : 'none';
-    if (vis) shown++;
-  });
-  const moreWrap = $('ovrMoreWrap'); if (moreWrap) moreWrap.style.display = (!q && !ovrCapOpen) ? '' : 'none';
-  const note = $('ovrFilterNote'); if (note) note.style.display = (q && shown === 0) ? 'inline' : 'none';
-  body.querySelectorAll('.fdiv').forEach((d) => { d.style.display = q ? 'none' : ''; });   // "Rest of file" divider is noise while filtering
+  body.innerHTML = '<div class="fileview"><pre>' + highlight(file.text, detectLang(row.relpath || row.label)) + '</pre></div>';
 }
 
-function flattenJson(obj, prefix, out) {
-  for (const [k, v] of Object.entries(obj)) {
-    const path = prefix ? prefix + '.' + k : k;
-    if (v !== null && typeof v === 'object' && !Array.isArray(v)) flattenJson(v, path, out);
-    else out.push({ path, value: v });
-  }
-  return out;
-}
-// One overridden-field row. layer = which overrides layer holds it ('common' gets the
-// 'all missions' chip); def = the frozen-default value string (context for the change).
-function fieldRowOver(row, sel, val, def, layer, help, label) {
-  const mode = cxMode(val);
-  const e = jsonEnc(val);
-  const input = mode
-    ? '<div class="cxcell" data-sel="' + attr(sel) + '" data-layer="' + layer + '" data-mode="' + mode + '">'
-        + '<div class="cx-collapsed" tabindex="0" title="Click to edit — ' + (mode === 'json' ? 'formatted &amp; highlighted' : 'full text box') + '">'
-        + '<span class="cx-caret">&#9656;</span><span class="cx-sum">' + escapeHtml(cxSummary(val, mode)) + '</span></div></div>'
-    : '<div class="cxcell scalar" data-sel="' + attr(sel) + '" data-layer="' + layer + '">'
-        + '<input class="ovr-inp" data-sel="' + attr(sel) + '" data-layer="' + layer + '" value="' + attr(e) + '">'
-        + (row.kind === 'xml' ? '' : '<button type="button" class="cx-btn cx-fmt" title="Format / expand a pasted object or array">&#8690;</button>')
-        + '</div>';
-  const layerChip = (row.scope === 'mission' && layer === 'common') ? '<span class="tag all">all missions</span>' : '';
-  const tag = row.kind === 'xml' ? '<span class="tag">override</span>' : (mode ? '<span class="tag cx">' + mode + '</span>' : '<span class="tag">override</span>');
-  const defHtml = def != null ? '<span class="base">default ' + escapeHtml(String(def)) + '</span>' : '';
-  return '<div class="fld over">' + keyCell(sel, label) + '<div>' + input + '</div>' + helpCell(help) + '<div class="meta2">' + layerChip + tag + defHtml + '</div><button class="x ovr-rm" data-sel="' + attr(sel) + '" data-layer="' + layer + '" title="Remove override — reverts this field to its default">✕</button></div>';
-}
-// The comment column. Text comes from the file's own "_help" map, which for
-// server-settings.json is lifted verbatim from serverDZ.cfg.template's trailing // comments -
-// the game's own documentation of each field, rather than a second set of wording to maintain.
-// null = this list has no help at all, so the row keeps the original 4-column grid.
-function helpCell(help) { return help === null || help === undefined ? '' : '<div class="hlp">' + escapeHtml(help) + '</div>'; }
-// The key cell. A "_labels" entry renames it for READING only — data-key keeps the real
-// selector so the filter, the override write and the box all still see the game's own name,
-// and the tooltip shows it too, so nobody is left guessing what actually lands in the cfg.
-function keyCell(sel, label) {
-  const shown = label || sel;
-  const renamed = shown !== sel;
-  return '<div class="k' + (renamed ? ' renamed' : '') + '" data-key="' + attr(sel) + '" title="' + attr(renamed ? sel + '  (written to serverDZ.cfg under this name)' : sel) + '">' + escapeHtml(shown) + '</div>';
-}
 // ===================== serverDZ.cfg day/night cycle =====================
 // server-settings.json is the web-editable slice of serverDZ.cfg (Apply-ServerCfg renders the
 // real file at prestart). Two of its keys only mean anything together: serverTimeAcceleration
@@ -825,7 +554,7 @@ function wireCycle(row) {
   const commit = (sel, valStr) => {
     const n = Number(valStr);
     if (!isFinite(n) || n <= 0) { setGlobalMsg('Acceleration must be a positive number.', true); return; }
-    const handle = row.ownFile ? ownJsonHandle(row.key) : wfJsonHandle;
+    const handle = ownJsonHandle(row.key);   // server-settings.json is an owned file - one editor, one handle
     if (!handle || !handle.setValue) { setGlobalMsg('Edit the value in the document below - this file is not open in the structured editor.', true); return; }
     handle.setValue([sel], n);
     updateDirtyUi();
@@ -842,515 +571,18 @@ function wireCycle(row) {
     n.addEventListener('change', () => commit(n.dataset.sel, n.value));
   });
 }
-function jsonFieldsHtml(row, eff, text, defaultText) {
-  let fileObj = null;
-  if (text !== null) { try { fileObj = bigParse(text); } catch { fileObj = null; } }
-  let defObj = null;
-  if (defaultText != null) { try { defObj = bigParse(defaultText); } catch { defObj = null; } }
-  const defMap = (defObj && typeof defObj === 'object' && !Array.isArray(defObj)) ? new Map(flattenJson(defObj, '', []).map((l) => [l.path, l.value])) : new Map();
-  const leaves = (fileObj && typeof fileObj === 'object' && !Array.isArray(fileObj)) ? flattenJson(fileObj, '', []) : [];
-  ovrLeafMap = new Map(leaves.map((l) => [l.path, l.value]));
-  // "_help": { key: "comment" } — per-field documentation carried by the file itself.
-  const rawHelp = (fileObj && fileObj._help && typeof fileObj._help === 'object' && !Array.isArray(fileObj._help)) ? fileObj._help : null;
-  const helpMap = new Map(rawHelp ? Object.entries(rawHelp).filter(([, v]) => typeof v === 'string') : []);
-  const hasHelp = helpMap.size > 0;
-  const helpFor = (sel) => (hasHelp ? (helpMap.get(sel) || '') : null);
-  // "_labels": { key: "display name" } — DISPLAY ONLY. The game dictates the real cfg key
-  // (enableWhitelist), so that is what gets written, filtered and patched; this only changes
-  // what a human reads. Same idea as the registry surfacing whitelist.txt as "Allowlist".
-  const rawLabels = (fileObj && fileObj._labels && typeof fileObj._labels === 'object' && !Array.isArray(fileObj._labels)) ? fileObj._labels : null;
-  const labelMap = new Map(rawLabels ? Object.entries(rawLabels).filter(([, v]) => typeof v === 'string' && v) : []);
-  const labelFor = (sel) => labelMap.get(sel) || sel;
-  // Rows this list must not offer as plain fields:
-  //   - anything under an underscore key (_readme/_help) — the override engine drops those, so
-  //     showing them as overridable only invites a patch that silently does nothing;
-  //   - the two cycle multipliers on server-settings.json — the slider panel above owns them,
-  //     and a second editor for the same value is just a way to disagree with yourself.
-  const skip = (sel) => sel.startsWith('_') || (isCycleRow(row) && (sel === CYCLE_X || sel === CYCLE_Y));
-  let html = '<div class="fields' + (hasHelp ? ' with-help' : '') + '">';
-  for (const [sel, p] of eff) {
-    if (skip(sel)) continue;
-    const def = defMap.has(sel) ? valPreview(defMap.get(sel)) : null;
-    html += fieldRowOver(row, sel, p.value, def, p.layer, helpFor(sel), labelFor(sel));
-  }
-  if (fileObj === null && text !== null) html += '<div class="ovr-note">This file isn\'t valid JSON — showing overrides only.</div>';
-  const ctx = leaves.filter((l) => !eff.has(l.path) && !skip(l.path));
-  if (ctx.length) {
-    html += '<div class="fdiv">Rest of the file — click a value to override it</div>';
-    const CAP = 100;   // render all, but hide past CAP behind a Show-more button (filtering ignores the cap)
-    ctx.forEach((l, i) => {
-      const lm = cxMode(l.value);
-      const lprev = lm ? cxSummary(l.value, lm) : valPreview(l.value);
-      html += '<div class="fld ctx' + (i >= CAP ? ' cap-hide' : '') + '">' + keyCell(l.path, labelFor(l.path)) + '<div class="v ovr-addv" data-sel="' + attr(l.path) + '" title="Click to override">' + escapeHtml(lprev) + '</div>' + helpCell(helpFor(l.path)) + '<div class="meta2"><button class="addb ovr-addctx" data-sel="' + attr(l.path) + '">+ override</button></div><span></span></div>';
-    });
-    if (ctx.length > CAP) html += '<div class="fld-more" id="ovrMoreWrap"><button type="button" id="ovrMore" class="ghost">Show ' + (ctx.length - CAP) + ' more field' + (ctx.length - CAP === 1 ? '' : 's') + '</button></div>';
-  }
-  html += '<div class="frow-add"><button class="ghost" id="ovrAddSel" type="button">+ Add override</button></div></div>';
-  return html;
-}
-// The default value of an XPath selector = evaluate it against the frozen default XML.
-function xmlValueAt(doc, sel) {
-  try {
-    const n = doc.evaluate(sel, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    if (!n) return null;
-    return n.nodeValue != null ? n.nodeValue : n.textContent;
-  } catch { return null; }
-}
-function xmlFieldsHtml(row, eff, defaultText) {
-  let doc = null;
-  if (defaultText != null) { try { doc = new DOMParser().parseFromString(defaultText, 'application/xml'); if (doc.querySelector('parsererror')) doc = null; } catch { doc = null; } }
-  let html = '<div class="ovr-note">XML overrides are XPath selectors — flip to the <b>File</b> view to see each one resolved against the live file.</div><div class="fields">';
-  for (const [sel, p] of eff) html += fieldRowOver(row, sel, p.value, doc ? xmlValueAt(doc, sel) : null, p.layer);
-  html += '<div class="frow-add"><button class="ghost" id="ovrAddSel" type="button">+ Add XPath override</button></div></div>';
-  return html;
-}
-function xmlEvalHtml(text, sels) {
-  if (!sels.length) return '';
-  let doc = null, perr = false;
-  try { doc = new DOMParser().parseFromString(text, 'application/xml'); perr = !!doc.querySelector('parsererror'); } catch { perr = true; }
-  let rows2 = '';
-  for (const sel of sels) {
-    let state;
-    if (perr || !doc) state = 'parse error';
-    else { try { state = doc.evaluate(sel, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength > 0 ? 'ok' : 'none'; } catch { state = 'bad xpath'; } }
-    const badge = state === 'ok' ? '<span class="tag">matched</span>' : '<span class="tag warn">' + (state === 'none' ? 'no match' : state) + '</span>';
-    rows2 += '<div class="row2">' + badge + '<span class="sel">' + escapeHtml(sel) + '</span></div>';
-  }
-  return '<div class="xeval"><div class="stat" style="color:var(--faint);margin-bottom:2px">XPaths evaluated against this file</div>' + rows2 + '</div>';
-}
-// E6 (owner 2026-07-31): the frozen default sits BESIDE the live file, not behind a toggle.
-// "I SAID WE NEED TO BE ABLE TO SEE THE DEFAULT SIDE BY SIDE WITH OUR OWNED VERSION." A view
-// switcher makes you hold one copy in your head to compare it with the other, which is the
-// opposite of a comparison. Both panes scroll independently; no button, nothing to toggle.
-// E9 (owner: "Why show `8 overridden` if we never have context as to what those are?! I don't see
-// any highlights"). A bare count names a quantity and hides the thing. This lists exactly which
-// values the old override system still controls, with what it forces them to, and why that
-// matters: they are re-applied at every restart, so editing the live file does not stick until
-// the file is owned whole. Say which, or say nothing.
-// The heading is the SAME statement the chrome makes (override-status.js), so a file that is
-// absent on the box cannot be told "we re-apply these at every restart" here while the bar
-// above says the file does not exist. Owner 2026-07-31: "Make it make sense!"
-function overrideContextHtml(row, eff, file) {
-  if (!eff || !eff.size) return '';
-  const s = overrideStatus(eff.size, file !== undefined ? file : cachedRowFile(row));
-  const rows = [...eff.entries()].map(([sel, o]) =>
-    '<div class="oc-row"><span class="oc-sel mono">' + escapeHtml(sel) + '</span>'
-    + '<span class="oc-val mono">' + escapeHtml(valPreview(o.value)) + '</span>'
-    + (o.layer === 'common' ? '<span class="tag">all missions</span>' : '') + '</div>').join('');
-  return '<div class="oc' + (s.warn ? ' oc-dead' : '') + '"><div class="oc-head">' + escapeHtml(s.text) + '</div>'
-    + rows + '</div>';
-}
 // One wording for a file the box could not hand back, used by every surface that shows it.
 function fileMissingNote(file) {
   if (file && file.err === 'ABSENT') return 'This file is not on the box yet. Nothing has created it - a mod that writes its config on first run has not run, or it has never been generated. It is allowlisted, so it will appear here once it exists.';
   return 'Whole-file view unavailable - ' + (file && file.err ? file.err : 'unknown') + '.';
 }
-function fileViewHtml(row, file, eff, def) {
-  const canDef = !!(def && def.text != null);
-  const lang = detectLang(row.relpath || row.label);
-  const head = ((row.kind === 'xml' && file.text != null) ? xmlEvalHtml(file.text, [...eff.keys()]) : '')
-    + overrideContextHtml(row, eff, file);
-  // Nothing to show on either side. The override rows still list - they are the only thing
-  // there is to say about this path, and hiding them is how "2 overrides" became a mystery.
-  if (file.text === null && !canDef) return '<div class="fileview">' + head + '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div></div>';
-  if (!canDef) return '<div class="fileview">' + head + '<pre>' + highlight(file.text, lang) + '</pre></div>';
-  const livePane = file.text === null
-    ? '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>'
-    : '<pre>' + highlight(file.text, lang) + '</pre>';
-  return '<div class="fileview">' + head
-    + '<div class="fv-split">'
-    + '<div class="fv-pane"><div class="fv-cap">Default <span class="meta">frozen baseline</span></div><pre>' + highlight(def.text, lang) + '</pre></div>'
-    + '<div class="fv-pane"><div class="fv-cap">Live <span class="meta">this box</span></div>' + livePane + '</div>'
-    + '</div></div>';
-}
-function wireFileView() { /* nothing to wire - the toggle is gone (E6) */ }
 
-// ===================== whole-file Edit mode =====================
-// Which override layer a whole-file delta writes to, and whether that's safe. A files-scope row
-// is always its single 'files' layer. A mission file already layering BOTH all-missions (common)
-// and this-mission can't be split from a merged whole-file edit — block it, keep Fields for those.
-function wfTarget(row) {
-  if (row.scope === 'files') return { layer: 'files', ok: true };
-  const hasCommon = !!docLayer('common', row.fileKey);
-  const hasMission = !!(row.mission && docLayer('mission', row.fileKey, row.mission));
-  if (hasCommon && hasMission) return { ok: false, why: 'this file is override-managed in BOTH the all-missions and this-mission layers, and a merged whole-file edit cannot tell them apart. Cut it over to whole-file ownership to edit it here.' };
-  if (hasCommon) return { layer: 'common', ok: true };
-  if (hasMission) return { layer: 'mission', ok: true };
-  return { layer: newLayerFor(row), ok: true };   // fresh file: honour the New-overrides selector
-}
-// A JSON file whose current draft parses losslessly gets the structured editor instead of the raw
-// textarea. Malformed JSON (or XML/other) keeps the textarea so you can always fix bad syntax by hand.
-function editJsonOk(row, draft) {
-  if (row.kind !== 'json') return false;
-  try { bigParse(draft); return true; } catch { return false; }
-}
-function editFileHtml(row, file) {
-  if (file.text === null) return '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>';
-  const draft = wfDraft != null ? wfDraft : file.text;
-  const jsonMode = editJsonOk(row, draft);
-  const hint = jsonMode
-    ? 'Edit the whole file as structured fields. Until it is owned whole, <b>Preview</b> shows what would be recorded against the frozen default.'
-    : 'Edit the whole file. Until it is owned whole, <b>Preview</b> shows what would be recorded against the frozen default.';
-  const widget = jsonMode
-    ? '<div class="wf-json" id="wfJson"></div>'
-    : '<textarea class="wf-ta" id="wfTa" spellcheck="false" autocomplete="off" wrap="off">' + escapeHtml(draft) + '</textarea>';
-  return '<div class="wfedit">' +
-    '<div class="wf-bar">' +
-      '<span class="wf-hint">' + hint + '</span>' +
-      '<button type="button" class="btn-sm" id="wfViewDefault">View default</button>' +
-      '<button type="button" class="btn-sm primary" id="wfPreviewBtn"><span class="wf-sp hidden" id="wfSpin"></span>Preview changes</button>' +
-    '</div>' +
-    widget +
-    '<div class="wf-preview" id="wfPrev"></div>' +
-  '</div>';
-}
-function renderWfPreview(row) {
-  const box = $('wfPrev'); if (!box) return;
-  if (wfBusy) { box.innerHTML = '<div class="ovr-note"><span class="wf-sp"></span>Deriving the delta…</div>'; return; }
-  const p = wfPreview;
-  if (!p) { box.innerHTML = ''; return; }
-  if (p.mode === 'delta') {
-    const t = wfTarget(row);
-    const keys = Object.keys(p.delta || {});
-    const list = keys.length
-      ? '<ul class="wf-dlist">' + keys.map((k) => '<li><span class="mono">' + escapeHtml(k) + '</span> = <span class="mono">' + escapeHtml(valPreview(p.delta[k])) + '</span></li>').join('') + '</ul>'
-      : '<div class="meta">No changes vs the default — nothing to override.</div>';
-    const layerNote = (row.scope !== 'files' && t.ok) ? '<div class="meta">Writes to the <b>' + (t.layer === 'common' ? 'all-missions' : 'this-mission') + '</b> layer.</div>' : '';
-    box.innerHTML = '<div class="wf-ptitle wf-ok">' + p.changed + ' override' + (p.changed === 1 ? '' : 's') + ' derived' + (p.hasDefault ? '' : ' — no default captured') + '</div>' + list + layerNote +
-      '<div class="wf-pact">' + (t.ok && keys.length ? '<button type="button" class="btn-sm primary" id="wfApplyBtn">Apply to overrides</button>' : '') +
-      (t.ok ? '' : '<span class="meta warn">' + escapeHtml(t.why) + '</span>') + '</div>';
-    const apply = $('wfApplyBtn'); if (apply) apply.onclick = () => wfApply(row);
-  } else {
-    const t = wfTarget(row);
-    box.innerHTML = '<div class="wf-ptitle wf-warn">Whole-file override</div>' +
-      '<div class="ovr-note">' + escapeHtml(p.reason || 'this edit can’t be expressed as a clean delta') + '.<br>Storing it owns this file wholesale — it <b>won’t track baseline / mod updates</b> (the box writes your content verbatim every boot).</div>' +
-      '<div class="wf-pact">' + (t.ok ? '<button type="button" class="btn-sm primary" id="wfApplyBtn">Store as whole-file override</button>' : '<span class="meta warn">' + escapeHtml(t.why) + '</span>') + '</div>';
-    const apply = $('wfApplyBtn'); if (apply) apply.onclick = () => wfApply(row);
-  }
-}
-async function wfDoPreview(row) {
-  const cred = loadCred(); if (!cred) return;
-  const ta = $('wfTa'); if (ta) wfDraft = ta.value;
-  wfBusy = true; wfPreview = null;
-  renderWfPreview(row);
-  try {
-    const r = await apiPost('/dayz/configs/preview-override', cred, { name: row.relpath, content: wfDraft != null ? wfDraft : '' });
-    if (selKey !== row.key) return;                       // selection moved while awaiting
-    wfPreview = r;
-  } catch (err) {
-    if (handle(err)) return;
-    wfPreview = { mode: 'wholefile', reason: 'preview failed: ' + err.message };
-  } finally {
-    if (selKey === row.key) { wfBusy = false; renderWfPreview(row); }
-  }
-}
-// Set / delete a nested path in overridesDoc (object parents created as needed).
-function ovrSetPath(keys, val) {
-  let cur = overridesDoc;
-  for (let i = 0; i < keys.length - 1; i++) { const k = keys[i]; if (!cur[k] || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; }
-  cur[keys[keys.length - 1]] = val;
-}
-function ovrDelPath(keys) {
-  let cur = overridesDoc;
-  for (let i = 0; i < keys.length - 1; i++) { const k = keys[i]; if (!cur[k] || typeof cur[k] !== 'object') return; cur = cur[k]; }
-  delete cur[keys[keys.length - 1]];
-}
-// This row's whole-file override content, if any (files layer, or its mission/common layer).
-function wholeFileOf(row) {
-  const wf = overridesDoc.wholeFiles || {};
-  if (row.scope === 'files') return (wf.files || {})[row.fileKey];
-  const mp = wf.mpmissions || {};
-  if (row.mission && mp[row.mission] && mp[row.mission][row.fileKey] !== undefined) return mp[row.mission][row.fileKey];
-  return (mp.common || {})[row.fileKey];
-}
-function wholeFileClear(row) {
-  const mp = (overridesDoc.wholeFiles || {}).mpmissions || {};
-  if (row.scope === 'files') ovrDelPath(['wholeFiles', 'files', row.fileKey]);
-  else if (row.mission && mp[row.mission] && mp[row.mission][row.fileKey] !== undefined) ovrDelPath(['wholeFiles', 'mpmissions', row.mission, row.fileKey]);
-  else ovrDelPath(['wholeFiles', 'mpmissions', 'common', row.fileKey]);
-  updateDirtyUi(); renderFilesNav(); renderEditor();
-  setGlobalMsg('Whole-file override cleared — this file goes back to field patches / the default. Save to apply.', false);
-}
-function wfApply(row) {
-  const p = wfPreview; if (!p) return;
-  const t = wfTarget(row); if (!t.ok) return;
-  const path = t.layer === 'files' ? ['files', row.fileKey]
-    : t.layer === 'common' ? ['mpmissions', 'common', row.fileKey]
-    : ['mpmissions', row.mission, row.fileKey];
-  let msg;
-  if (p.mode === 'delta') {
-    // The whole-file edit owns this file's override set vs the default → replace the target
-    // layer's patch block with the derived delta; drop any prior whole-file entry for it.
-    ovrSetPath(path, JSON.parse(JSON.stringify(p.delta)));
-    ovrDelPath(['wholeFiles', ...path]);
-    const n = Object.keys(p.delta).length;
-    msg = 'Applied ' + n + ' override' + (n === 1 ? '' : 's') + ' from the whole-file edit — review in Fields, then Save.';
-  } else {
-    // Whole-file fallback: own the file wholesale (stored in wholeFiles; the box writes it verbatim
-    // and skips this file's patches). It won't track baseline/mod updates — that's the trade.
-    ovrSetPath(['wholeFiles', ...path], wfDraft != null ? wfDraft : '');
-    ovrDelPath(path);
-    msg = 'Stored a whole-file override — this file is now owned wholesale (won’t track baseline updates). Review, then Save.';
-  }
-  wfReset();
-  updateDirtyUi();
-  ovrView = 'edit';
-  renderFilesNav(); renderEditor();
-  setGlobalMsg(msg, false);
-}
-function wireEditFile(row) {
-  wfJsonHandle = null;
-  const host = $('wfJson');
-  if (host) {
-    // Jump-to-node navigator: the whole file as a clickable JSON map, editing only the node you
-    // click (tiny + instant, no whole-tree build). bigParse keeps big integers lossless; getDoc()
-    // is read at Preview and fed to the SAME preview-override -> set-overrides flow as the textarea.
-    const draft = wfDraft != null ? wfDraft : (lastFileText ?? '');
-    let startval; try { startval = bigParse(draft); } catch { startval = undefined; }
-    if (startval !== undefined) {
-      if (wfDraft == null) wfDraft = jsonEnc(startval);   // seed so Preview works before the first edit
-      mountJsonNavigator(host, { doc: startval, onChange: () => { wfPreview = null; renderWfPreview(row); } }).then((h) => {
-        if (selKey !== row.key) { h.destroy(); return; }   // selection moved while the lib loaded
-        wfJsonHandle = h;
-      });
-    }
-  } else {
-    const ta = $('wfTa'); if (ta) ta.oninput = () => { wfDraft = ta.value; wfPreview = null; renderWfPreview(row); };
-  }
-  const pv = $('wfPreviewBtn'); if (pv) pv.onclick = () => { if (wfJsonHandle) wfDraft = jsonEnc(wfJsonHandle.getDoc()); wfDoPreview(row); };
-  const vd = $('wfViewDefault'); if (vd) vd.onclick = () => { ovrView = 'file'; renderEditor(); };   // E6: the file view now shows BOTH copies
-  renderWfPreview(row);
-}
 
-// ===================== mutations =====================
-function addOverride(row, sel, initial) {
-  const layer = newLayerFor(row);
-  const map = layerMapRW(row, layer);
-  if (!(sel in map)) map[sel] = initial;
-  renderFilesNav(); renderEditor();
-  setGlobalMsg('Override added — edit its value, then Save.', false);
-}
 // ---- boxed-value editor: expand a summary into a formatted+highlighted JSON box
 //      (objects/arrays) or a plain full-text box (long strings), collapse on commit ----
 const CX_TEXT_MIN = 80;   // strings longer than this (or multiline) get the text box, not a cramped input
-function cxMode(v) {
-  if (v !== null && typeof v === 'object') return 'json';
-  if (typeof v === 'string' && (v.length > CX_TEXT_MIN || v.includes('\n'))) return 'text';
-  return null;            // short scalar — stays a single-line input
-}
-function cxSummary(v, mode) {
-  if (mode === 'json') return valPreview(v);
-  const s = String(v).replace(/\s+/g, ' ').trim();
-  return '"' + (s.length > 52 ? s.slice(0, 52) + '…' : s) + '"';
-}
-function cxAutoSize(ta) { ta.style.height = 'auto'; ta.style.height = Math.min(Math.max(ta.scrollHeight, 60), 460) + 'px'; }
-function cxCollapse(row, cell, val) {
-  const mode = cxMode(val) || 'json';
-  cell.dataset.mode = mode;
-  cell.classList.remove('open');
-  cell.innerHTML = '<div class="cx-collapsed" tabindex="0" title="Click to edit">'
-    + '<span class="cx-caret">&#9656;</span><span class="cx-sum">' + escapeHtml(cxSummary(val, mode)) + '</span></div>';
-  const el = cell.querySelector('.cx-collapsed');
-  el.addEventListener('click', () => cxExpand(row, cell));
-  el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); cxExpand(row, cell); } });
-}
-function cxCommit(row, cell, ta, msg, mode) {
-  let v;
-  if (mode === 'text') { v = ta.value; }
-  else { try { v = bigParse(ta.value); } catch { ta.classList.add('bad'); msg.textContent = 'Fix JSON before closing'; msg.classList.add('bad'); ta.focus(); return false; } }
-  layerMapRW(row, cell.dataset.layer)[cell.dataset.sel] = v;
-  updateDirtyUi(); setGlobalMsg('Unsaved change — press Save.', false);
-  if (cxMode(v) === null) renderEditor();   // shrank to a plain scalar — re-render it as an input
-  else cxCollapse(row, cell, v);
-  return true;
-}
-function cxExpand(row, cell) {
-  const mode = cell.dataset.mode === 'text' ? 'text' : 'json';
-  const cur = layerMapRW(row, cell.dataset.layer)[cell.dataset.sel];
-  cell.classList.add('open');
-  const tools = (mode === 'json' ? '<button type="button" class="cx-btn cx-fmt" title="Re-indent, or parse pasted JSON">Format</button>' : '')
-    + '<button type="button" class="cx-btn cx-done">Done</button><span class="cx-msg"></span>';
-  cell.innerHTML = (mode === 'json'
-      ? '<div class="cx-edit"><pre class="cx-hl" aria-hidden="true"></pre><textarea class="cx-ta" spellcheck="false"></textarea></div>'
-      : '<div class="cx-edit text"><textarea class="cx-ta" spellcheck="false"></textarea></div>')
-    + '<div class="cx-tools">' + tools + '</div>';
-  const ta = cell.querySelector('.cx-ta'), hl = cell.querySelector('.cx-hl'), msg = cell.querySelector('.cx-msg');
-  const clearErr = () => { ta.classList.remove('bad'); msg.textContent = ''; msg.classList.remove('bad'); };
-  // JSON mode paints the highlight layer behind the transparent textarea; text mode has no layer.
-  const paint = () => { if (hl) { hl.innerHTML = hlJson(escapeHtml(ta.value)) + '\n'; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; } };
-  ta.value = mode === 'json' ? bigStringify(cur, 2) : String(cur);
-  paint(); cxAutoSize(ta);
-  ta.addEventListener('input', () => { clearErr(); paint(); cxAutoSize(ta); });
-  if (hl) ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
-  const fmt = cell.querySelector('.cx-fmt');
-  // mousedown+preventDefault keeps textarea focus so its blur-commit doesn't race the click.
-  if (fmt) fmt.addEventListener('mousedown', (ev) => {
-    ev.preventDefault();
-    try { ta.value = bigStringify(bigParse(ta.value), 2); clearErr(); paint(); cxAutoSize(ta); ta.focus(); }
-    catch { ta.classList.add('bad'); msg.textContent = 'Not valid JSON yet'; msg.classList.add('bad'); }
-  });
-  cell.querySelector('.cx-done').addEventListener('mousedown', (ev) => { ev.preventDefault(); cxCommit(row, cell, ta, msg, mode); });
-  // Clicking outside the cell (real blur) commits; guard the setTimeout against an already-collapsed cell.
-  ta.addEventListener('blur', () => setTimeout(() => {
-    if (cell.classList.contains('open') && !cell.contains(document.activeElement)) cxCommit(row, cell, ta, msg, mode);
-  }, 0));
-  ta.focus();
-}
 
-function wireFields(row) {
-  const body = $('ovrBody'); if (!body) return;
-  const filt = $('ovrFilter');
-  if (filt) { filt.value = ovrFilter; filt.oninput = () => { ovrFilter = filt.value; applyFieldVisibility(); }; }
-  const more = $('ovrMore');
-  if (more) more.onclick = () => { ovrCapOpen = true; applyFieldVisibility(); };
-  body.querySelectorAll('.ovr-inp').forEach((inp) => inp.addEventListener('change', () => {
-    let v;
-    try { v = bigParse(inp.value); } catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON (e.g. 110, "text", [1,2]).', true); return; }
-    inp.style.outline = '';
-    layerMapRW(row, inp.dataset.layer)[inp.dataset.sel] = v;
-    updateDirtyUi();
-    setGlobalMsg('Unsaved change — press Save.', false);
-  }));
-  body.querySelectorAll('.ovr-rm').forEach((b) => b.addEventListener('click', () => {
-    delete layerMapRW(row, b.dataset.layer)[b.dataset.sel];
-    renderFilesNav(); renderEditor();
-    setGlobalMsg('Override removed — press Save.', false);
-  }));
-  const addFrom = (elx) => addOverride(row, elx.dataset.sel, ovrLeafMap.has(elx.dataset.sel) ? ovrLeafMap.get(elx.dataset.sel) : null);
-  body.querySelectorAll('.ovr-addctx').forEach((b) => b.addEventListener('click', () => addFrom(b)));
-  body.querySelectorAll('.ovr-addv').forEach((v) => v.addEventListener('click', () => addFrom(v)));
-  // Complex overrides render collapsed — click/Enter expands the formatted+highlighted editor.
-  body.querySelectorAll('.cxcell:not(.scalar) > .cx-collapsed').forEach((el) => {
-    const cell = el.closest('.cxcell');
-    el.addEventListener('click', () => cxExpand(row, cell));
-    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); cxExpand(row, cell); } });
-  });
-  // Scalar quick-format: parse the box; a complex result upgrades the row to the JSON editor,
-  // a scalar is just canonicalised. Serves "paste an array into a former single value".
-  body.querySelectorAll('.cxcell.scalar .cx-fmt').forEach((btn) => {
-    const cell = btn.closest('.cxcell'); const inp = cell.querySelector('.ovr-inp');
-    btn.addEventListener('click', () => {
-      let v; try { v = bigParse(inp.value); }
-      catch { inp.style.outline = '2px solid var(--danger)'; setGlobalMsg('Value must be valid JSON to format.', true); return; }
-      inp.style.outline = '';
-      layerMapRW(row, inp.dataset.layer)[inp.dataset.sel] = v;
-      updateDirtyUi();
-      if (cxMode(v)) { renderEditor(); setGlobalMsg('Expanded into a full editor — edit it, then Save.', false); }
-      else { inp.value = jsonEnc(v); setGlobalMsg('Formatted — press Save.', false); }
-    });
-  });
-  const addSel = $('ovrAddSel');
-  if (addSel) addSel.onclick = () => {
-    const sel = (window.prompt(row.kind === 'xml'
-      ? "XPath selector (e.g. //var[@name='TimeHopping']/@value):"
-      : 'Dotted key path (e.g. a.b.c):') || '').trim();
-    if (sel) addOverride(row, sel, null);
-  };
-}
-function addFileFlow() {
-  const where = window.prompt('Override a file in:\n  1 = server dir (files/)\n  2 = a mission (mpmissions/)\nEnter 1 or 2:', '1');
-  if (where === null) return;
-  let key;
-  if (where.trim() === '2') {
-    const mission = (window.prompt('Mission layer — "common" (all missions) or a name like dayzOffline.sakhal:', 'common') || '').trim();
-    if (!mission) return;
-    const file = (window.prompt('File path within the mission (e.g. db/globals.xml):') || '').trim();
-    if (!file) return;
-    layerMapRW({ scope: 'mission', mission: mission === 'common' ? null : mission, fileKey: file }, mission === 'common' ? 'common' : 'mission');
-    key = mission === 'common'
-      ? (getActiveMission() ? 'mpmissions/' + getActiveMission() + '/' + file : 'common|' + file)
-      : 'mpmissions/' + mission + '/' + file;
-  } else {
-    const file = (window.prompt('File path under the server dir (e.g. profiles/AIB_Unleashed/AIB_UL_Config.json):') || '').trim();
-    if (!file) return;
-    layerMapRW({ scope: 'files', fileKey: file }, 'files');
-    key = file;
-  }
-  renderFilesNav();
-  if (rowByKey(key)) selectRow(key);
-  setGlobalMsg('File added — override its fields, then Save.', false);
-}
 
-async function saveOverrides() {
-  const cred = loadCred();
-  if (!cred) return;
-  // Never ship a doc that was never loaded — that would replace the box manifest with
-  // this session's empty/partial state (the exact accident of 2026-07-16).
-  if (!overridesLoaded) { setGlobalMsg('config-overrides.json never loaded in this session — refusing to save. Reload the tab first.', true); return; }
-  // E4: name every file this save touches before writing. Derived from the doc diff,
-  // so it names the files the OWNER edited, not the transport (config-overrides.json).
-  // Save is always enabled, so a click on a clean doc lands here with an empty list. Say so
-  // rather than showing a confirm with nothing under it (owner 2026-07-31: "AND NOTHING IS
-  // LISTED!"); confirmSave refuses an empty list on its own, this is the message for it.
-  const names = changedFiles(JSON.parse(savedSnapshot), overridesDoc);
-  if (!names.length) { setGlobalMsg('Nothing to save - no unsaved override changes in this tab.', false); return; }
-  if (!confirmSave(names)) return;
-  const save = $('ovrSave');
-  const saveHtml = save ? save.innerHTML : '';
-  if (save) { save.disabled = true; save.innerHTML = '<span class="wf-sp"></span>Saving…'; }
-  setGlobalMsg('Saving…', false);
-  try {
-    let saved;
-    try {
-      saved = await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion });
-    } catch (err) {
-      // Concurrent-edit conflict: another admin saved config-overrides.json since we loaded it.
-      // Never clobber — offer to reload theirs (your unsaved edits here can be copied out first).
-      if (err.status === 409 && /conflict|changed since/i.test(err.message || '')) {
-        const ok = window.confirm('Another admin saved config-overrides.json since you opened it — saving now would overwrite their changes.\n\n' +
-          'Reload their version? Your unsaved changes in this tab are discarded, so copy anything you need first (Cancel to do that).');
-        if (ok) { Object.keys(fileCache).forEach((k) => delete fileCache[k]); await loadFiles(); }
-        else setGlobalMsg('Save cancelled — reload before saving so you don’t overwrite the other admin.', true);
-        return;
-      }
-      // Box shrink guard: the doc drops >half the current override values. Put the
-      // decision to the human; only a deliberate confirm re-sends with the force flag.
-      if (err.status === 409 && /shrink-guard/.test(err.message || '')) {
-        const ok = window.confirm('The box refused this save:\n\n' + err.message +
-          '\n\nThat usually means this tab is holding a PARTIAL document (stale session?). ' +
-          'Only continue if you deliberately deleted these overrides.\n\nReplace anyway?');
-        if (!ok) { setGlobalMsg('Save cancelled — the box kept its current config-overrides.json.', false); return; }
-        saved = await apiPost('/dayz/configs/set-overrides', cred, { document: overridesDoc, baseVersion: ovrBaseVersion, confirmShrink: true });
-      } else { throw err; }
-    }
-    // Rebase in place: the box just accepted THIS document and handed back its new hash — adopt
-    // it so the tree refresh below gets 'unchanged' from the conditional pull instead of
-    // re-downloading the whole doc we are already holding.
-    if (saved && saved.version) ovrBaseVersion = saved.version;
-    markClean();
-    setGlobalMsg('Saved — restart the server to apply.', false, true);
-    Object.keys(fileCache).forEach((k) => delete fileCache[k]);
-    await loadFiles();
-  } catch (err) {
-    if (handle(err)) return;
-    setGlobalMsg(err.status === 403 ? 'Your key can’t write — sign in with a full-scope key.' : 'Save failed: ' + err.message, true);
-  } finally { if (save) { save.disabled = false; save.innerHTML = saveHtml; } }
-}
-async function loadVersions() {
-  const cred = loadCred();
-  if (!cred) return;
-  try {
-    const r = await apiPost('/dayz/configs/override-versions', cred);
-    const versions = r.versions || [];
-    el.ovrVersions.innerHTML = versions.length
-      ? versions.map((v) => '<div class="ovr-ver"><span class="mono">' + escapeHtml(v) + '</span><span class="spacer"></span><button class="ghost ovr-roll" type="button" data-ver="' + attr(v) + '">Roll back</button></div>').join('')
-      : '<span class="meta">No snapshots yet.</span>';
-  } catch (err) { if (handle(err)) return; el.ovrVersions.innerHTML = '<span class="meta">Could not load versions.</span>'; }
-}
-async function rollbackTo(version) {
-  const cred = loadCred();
-  if (!cred) return;
-  if (isDirty() && !window.confirm('You have unsaved override changes. Rolling back replaces the whole document and discards them.\n\nRoll back anyway?')) return;
-  try {
-    await apiPost('/dayz/configs/override-rollback', cred, { version });
-    setGlobalMsg('Rolled back — restart to apply.', false, true);
-    Object.keys(fileCache).forEach((k) => delete fileCache[k]);
-    loadFiles();
-  } catch (err) {
-    if (handle(err)) return;
-    setGlobalMsg(err.status === 403 ? 'Your key can’t roll back — full-scope key needed.' : 'Rollback failed: ' + err.message, true);
-  }
-}
 
 // ===================== box-owned whole-file editor =====================
 async function loadOwn(row) {
@@ -1372,6 +604,9 @@ async function saveOwnFile() {
   const cred = loadCred();
   const row = currentRow();
   if (!cred || !row || !row.writableName) return;
+  // Name the file before writing, like every other save path (found missing 2026-07-31 by the
+  // wiring assertion, which only listed three paths and never covered this one).
+  if (!confirmSave([row.writableName])) return;
   el.ownSave.disabled = true;
   setGlobalMsg('Saving…', false);
   try {
@@ -1394,8 +629,4 @@ export function initEditor() {
     if (it.dataset.key !== selKey) selectRow(it.dataset.key);
   });
   el.ownSave.addEventListener('click', () => saveOwnFile());
-  el.ovrVersions.addEventListener('click', (e) => {
-    const b = e.target.closest('button.ovr-roll'); if (!b) return;
-    rollbackTo(b.dataset.ver);
-  });
 }

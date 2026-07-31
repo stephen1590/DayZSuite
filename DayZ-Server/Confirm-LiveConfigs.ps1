@@ -8,12 +8,12 @@
     keeps is the duty to PROVE the result is sound. Checks, in order:
 
       LOCAL (repo mirrors/seeds parse - a corrupt mirror is a corrupt backup):
-        1. config-overrides.json parses as JSON
         2. deploy/profiles/AI_Shared/map-points.json parses + has a `points` array
         3. every JSON seed in the deploy payload parses; messages.xml parses as XML
       LIVE (over ssh, all read-only):
         4. dayz-server unit is active
-        5. ZERO-MISS: the box's Apply-ConfigOverrides in REPORT mode ends with 0 warnings —
+        5. (RETIRED 2026-07-31) the zero-MISS override report. The applier is deleted; a
+           two-copy equivalent is unbuilt (T4) and this script SAYS SO rather than passing.
            every override in the live document will land on the next boot. This is the
            check that catches silent dead overrides (a selector typo, a removed file, an
            XML path that no longer matches). [NEW]/[OK] lines are healthy; [WARN] is not.
@@ -47,6 +47,7 @@ param(
 $script:pass = 0; $script:fail = 0
 function Show-Pass([string]$msg) { $script:pass++; Write-Host "  [PASS] $msg" -ForegroundColor Green }
 function Show-Fail([string]$msg) { $script:fail++; Write-Host "  [FAIL] $msg" -ForegroundColor Red }
+function Show-Warn([string]$msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
 
 function Test-ParseFile([string]$path, [string]$kind, [string]$label) {
     if (-not (Test-Path -LiteralPath $path)) { Show-Fail "$label - file missing ($path)"; return $null }
@@ -88,20 +89,13 @@ if (-not $LocalOnly) {
     if ($unit -eq 'active') { Show-Pass "dayz-server unit is active" }
     else { Show-Fail "dayz-server unit is '$unit' (expected active)" }
 
-    # ZERO-MISS: report-mode run of the box's own applier over the box's own document.
-    # Summary shape: "Config overrides: N changed, N created, N same-as-default, N default(s) captured, N warning(s)  [...]"
-    $report = Get-Stdout { ssh -o ConnectTimeout=10 $target "pwsh -NoProfile -File '$RemotePath/Apply-ConfigOverrides.ps1' -ServerDir '$RemotePath'" } | Out-String
-    $summary = ($report -split "`n" | Where-Object { $_ -match '^Config overrides:' } | Select-Object -Last 1)
-    if (-not $summary) {
-        Show-Fail "override report produced no summary line - is Apply-ConfigOverrides.ps1 deployed? Output tail: $((($report -split "`n") | Select-Object -Last 3) -join ' | ')"
-    } elseif ($summary -match '(\d+) warning') {
-        $warnings = [int]$Matches[1]
-        if ($warnings -eq 0) { Show-Pass "zero-MISS: every live override applies ($($summary.Trim()))" }
-        else {
-            Show-Fail "$warnings override(s) will NOT apply at boot - dead selectors. [WARN] lines:"
-            $report -split "`n" | Where-Object { $_ -match '\[WARN\]' } | ForEach-Object { Write-Host "         $($_.Trim())" -ForegroundColor Yellow }
-        }
-    } else { Show-Fail "could not parse the override report summary: $($summary.Trim())" }
+    # (2026-07-31) A "zero-MISS" check ran the box's override applier in report mode and failed
+    # on any WARN. The applier is deleted - config files are owned whole, so there is no apply
+    # step that can miss. The equivalent live check for the two-copy model is: every OWNED
+    # surface declared in the registry exists on the box and parses. That is what T4 must build;
+    # asserting nothing here is honest, asserting the old thing would be a green light on a
+    # mechanism that no longer runs.
+    Show-Warn "live config verification is NOT implemented for the two-copy model (T4). This run checked the unit only."
 
     # COMPOSED ARTIFACTS: prestart's builders write these for the ACTIVE mission; each must
     # be valid JSON or the mod reading it starts blind. map.env names the active mission.

@@ -2,10 +2,10 @@
 <#
 .SYNOPSIS
     Pull box-born <name>.defaults<ext> baselines off the box into the repo (config-defaults/)
-    — the deploy's pull-before-push step for the FROZEN DEFAULTS behind config-overrides.
+    — the deploy's pull-before-push step for the FROZEN DEFAULTS of every owned surface.
 
 .DESCRIPTION
-    A default is BORN on the box: Apply-ConfigOverrides captures the pristine file the first
+    A default is BORN on the box: Capture-OwnedDefaults copies the pristine file the first
     time prestart patches it (see that script). This pulls those box-born defaults DOWN into
     config-defaults/ - a committed MIRROR (backup + fresh-box seed).
 
@@ -20,7 +20,7 @@
     Read-only by default (shows what pulling WOULD change); -Execute writes. A pulled default
     that is not valid for its kind (JSON/XML) is REJECTED - a corrupt baseline never enters the repo.
 
-    Modelled on Sync-ConfigOverrides.ps1 (same box-authoritative shape). Only targets live under
+    Box-authoritative: the box owns the file, the repo holds a mirror. Only targets live under
     profiles/ and mpmissions/, so the box scan is scoped there (persistence trees pruned).
 .EXAMPLE
     ./Sync-ConfigDefaults.ps1                 # dry-run: which box defaults the repo would capture
@@ -58,31 +58,33 @@ function Test-Parses([string]$text, [string]$ext) {
 }
 
 # List the box's frozen-default files as server-relative paths. Scoped to profiles/ + mpmissions/
-# (where all override targets live), with persistence trees pruned so the scan stays cheap.
+# (where every owned surface lives), with persistence trees pruned so the scan stays cheap.
 Write-Host "Listing frozen defaults on ${target}:$RemotePath (profiles/, mpmissions/ ; *.defaults.*)"
 $find = "cd '$RemotePath' && find profiles mpmissions -type d -name 'storage_*' -prune -o -type f -name '*.defaults.*' -print 2>/dev/null"
 $list = Get-Stdout { ssh -o ConnectTimeout=10 $target $find } | Out-String
 $rels = @($list -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notmatch '\.\.' })
 
-# Only MANAGED missions are pulled: the mpmissions.<mission> keys of config-overrides.json
-# declare them (same rule as Apply-ConfigOverrides). A foreign dir under mpmissions/ (a side
+# Only MANAGED missions are pulled. This used to read the mpmissions.<mission> keys of
+# config-overrides.json; that document is deleted (2026-07-31), so the DECLARATION now comes
+# from the same place every other surface fact does - config-registry.json's box paths. One
+# source of truth, which is what the registry is for. A foreign dir under mpmissions/ (a side
 # project, an admin copy) may carry copied .defaults - those are not ours and never enter the repo.
 $declared = @()
-$manifestPath = Join-Path $PSScriptRoot 'config-overrides.json'
-if (Test-Path $manifestPath) {
+$registryPath = Join-Path $PSScriptRoot 'config-registry.json'
+if (Test-Path $registryPath) {
     try {
-        $mf = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-        if ($mf.PSObject.Properties.Name -contains 'mpmissions') {
-            $declared = @($mf.mpmissions.PSObject.Properties.Name | Where-Object { $_ -ne 'common' -and -not $_.StartsWith('_') })
-        }
-    } catch { Write-Warning "could not parse $manifestPath for declared missions - pulling profiles/ defaults only" }
+        $reg = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
+        $declared = @($reg.surfaces | ForEach-Object { $_.box } | Where-Object { $_ -match '^mpmissions/([^/]+)/' } |
+                      ForEach-Object { [regex]::Match($_, '^mpmissions/([^/]+)/').Groups[1].Value } |
+                      Sort-Object -Unique)
+    } catch { Write-Warning "could not parse $registryPath for declared missions - pulling profiles/ defaults only" }
 }
 $foreign = 0
 $rels = @($rels | Where-Object {
     if ($_ -notmatch '^mpmissions/([^/]+)/') { return $true }        # profiles/ etc.
     if ($declared -contains $Matches[1]) { return $true }
     $script:foreign++
-    Write-Host "  [SKIP] $_ (mission not declared in config-overrides.json - foreign dir, not managed)"
+    Write-Host "  [SKIP] $_ (mission not declared in config-registry.json - foreign dir, not managed)"
     return $false
 })
 

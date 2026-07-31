@@ -106,28 +106,23 @@ if [ -f "$SERVER/messages.xml" ]; then
     cp -f "$SERVER/messages.xml" "$MISSIONS/$TARGET/db/messages.xml"
 fi
 
-# Two-copy model: seed the frozen `default` companion for any OWNED surface that has none,
-# BEFORE the applier runs. Order matters - Apply-ConfigOverrides patches live files, so
-# capturing afterwards would bake those patches into the supposedly pristine baseline. The
-# script skips override targets (the applier owns their companions) and never overwrites an
-# existing default, so on a settled box this is a no-op; it only fires when a NEW owned
-# surface is declared. Same `|| true` fail-soft rule as every other prestart step.
+# Two-copy model: seed the frozen `default` companion for any OWNED surface that has none.
+# Never overwrites an existing default, so on a settled box this is a no-op; it only fires
+# when a NEW owned surface is declared. Same `|| true` fail-soft rule as every other step.
 if [ -f "$SERVER/Capture-OwnedDefaults.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Capture-OwnedDefaults.ps1" -ServerDir "$SERVER" -Fix || true
 fi
 
-# Field-level config overrides: patch our deltas (config-overrides.json) into the live
-# CE/mod files NOW, before the engine reads them at boot, so overrides survive mod/game
-# updates and an admin can just edit the manifest + restart. The applier is fail-soft
-# per-field; the `|| true` guarantees a bad override can NEVER block server start (a
-# failing ExecStartPre took the server down 2026-07-07). Applies to all missions' files.
-if [ -f "$SERVER/Apply-ConfigOverrides.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Apply-ConfigOverrides.ps1" -ServerDir "$SERVER" -Fix || true
-fi
+# NOTE (2026-07-31): the field-override applier used to run HERE, between the default capture
+# and the serverDZ.cfg render. It is deleted - owner's ruling: "No Overrides. Just whole file
+# ownership and modifying with a better UI/Syntax manager." Config files are now owned whole
+# and edited directly through the web editor; nothing patches them at boot any more. Do not
+# reintroduce a patch step: a second writer on a file it does not own is the drift machine
+# this removal exists to end.
 
 # Rebuild serverDZ.cfg = serverDZ.cfg.template + host.env passwords + server-settings.json's
-# allowlisted toggles. Runs right AFTER Apply-ConfigOverrides so a web edit to
-# server-settings.json is already patched in before we read it. The renderer refuses to write
+# allowlisted toggles. server-settings.json is now edited whole in the web UI, so what we read
+# here IS what the operator saved - no patch pass in between. The renderer refuses to write
 # a half-rendered file (missing host.env, leftover placeholder), so the worst case is the
 # previous serverDZ.cfg surviving unchanged - and the `|| true` keeps it off the boot path.
 if [ -f "$SERVER/Apply-ServerCfg.ps1" ] && command -v pwsh >/dev/null 2>&1; then
