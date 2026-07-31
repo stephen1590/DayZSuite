@@ -10,9 +10,18 @@
   WHY these rows exist: db/types.xml ships vanilla lifetimes of 3 seconds on every
   drivable class (Offroad_02 ships 0). Vanilla gets away with it because vehicles are
   event-spawned and inherit the EVENT lifetime - but any vehicle that stops being an
-  event instance falls back to the type lifetime and is swept in 3 seconds. These are
-  genuine field tweaks on a vendor-rewritten file, i.e. the patch niche Phase 3 kept
-  (CONFIG-ARCHITECTURE.md) - NOT a whole-file ownership case.
+  event instance falls back to the type lifetime and is swept in 3 seconds.
+
+  CLASSIFICATION OVERRULED 2026-07-31 (owner). This header used to claim these were
+  "the patch niche Phase 3 kept - NOT a whole-file ownership case". That is wrong now:
+  the owner ruled db/types.xml is an OWNED WHOLE FILE and "we need those 20 vehicle-
+  lifetime sync'd into OUR owned files. They're not overrides anymore." The VALUES are
+  unchanged and still correct - only their home changes. Cut over with
+  Convert-ToOwned.ps1 (verifies each value is already live, then frees the file).
+  AFTER the cutover: the -OverridesPath mode below is obsolete (there will be no block
+  to assert) and retires with the engine; the applier assertions here keep their value
+  until Apply-ConfigOverrides is deleted, and the lasting guarantee - these 19 classes
+  hold lifetime 3888000 - belongs on the owned file.
 
   Runs the REAL Apply-ConfigOverrides against a throwaway ServerDir. No box, no sudo.
   Self-contained by default; pass -TypesPath to run against a real 885KB types.xml.
