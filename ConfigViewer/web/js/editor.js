@@ -532,7 +532,9 @@ function editorChrome(row) {
     ? '<span class="stat"><span class="dot b"></span>read-only reference file — shipped with the deploy; view only</span>'
     : locked
     ? '<span class="stat"><span class="dot b"></span>read-only file — field overrides apply only to JSON/XML</span>'
-    : '<span class="stat d"><span class="dot d"></span><b>' + nOver + '</b> ' + (row.kind === 'xml' ? 'XPath override' + (nOver === 1 ? '' : 's') : 'overridden') + '</span>';
+    : nOver > 0
+    ? '<span class="stat d" title="' + attr([...effectivePatches(row).keys()].join('\n')) + '"><span class="dot d"></span><b>' + nOver + '</b> value' + (nOver === 1 ? '' : 's') + ' still override-managed - listed in the file view</span>'
+    : '<span class="stat"><span class="dot b"></span>owned whole - edits save the entire file</span>';
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
@@ -553,7 +555,7 @@ function editorChrome(row) {
 function editorFoot(row) {
   if (row.access === 'lock' || row.types || row.ownFile) return '';   // types/own rows: the note below is about override DELTAS, wrong for a whole-file writer
   return '<div class="ovr-note" style="border-top:1px solid var(--border);border-bottom:none">' +
-    '<b style="color:var(--delta)">Deltas only.</b> The whole file shows for context — Save writes just your changes to <span class="mono">config-overrides.json</span>.</div>';
+    '<b style="color:var(--delta)">This file is not owned yet.</b> Saving records only your changed values as overrides, and the box re-applies them at every restart. Cut the file over to own it whole and this editor saves the real file.</div>';
 }
 async function renderEditor() {
   const row = currentRow();
@@ -841,6 +843,22 @@ function xmlEvalHtml(text, sels) {
 // "I SAID WE NEED TO BE ABLE TO SEE THE DEFAULT SIDE BY SIDE WITH OUR OWNED VERSION." A view
 // switcher makes you hold one copy in your head to compare it with the other, which is the
 // opposite of a comparison. Both panes scroll independently; no button, nothing to toggle.
+// E9 (owner: "Why show `8 overridden` if we never have context as to what those are?! I don't see
+// any highlights"). A bare count names a quantity and hides the thing. This lists exactly which
+// values the old override system still controls, with what it forces them to, and why that
+// matters: they are re-applied at every restart, so editing the live file does not stick until
+// the file is owned whole. Say which, or say nothing.
+function overrideContextHtml(row, eff) {
+  if (!eff || !eff.size) return '';
+  const rows = [...eff.entries()].map(([sel, o]) =>
+    '<div class="oc-row"><span class="oc-sel mono">' + escapeHtml(sel) + '</span>'
+    + '<span class="oc-val mono">' + escapeHtml(valPreview(o.value)) + '</span>'
+    + (o.layer === 'common' ? '<span class="tag">all missions</span>' : '') + '</div>').join('');
+  return '<div class="oc"><div class="oc-head"><b>' + eff.size + '</b> value' + (eff.size === 1 ? '' : 's')
+    + ' here are still managed by the old override system - the box re-applies them at every restart, '
+    + 'so a whole-file edit to any of these will not stick until this file is owned whole.</div>'
+    + rows + '</div>';
+}
 // One wording for a file the box could not hand back, used by every surface that shows it.
 function fileMissingNote(file) {
   if (file && file.err === 'ABSENT') return 'This file is not on the box yet. Nothing has created it - a mod that writes its config on first run has not run, or it has never been generated. It is allowlisted, so it will appear here once it exists.';
@@ -850,7 +868,8 @@ function fileViewHtml(row, file, eff, def) {
   const canDef = !!(def && def.text != null);
   const lang = detectLang(row.relpath || row.label);
   if (file.text === null && !canDef) return '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>';
-  const head = (row.kind === 'xml' && file.text != null) ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
+  const head = ((row.kind === 'xml' && file.text != null) ? xmlEvalHtml(file.text, [...eff.keys()]) : '')
+    + overrideContextHtml(row, eff);
   if (!canDef) return '<div class="fileview">' + head + '<pre>' + highlight(file.text, lang) + '</pre></div>';
   const livePane = file.text === null
     ? '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>'
@@ -871,7 +890,7 @@ function wfTarget(row) {
   if (row.scope === 'files') return { layer: 'files', ok: true };
   const hasCommon = !!docLayer('common', row.fileKey);
   const hasMission = !!(row.mission && docLayer('mission', row.fileKey, row.mission));
-  if (hasCommon && hasMission) return { ok: false, why: 'this file overrides in BOTH the all-missions and this-mission layers — a merged whole-file edit can’t tell them apart. Use Fields here.' };
+  if (hasCommon && hasMission) return { ok: false, why: 'this file is override-managed in BOTH the all-missions and this-mission layers, and a merged whole-file edit cannot tell them apart. Cut it over to whole-file ownership to edit it here.' };
   if (hasCommon) return { layer: 'common', ok: true };
   if (hasMission) return { layer: 'mission', ok: true };
   return { layer: newLayerFor(row), ok: true };   // fresh file: honour the New-overrides selector
@@ -883,12 +902,12 @@ function editJsonOk(row, draft) {
   try { bigParse(draft); return true; } catch { return false; }
 }
 function editFileHtml(row, file) {
-  if (file.text === null) return '<div class="ovr-note">Whole-file editing needs the live file — ' + escapeHtml(file.err || 'unavailable') + '. Use Fields.</div>';
+  if (file.text === null) return '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>';
   const draft = wfDraft != null ? wfDraft : file.text;
   const jsonMode = editJsonOk(row, draft);
   const hint = jsonMode
-    ? 'Edit the whole file as structured fields — <b>Preview</b> derives the minimal override delta by diffing the frozen default.'
-    : 'Edit the whole file — <b>Preview</b> derives the minimal override delta by diffing the frozen default. Use this only when Fields can’t express the change.';
+    ? 'Edit the whole file as structured fields. Until it is owned whole, <b>Preview</b> shows what would be recorded against the frozen default.'
+    : 'Edit the whole file. Until it is owned whole, <b>Preview</b> shows what would be recorded against the frozen default.';
   const widget = jsonMode
     ? '<div class="wf-json" id="wfJson"></div>'
     : '<textarea class="wf-ta" id="wfTa" spellcheck="false" autocomplete="off" wrap="off">' + escapeHtml(draft) + '</textarea>';
