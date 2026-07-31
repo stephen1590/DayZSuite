@@ -114,7 +114,7 @@
       "scope": "shared",
       "seed": "deploy/server-settings.json",
       "mirror": "defaults",
-      "web": "patch",
+      "web": "file",
       "category": "input",
       "check": "json"
     },

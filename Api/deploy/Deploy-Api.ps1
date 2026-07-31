@@ -228,7 +228,16 @@ if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled 
 # (files beneath are reachable, json/xml + replace-only enforced box-side by _own_check).
 # web:'types' rows are EXCLUDED even when owned: types-write is their ONLY writer (structural CE
 # validation own-write doesn't do). They join the generic verb when it gains per-kind validation.
-$ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.box -and $_.web -ne 'types' } |
+#
+# category:'input' joins them (Scale-Ready E5, 2026-07-31). An input is a GENERATOR DRIVER -
+# server-settings.json drives Apply-ServerCfg, which compiles serverDZ.cfg. It is still box-owned
+# content the web edits whole, so own-write is its transport; the categories differ only in what
+# READS the file (the game vs a compiler), not in how it is written. Safe because the compiler's
+# allowlist is closed and enforced at RENDER time - an unlisted key is ignored with a warning no
+# matter who wrote it - so whole-file editing cannot widen what reaches serverDZ.cfg.
+# Exactly ONE input row exists today; tests/server-settings-surface.test.ps1 fails if a second
+# appears, so a new input is classified deliberately instead of silently becoming writable.
+$ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -in @('owned', 'input') -and $_.box -and $_.web -ne 'types' } |
     ForEach-Object { "$($_.box)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
 $ownedDirs  = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.dir -and -not $_.box } |
     ForEach-Object { "$($_.dir)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)

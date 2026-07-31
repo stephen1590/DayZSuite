@@ -362,7 +362,6 @@ function selectRow(key) {
   // renderer's allowlist silently drops. It keeps its form.
   // A locked row has nothing to edit, so it falls back to the read-only file view.
   ovrView = row.types ? 'types'
-    : isCycleRow(row) ? 'fields'
     : (row.access === 'lock' || row.kind === 'other') ? 'file'
     : 'edit';
   renderFilesNav();
@@ -581,6 +580,12 @@ async function renderBody(row) {
       onSaved: () => { delete fileCache['f|' + row.key]; },
     });
     if (text != null && selKey === row.key) lastFileText = text;
+    // E5: the generator-input driver keeps its context panel ABOVE the document - the numbers
+    // it reports are the file's own, so it can only ever agree with what is on screen.
+    if (isCycleRow(row) && text != null) {
+      let doc = null; try { doc = JSON.parse(stripBom(text)); } catch { /* unparseable: skip the panel, the editor still works */ }
+      if (doc) body.insertAdjacentHTML('afterbegin', cycleHtml(doc));
+    }
     return;
   }
   const typesTable = !!row.types && ovrView !== 'file';
@@ -601,9 +606,7 @@ async function renderBody(row) {
   if (selKey !== row.key) return;                    // selection changed while awaiting
   lastFileText = file.text;
   const eff = effectivePatches(row);
-  // The generator-input form is the only view server-settings.json has - it never falls through
-  // to whole-file edit, whatever view the previously-selected row left in ovrView (module state).
-  const view = isCycleRow(row) ? 'fields' : ovrView;
+  const view = ovrView;
   if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
   if (view === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
   if (row.access === 'lock') {
@@ -619,12 +622,10 @@ async function renderBody(row) {
   // live values. The panel still renders ABOVE the list.
   const fieldsHtml = (row.kind === 'xml' ? xmlFieldsHtml(row, eff, def.text) : jsonFieldsHtml(row, eff, file.text, def.text));
   body.innerHTML = wfNote + (file.text === null ? '<div class="ovr-note">Whole-file context unavailable — ' + escapeHtml(file.err || 'unknown') + '. You can still edit existing overrides.</div>' : '') +
-    (isCycleRow(row) ? cycleHtml(row, eff) : '') +
     '<div class="fld-filter"><input id="ovrFilter" type="text" placeholder="Filter fields by name…" spellcheck="false" autocomplete="off"><span id="ovrFilterNote" class="meta">no matching fields</span></div>' +
     fieldsHtml;
   const wfClr = $('wfClear'); if (wfClr) wfClr.onclick = () => wholeFileClear(row);
   wireFields(row);
-  if (isCycleRow(row)) wireCycle(row);
   applyFieldVisibility();
 }
 // Fields-view visibility: filter by key substring, and cap the "rest of the file" list until expanded.
@@ -718,13 +719,6 @@ function hm(h) {
   const t = Math.round(h * 60);
   return (t >= 60 ? Math.floor(t / 60) + 'h ' : '') + (t % 60) + 'm';
 }
-// Effective value for a cycle key: the pending override wins, else the live file, else the default.
-function cycleVal(eff, sel, fallback) {
-  const o = eff.get(sel);
-  const raw = o ? o.value : (ovrLeafMap.has(sel) ? ovrLeafMap.get(sel) : fallback);
-  const n = Number(raw);
-  return (isFinite(n) && n > 0) ? n : fallback;
-}
 const CYCLE_RESTART_H = 4;     // the messages.xml restart schedule, for "cycles per restart"
 function cycleOutHtml(x, y) {
   const c = cycleHours(x, y);
@@ -747,73 +741,20 @@ function cycleOutHtml(x, y) {
     ? '<div class="cyc-warn">Night acceleration below 1 makes night pass slower than daylight — night becomes the longest part of the cycle.</div>' : '';
   return bar + nums + warn;
 }
-function cycleHtml(row, eff) {
-  const x = cycleVal(eff, CYCLE_X, 5), y = cycleVal(eff, CYCLE_Y, 4);
-  const ctl = (sel, label, val, min, max, step, hint) =>
-    '<div class="cyc-ctl"><label for="cyc-' + sel + '">' + escapeHtml(label) + '</label>'
-    + '<div class="cyc-row">'
-    + '<input type="range" id="cyc-' + sel + '" class="cyc-in" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
-    + '<input type="number" class="cyc-num" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
-    + '</div><span class="cyc-hint">' + escapeHtml(hint) + '</span></div>';
+// E5 (owner 2026-07-31): READ-ONLY context. server-settings.json is a generator DRIVER -
+// its values are edited in the JSON editor like any owned file, and this panel just says what
+// the two multipliers buy in real time. It used to carry sliders that wrote override rows;
+// that path died with the Fields view and the delta engine (A3).
+function cycleHtml(doc) {
+  const num = (k, d) => { const n = Number(doc && doc[k]); return (isFinite(n) && n > 0) ? n : d; };
+  const x = num(CYCLE_X, 5), y = num(CYCLE_Y, 4);
   return '<div class="cyc" id="cycPanel">'
     + '<h4>Day / night cycle</h4>'
-    + '<p class="cyc-sub">What these two multipliers actually buy in real time, assuming ' + CYCLE_DAYLIGHT + 'h of in-game daylight. Moving a slider writes the same field override as the list below — press Save, then restart to apply.</p>'
-    + '<div class="cyc-grid">'
-    + ctl(CYCLE_X, 'Time acceleration (X)', x, 1, 24, 0.5, 'Scales in-game time overall. Higher = shorter days.')
-    + ctl(CYCLE_Y, 'Night acceleration (Y)', y, 1, 24, 0.5, 'Multiplies again during night only. Higher = shorter nights.')
-    + '</div>'
+    + '<p class="cyc-sub">What <b>' + escapeHtml(CYCLE_X) + '</b> (' + x + ') and <b>' + escapeHtml(CYCLE_Y) + '</b> (' + y + ') buy in real time, assuming ' + CYCLE_DAYLIGHT + 'h of in-game daylight. Edit them in the document below.</p>'
     + '<div class="cyc-out" id="cycOut">' + cycleOutHtml(x, y) + '</div>'
-    + '<div class="cyc-foot">'
-    + '<span class="cyc-note">Applies at the next restart — Apply-ServerCfg renders serverDZ.cfg at prestart. Map selection is unaffected (that is map.env).</span>'
-    // These two keys are hidden from the field list below, so this is the only way back to the
-    // frozen default once one is overridden.
-    + ((eff.has(CYCLE_X) || eff.has(CYCLE_Y)) ? '<button type="button" class="btn-sm" id="cycReset">Reset to default</button>' : '')
-    + '</div></div>';
+    + '<div class="cyc-foot"><span class="cyc-note">Applies at the next restart — Apply-ServerCfg compiles serverDZ.cfg from this file at prestart. Map selection is unaffected (that is map.env).</span></div>'
+    + '</div>';
 }
-function wireCycle(row) {
-  const panel = $('cycPanel'); if (!panel) return;
-  const out = $('cycOut');
-  const readAll = () => {
-    const g = (sel) => Number(panel.querySelector('.cyc-in[data-sel="' + sel + '"]').value);
-    return { x: g(CYCLE_X), y: g(CYCLE_Y) };
-  };
-  const redraw = () => { const v = readAll(); if (out) out.innerHTML = cycleOutHtml(v.x, v.y); };
-  // Live readout while dragging; the override is written on release/commit so the field list
-  // and the dirty flag update once, not on every intermediate pixel.
-  const commit = (sel, valStr) => {
-    const n = Number(valStr);
-    if (!isFinite(n) || n <= 0) { setGlobalMsg('Acceleration must be a positive number.', true); return; }
-    layerMapRW(row, newLayerFor(row))[sel] = n;
-    updateDirtyUi();
-    renderFilesNav(); renderEditor();
-    setGlobalMsg('Unsaved change — press Save.', false);
-  };
-  panel.querySelectorAll('.cyc-in').forEach((s) => {
-    const num = panel.querySelector('.cyc-num[data-sel="' + s.dataset.sel + '"]');
-    s.addEventListener('input', () => { if (num) num.value = s.value; redraw(); });
-    s.addEventListener('change', () => commit(s.dataset.sel, s.value));
-  });
-  panel.querySelectorAll('.cyc-num').forEach((n) => {
-    const sld = panel.querySelector('.cyc-in[data-sel="' + n.dataset.sel + '"]');
-    n.addEventListener('input', () => { if (sld) sld.value = n.value; redraw(); });
-    n.addEventListener('change', () => commit(n.dataset.sel, n.value));
-  });
-  const rst = $('cycReset');
-  if (rst) rst.onclick = () => {
-    const now = effectivePatches(row);
-    let n = 0;
-    for (const sel of [CYCLE_X, CYCLE_Y]) {
-      const o = now.get(sel);
-      if (!o) continue;
-      delete layerMapRW(row, o.layer)[sel];
-      n++;
-    }
-    if (!n) return;
-    updateDirtyUi(); renderFilesNav(); renderEditor();
-    setGlobalMsg('Cycle reverted to default — press Save.', false);
-  };
-}
-
 function jsonFieldsHtml(row, eff, text, defaultText) {
   let fileObj = null;
   if (text !== null) { try { fileObj = bigParse(text); } catch { fileObj = null; } }
