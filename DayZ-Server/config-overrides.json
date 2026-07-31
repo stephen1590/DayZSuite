@@ -1381,6 +1381,28 @@
                 "/events/event[@name='VehicleOffroadHatchback']/lifetime": "432000",
                 "/events/event[@name='VehicleSedan02']/lifetime": "432000",
                 "/events/event[@name='VehicleTruck01']/lifetime": "432000"
+            },
+            "db/types.xml": {
+                "_readme": "Vehicle persistence. Vanilla db/types.xml ships lifetime=3 on every drivable class (Offroad_02 ships 0) - fine for vanilla because vehicles are event-spawned and inherit the EVENT lifetime, but any vehicle that stops being an event instance falls back to the TYPE lifetime and is swept in 3 seconds. 3888000 = 45 days. Field tweaks on a vendor-rewritten file = the patch niche kept in Phase 3 (CONFIG-ARCHITECTURE.md). Static loot props (Land_Boat_Small9_DE, StaticObj_PatrolBoat_Military_DE) are deliberately NOT patched - they are map scenery, not drivables. Proof: tests/vehicle-lifetime-overrides.test.ps1",
+                "/types/type[@name='OffroadHatchback']/lifetime": "3888000",
+                "/types/type[@name='OffroadHatchback_Blue']/lifetime": "3888000",
+                "/types/type[@name='OffroadHatchback_White']/lifetime": "3888000",
+                "/types/type[@name='Hatchback_02']/lifetime": "3888000",
+                "/types/type[@name='Hatchback_02_Blue']/lifetime": "3888000",
+                "/types/type[@name='Sedan_02']/lifetime": "3888000",
+                "/types/type[@name='Sedan_02_Grey']/lifetime": "3888000",
+                "/types/type[@name='Sedan_02_Red']/lifetime": "3888000",
+                "/types/type[@name='CivilianSedan']/lifetime": "3888000",
+                "/types/type[@name='CivilianSedan_Black']/lifetime": "3888000",
+                "/types/type[@name='CivilianSedan_Wine']/lifetime": "3888000",
+                "/types/type[@name='Truck_01_Covered']/lifetime": "3888000",
+                "/types/type[@name='Truck_01_Covered_Blue']/lifetime": "3888000",
+                "/types/type[@name='Truck_01_Covered_Orange']/lifetime": "3888000",
+                "/types/type[@name='Offroad_02']/lifetime": "3888000",
+                "/types/type[@name='Boat_01_Black']/lifetime": "3888000",
+                "/types/type[@name='Boat_01_Blue']/lifetime": "3888000",
+                "/types/type[@name='Boat_01_Camo']/lifetime": "3888000",
+                "/types/type[@name='Boat_01_Orange']/lifetime": "3888000"
             }
         }
     },
