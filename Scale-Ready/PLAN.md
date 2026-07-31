@@ -197,6 +197,16 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** no test file inside a shipped directory; the runner counts every test; new tests get the shared harness by copying one pattern.
 - **Deps:** T1. **Deploy:** ConfigViewer (removes the shipped test). **Reversible:** yes.
 
+**E5 - server-settings.json: JSON editor + compile-on-save (owner clarification 2026-07-31, verbatim)**
+> *"We are getting rid of the fields view, remember? Use the JSON/XML editor. The server-settings compiles (not explicit write) on a save to create our OWNED file, which only has fields matching default non-owned file. The settings-json is more of a web form to generate our owned file based on context in the form. It's a driver for the settings."*
+
+- **The model this settles.** `server-settings.json` is a **2.2 file** (owner's own category: an input that GENERATES a direct replacement), not a write-path problem. It is the DRIVER; `serverDZ.cfg` is the generated owned output; `Apply-ServerCfg` is the compiler, and its allowlist is already closed and enforced at render time, so nothing an editor writes can widen it. My earlier framing ("which write verb?") was wrong - the question was never the transport.
+- **Build:** (1) registry `Server-settings` `web:'patch'` → `'file'`, category stays `'input'` (accurate - it is a renderer input, not a game-read file); (2) `Deploy-Api` OWNED_FILES includes `'input'` rows - exactly ONE row exists, so the exposure is precisely this file; (3) `editor.js` drops the two `isCycleRow` special-cases that force the Fields view (lines ~365 and ~606), so it renders the standard JSON editor like every owned surface; (4) the cycle panel survives as computed CONTEXT above the editor, reading the two multipliers from the document instead of writing override rows (`wireCycle`'s `layerMapRW` commit path dies with the Fields view).
+- **HARD ORDERING - do not ship these out of order.** The Api must deploy FIRST. `own-write` refuses any path not in the box's rendered OWNED_FILES, so a ConfigViewer-only deploy leaves server-settings.json with no working save path at all - the Fields view gone and own-write refusing. Api → verify the file appears as an owned surface → ConfigViewer.
+- **Acceptance:** server-settings.json opens in the JSON editor; a save writes the whole file via own-write; the next prestart compiles serverDZ.cfg from it; the cycle numbers still show; no Fields view anywhere in the app.
+- **Deps:** Api deploy. **Deploy:** Api THEN ConfigViewer. **Reversible:** yes (revert both, in reverse order).
+- **NOT BUILT** - blocked on the ordering above plus a browser pass, and staging-vm is powered off so it cannot be rehearsed.
+
 **T4 - Post-deploy LIVE verification (PINNED by the owner 2026-07-31 - deliberately deferred, NOT dropped)**
 > Owner: *"Put a pin in testing until we're done with the overrides migration. Remember it. Don't forget. We need to expand testing."*
 
