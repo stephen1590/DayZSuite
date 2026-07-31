@@ -72,6 +72,29 @@ export function sizeBadge(v) {
   return '';
 }
 
+// The name an array ITEM borrows from its parent. json-editor's schemapath calls the mount root
+// "root", so when the focused node IS the array every item read "root [x/N]". The mounted editor
+// knows its real name (schemaForFocus put it in the root schema title) - use that instead.
+export function parentKeyOf(parentPath, rootTitle) {
+  const seg = String(parentPath || '').split('.').pop();
+  return (seg === 'root' || seg === '') ? (rootTitle || 'root') : seg;
+}
+
+// The size badge for one editor node, decided by what the node IS rather than by truthiness.
+// The old test was `if (ed.rows)` - and an EMPTY ARRAY IS TRUTHY, so any editor exposing rows: []
+// (object editors included) fell into the array branch and printed "[ ] (null)". Schema type wins;
+// when the schema is permissive ({}) fall back to whichever collection is actually present.
+// Both counts are O(1) - never getValue(), which serializes the whole subtree per node.
+export function badgeForNode(ed) {
+  if (!ed) return '';
+  const t = ed.schema && ed.schema.type;
+  // Delegate the WORDING to sizeBadge so there is one formatter, not two that can drift.
+  // Both handles are passed by reference and only their length/key-count is read - no copying.
+  if (t === 'array' || (t == null && Array.isArray(ed.rows))) return sizeBadge(Array.isArray(ed.rows) ? ed.rows : []);
+  if (t === 'object' || (t == null && ed.editors && typeof ed.editors === 'object')) return sizeBadge(ed.editors || {});
+  return '';
+}
+
 // The schema handed to a freshly mounted focus editor: the inferred shape PLUS the title its
 // header renders. Keeping these together is what stops the two drifting apart again.
 export function schemaForFocus(sub, path) {
@@ -131,9 +154,12 @@ function decorate(root, ed) {
     const name = nameSpanOf(row); const path = node.getAttribute('data-schemapath');
     const m = path.match(IX);
     if (m && name) {                       // array item -> "ParentKey [i+1/N]" (no inferred schema name)
-      const idx = +m[1], parentPath = path.replace(IX, ''), key = parentPath.split('.').pop();
+      // parentKeyOf, not split('.').pop(): at the mount root that yields the literal "root", which
+      // is how items under a focused array came out as "root [x/N]".
+      const idx = +m[1], parentPath = path.replace(IX, '');
+      const key = parentKeyOf(parentPath, ed.schema && ed.schema.title);
       const pe = ed.getEditor(parentPath);
-      const n = (pe && pe.rows) ? pe.rows.length : '?';   // O(1) row count - never getValue (it serializes the whole subtree)
+      const n = (pe && Array.isArray(pe.rows)) ? pe.rows.length : '?';   // O(1) row count - never getValue (it serializes the whole subtree)
       const want = key + ' [' + (idx + 1) + '/' + n + ']';
       if (name.textContent !== want) name.textContent = want;
     }
@@ -150,9 +176,7 @@ function decorate(root, ed) {
     // BUILT array editor because it is O(1) and always current mid-edit; getValue() here would
     // serialize the whole subtree per node (the O(n^2) storm that made big files crawl).
     const ce = ed.getEditor(path);
-    let txt = '';
-    if (ce && ce.rows) txt = ce.rows.length ? '[' + ce.rows.length + ']' : '[ ] (null)';
-    else if (ce && ce.schema && ce.schema.type === 'object') txt = sizeBadge(ce.value || {});
+    const txt = badgeForNode(ce);
     row.classList.toggle('je-empty', txt.indexOf('null') > -1);   // empty array -> dimmed gold
     let badge = row.querySelector(':scope > .je-status');
     if (txt && name) { if (!badge) { badge = document.createElement('span'); badge.className = 'je-status'; name.after(badge); } badge.textContent = txt; badge.classList.toggle('je-null', txt.indexOf('null') > -1); }
