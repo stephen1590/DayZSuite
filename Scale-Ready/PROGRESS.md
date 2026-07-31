@@ -5,7 +5,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 5 / 24 done · Workstream A nearly delivered (A3 decision-gated) · **Workstream B not started** · WS-U/G/T/P added by the 2026-07-31 owner reframe (PLAN.md §1a), all TODO except P1 · last updated 2026-07-31 (second pass - reframe).
+**Rollup:** 7 / 25 done · Workstream A nearly delivered (A3 decision-gated) · **Workstream B not started** · WS-U/G/T/P added by the 2026-07-31 owner reframe (PLAN.md §1a) - T1 + U1 + P1 delivered, rest TODO · E4 (save confirmation, owner request) added 2026-07-31 · last updated 2026-07-31 (third pass - T1 + U1 shipped).
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -52,10 +52,11 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | E1 | 2 | B | **Deprecate the "Fields" view for OWNED surfaces; "Edit" is the default, XML included** | plan | - | ConfigViewer | **BUILT 2026-07-31, not deployed** — `ovrView` defaults to `'edit'` for every owned row (XML included); Fields button gone; `'fields'` unreachable except for the one generator input. **NOT a blanket removal (owner correction):** `server-settings.json` is not a file the game reads - it is the INPUT set `Apply-ServerCfg` renders into `serverDZ.cfg` (a `generated` artifact). That is Category B, "UI: edits the inputs", so it KEEPS its purpose-built form and gets no view switcher. Fixed alongside: its registry row was `category:'owned'`, which had put it in the box's OWNED_FILES and made it `own-write`-able - a whole-file replace would bypass the toggle allowlist. New `category:'input'` value added + documented; owned surfaces 33 → 32 |
 | E2 | 2 | B | **Edit view: drop the full box border, keep a single left "thread" rule** | plan | - | ConfigViewer | **BUILT 2026-07-31, not deployed** — `.own-cm` and `.wf-ta` both go `border: none; border-left: 2px solid var(--border); border-radius: 0`, with the left rule turning accent on focus. Both edit paths now match |
 | E3 | 2 | B | **Per-file description + metadata under the filename, sourced from the DayZ config knowledge base** | plan | - | Api+ConfigViewer | **DONE 2026-07-31** — registry `about`/`aboutUrl` → CONFIG_MAP (8 cols) → config-list → `aboutBlock()` in all three chromes. 27 rows carry text; LIVE (Api deployed 04:32, ConfigViewer editor.js 04:23). Source: https://low.ms/knowledgebase/dayz-server-configuration |
-| T1 | 0 | T | ONE test runner (`Invoke-Tests.ps1`), wired fail-closed into all 3 deploys | plan | - | none | TODO — **do first**; 10 test files exist today, zero runners invoke them |
+| E4 | 2 | B/U | **Save confirmation names the edited files (owner 2026-07-31 - verbatim quote in PLAN.md); ONE dirty registry across all editors** | plan | - | ConfigViewer | TODO — 4 parallel dirty mechanisms today (editor.js overrides doc, own-editor, types-editor, map.js); design proof owed to owner before UI build |
+| T1 | 0 | T | ONE test runner (`Invoke-Tests.ps1`), wired fail-closed into all 3 deploys | plan | - | none | **DONE 2026-07-31** (ae27bac) — runner at repo root, TDD 17/17 (seen red first), repo run 10/10 in ~6.5s; wired into all 3 deploys (dry-run warns, ship aborts, `-SkipTests` escape, missing runner = hard stop); non-vacuous: planted red suite flipped Deploy-Api's gate to "would be blocked", then removed |
 | T2 | 0 | T | Shared test harness convention; no test ships to the webroot | plan | T1 | ConfigViewer | TODO — 3 counter styles today; `chat-format.test.js` sits in `web/js/` |
 | T3 | 2 | T | Cross-map parity assertions (3 missions agree unless registry-declared) | plan | C4 | none | TODO |
-| U1 | 0 | U | Freeze mechanism counts (write verbs, editor mounts) as gate maximums | plan | - | none | TODO — 7 write verbs, ~7 edit surfaces measured 2026-07-31 |
+| U1 | 0 | U | Freeze mechanism counts (write verbs, editor mounts) as gate maximums | plan | - | none | **DONE 2026-07-31** — `tests/mechanism-counts.test.ps1` via the T1 runner (gates ALL 3 deploys, incl. Deploy-Api which Test-Configs never sees): 6 write verbs max (the old "7" miscounted settings-write's patrols key), the 7-module `apiPost`-caller set pinned by name, apiPost single-definition. Non-vacuous: planted verb + planted writer both red, reverted |
 | U2 | 2 | U | Migrate each bespoke write verb onto the generic path, DELETE it (rolling) | plan | U1, T1 | Api per verb | TODO — candidates: file-write, spawn-write, settings-write, types-write, patrol path |
 | G1 | 1 | G | Registry rows declare generator inputs + builder | plan | C4 | none | TODO |
 | G2 | 2 | G | ONE propagation engine (common → 3 maps); bespoke builder logic deleted per cutover | plan | G1, T1 | DayZ per builder | TODO — 5 bespoke builders today; only custom-CE has a common→per-map overlay |
@@ -104,3 +105,15 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   adoption (3 consumers) - sign B0 around what exists. Stale facts corrected in this file:
   gate 27/0 (was noted 26/1), editor.js 1314 (was noted 1297). All of it UNCOMMITTED, like the
   rest of the tree - the commit decision is the owner's.
+- 2026-07-31 (third pass) - **owner gave the go; tree COMMITTED + T1 SHIPPED.** Docs reframe
+  committed as 396023d (CLAUDE.md un-ignored - the design contract must be versioned), the
+  accumulated 2026-07-30/31 feature work as 360e059 (all 10 suites run green first), T1 as
+  ae27bac. The runner is live in all three deploy scripts, fail-closed, proven non-vacuous.
+  **E4 added** (owner request, verbatim in PLAN.md): save confirmation must NAME the edited
+  files; root cause is 4 parallel dirty-state mechanisms, fix is ONE dirty registry + one
+  dialog. Design proof owed to the owner before the UI is built.
+- 2026-07-31 (third pass, cont.) - **U1 SHIPPED**: `tests/mechanism-counts.test.ps1` pins 6
+  write verbs / the 7-module apiPost-caller set / apiPost single-definition, enforced by the
+  T1 runner on every deploy. The ratchet only goes down: U2 deletes a verb, the same change
+  lowers the pin. Measurement corrected the ledger's "7 write verbs" - settings-write's
+  `patrols` key is a KEY, not a verb.

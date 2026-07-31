@@ -204,8 +204,9 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 
 **U1 - Freeze the mechanism counts**
 - Gate assertion: write-verb count and editor-mount count are pinned at today's values as a MAXIMUM. They may only go down.
-- **Acceptance:** adding an 8th write verb or a new editor mount fails Test-Configs with a message naming this plan.
+- **Acceptance:** adding a write verb or a new box-writing UI module fails the gate with a message naming this plan.
 - **Deps:** none. **Deploy:** none. **Reversible:** yes.
+- **Delivered 2026-07-31** as `tests/mechanism-counts.test.ps1`, run by the T1 runner on ALL THREE deploys - deliberately NOT in Test-Configs, which only gates DayZ deploys while a new write verb ships via Deploy-Api. Measured pins: **6** write verbs (`override/spawn/file/types/own/settings-write` - the earlier "7" counted settings-write's `patrols` KEY as a verb), the **7-module set** of `apiPost` callers in `web/js` (editor, own-editor, types-editor, map, maintenance, logs + api-client defining it), and apiPost defined ONCE. Proven non-vacuous: a planted 7th verb and a planted writer module both went red with the stop-and-surface message, then reverted.
 
 **U2 - Migrate each bespoke write verb onto the generic path, then DELETE it (rolling)**
 - Worst-first order decided at start (candidates: `file-write`, `spawn-write`, `settings-write`, `types-write`, patrol path). Per verb: the registry row carries what the verb encoded (validator = `check`, pairing, scope), the UI switches to the generic call, the verb is deleted from dayz-ctl + actions.ts + the client. Per-surface validation SURVIVES - it moves into the row, not a private verb.
@@ -226,6 +227,14 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - The four needs + the retirement rule, compressed to the always-loaded file. A feature request is placed against the whole design - surface category, editor, write path - BEFORE building.
 - **Acceptance:** the contract is in CLAUDE.md; Scale-Ready docs are pointed to from it.
 - **Deps:** none. **Deploy:** none. **Reversible:** yes.
+
+**E4 - Save confirmation names the files (owner request 2026-07-31, verbatim)**
+> "saving should prompt for confirmation now. The dialogue should tell you what files you edited and are currently saving. I've seen warnings after switching pages, so I don't really know which I edited and can't tell, so I don't end up saving. It would be good to know what exactly I'm saving before confirming."
+
+- Placement (per the design contract - placed BEFORE built): the page-switch warning the owner sees is `editor.js`'s overrides-doc dirty guard (editor.js:60-75, the header pill + beforeunload). own-editor.js, types-editor.js and map.js each hold a PRIVATE dirty state that guard cannot see - four parallel dirty mechanisms is WHY no file list is possible today. The fix is ONE dirty registry (file → dirty state), every editor reports into it; save prompts with the exact list of edited files; the unsaved-changes warning names them too. NOT a fourth bespoke dialog per editor - the registry is the mechanism, the dialog is one consumer.
+- **Acceptance:** every save path prompts with the exact file list before writing; the page-switch/unsaved warning names the files; ONE dirty registry, zero per-editor private copies left.
+- **Deps:** none to start; converges with U2 (the generic save path consumes the same registry). Design proof shown to the owner before the UI is built (standing rule).
+- **Deploy:** ConfigViewer. **Reversible:** yes.
 
 **P2 - Design decisions become gate assertions**
 - Every design decision that CAN be asserted, IS: the U1 count freezes, the niche leaf-cap (exists - the pattern's proof), mods.conf single-owner (exists), T3 parity. New decisions add an assertion in the same named gate section, with the rationale in the failure message.
