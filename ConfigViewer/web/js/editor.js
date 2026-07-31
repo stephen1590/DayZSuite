@@ -53,10 +53,11 @@ let lastFileText = null;  // last fetched whole-file text (for Copy)
 const fileCache = {};
 // Whole-file Edit mode (distinct from the read-only View): edit the entire file, the API diffs
 // it against the frozen default to derive a minimal delta, then Apply merges that delta into
-// overridesDoc so the normal Save path commits it. wfShowDefault drives the View Live/Default toggle.
-let wfDraft = null, wfPreview = null, wfBusy = false, wfShowDefault = false;
+// overridesDoc so the normal Save path commits it. (wfShowDefault retired with the Live/Default
+// toggle - the file view shows both copies side by side now, E6.)
+let wfDraft = null, wfPreview = null, wfBusy = false;
 let wfJsonHandle = null;   // the mounted json-editor handle in Edit mode (JSON files); getValue at Preview time
-function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfShowDefault = false; wfJsonHandle = null; }
+function wfReset() { wfDraft = null; wfPreview = null; wfBusy = false; wfJsonHandle = null; }
 
 // Dirty tracking: overridesDoc vs its last loaded/saved state. Drives the unsaved
 // notification — the header pill, and the beforeunload guard so a reload/close can't
@@ -316,10 +317,13 @@ function renderFilesNav() {
     }
     const rowHtml = (r) => {
       const n = ownLayerCount(r);   // a mission row counts ONLY its own layer; common has its own row
-      const badge = r.types ? '<span class="own-badge">rw</span>'
-        : n > 0 ? '<span class="ovr-badge">' + n + '</span>'
-        : r.access === 'own' ? '<span class="own-badge">rw</span>'
-        : r.access === 'lock' ? '<span class="ro-badge">ro</span>' : '';
+      // E7 (owner: "how come the RO/RW only applies to a few items? Be consistent."): every row
+      // states its access, always. It used to fall through to '' for a plain editable row, and an
+      // override count REPLACED the rw/ro badge - so writability was shown for some rows and not
+      // others for two different reasons. Access badge always; the count rides alongside it.
+      const writable = r.access !== 'lock';
+      const badge = (n > 0 ? '<span class="ovr-badge">' + n + '</span>' : '')
+        + (writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>');
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
         '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
     };
@@ -448,7 +452,9 @@ async function fetchRowFile(row) {
     return (fileCache[ck] = { text: stripBom(r.content ?? ''), path: r.path || row.relpath });
   } catch (err) {
     if (err.status === 401) { handle(err); return { text: null, err: 'signed out' }; }
-    return { text: null, err: err.status === 404 ? 'not readable on the box' : err.message };
+    // 404 = the path is allowlisted but nothing is there. Saying "not readable" reads like a
+    // permission fault; the usual cause is a file its mod only writes at runtime (E10).
+    return { text: null, err: err.status === 404 ? 'ABSENT' : err.message };
   }
 }
 // The frozen-default companion (<name>.defaults<ext>) — the true default, since the live
@@ -831,20 +837,31 @@ function xmlEvalHtml(text, sels) {
   }
   return '<div class="xeval"><div class="stat" style="color:var(--faint);margin-bottom:2px">XPaths evaluated against this file</div>' + rows2 + '</div>';
 }
+// E6 (owner 2026-07-31): the frozen default sits BESIDE the live file, not behind a toggle.
+// "I SAID WE NEED TO BE ABLE TO SEE THE DEFAULT SIDE BY SIDE WITH OUR OWNED VERSION." A view
+// switcher makes you hold one copy in your head to compare it with the other, which is the
+// opposite of a comparison. Both panes scroll independently; no button, nothing to toggle.
+// One wording for a file the box could not hand back, used by every surface that shows it.
+function fileMissingNote(file) {
+  if (file && file.err === 'ABSENT') return 'This file is not on the box yet. Nothing has created it - a mod that writes its config on first run has not run, or it has never been generated. It is allowlisted, so it will appear here once it exists.';
+  return 'Whole-file view unavailable - ' + (file && file.err ? file.err : 'unknown') + '.';
+}
 function fileViewHtml(row, file, eff, def) {
   const canDef = !!(def && def.text != null);
-  const showDef = wfShowDefault && canDef;
-  const text = showDef ? def.text : file.text;
-  if (text === null) return '<div class="ovr-note">Whole-file view unavailable — ' + escapeHtml(file.err || 'unknown') + '.</div>';
-  // Live/Default toggle — lets anyone SEE the frozen baseline the Edit mode diffs against.
-  const toggle = canDef ? '<div class="seg wf-vtoggle" id="wfVToggle"><button data-d="live" class="' + (showDef ? '' : 'on') + '">Live file</button><button data-d="def" class="' + (showDef ? 'on' : '') + '">Default</button></div>' : '';
-  const head = (!showDef && row.kind === 'xml') ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
-  return '<div class="fileview">' + toggle + head + '<pre>' + highlight(text, detectLang(row.relpath || row.label)) + '</pre></div>';
+  const lang = detectLang(row.relpath || row.label);
+  if (file.text === null && !canDef) return '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>';
+  const head = (row.kind === 'xml' && file.text != null) ? xmlEvalHtml(file.text, [...eff.keys()]) : '';
+  if (!canDef) return '<div class="fileview">' + head + '<pre>' + highlight(file.text, lang) + '</pre></div>';
+  const livePane = file.text === null
+    ? '<div class="ovr-note">' + escapeHtml(fileMissingNote(file)) + '</div>'
+    : '<pre>' + highlight(file.text, lang) + '</pre>';
+  return '<div class="fileview">' + head
+    + '<div class="fv-split">'
+    + '<div class="fv-pane"><div class="fv-cap">Default <span class="meta">frozen baseline</span></div><pre>' + highlight(def.text, lang) + '</pre></div>'
+    + '<div class="fv-pane"><div class="fv-cap">Live <span class="meta">this box</span></div>' + livePane + '</div>'
+    + '</div></div>';
 }
-function wireFileView(row) {
-  const tg = $('wfVToggle');
-  if (tg) tg.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wfShowDefault = (b.dataset.d === 'def'); renderBody(row); };
-}
+function wireFileView() { /* nothing to wire - the toggle is gone (E6) */ }
 
 // ===================== whole-file Edit mode =====================
 // Which override layer a whole-file delta writes to, and whether that's safe. A files-scope row
@@ -999,7 +1016,7 @@ function wireEditFile(row) {
     const ta = $('wfTa'); if (ta) ta.oninput = () => { wfDraft = ta.value; wfPreview = null; renderWfPreview(row); };
   }
   const pv = $('wfPreviewBtn'); if (pv) pv.onclick = () => { if (wfJsonHandle) wfDraft = jsonEnc(wfJsonHandle.getDoc()); wfDoPreview(row); };
-  const vd = $('wfViewDefault'); if (vd) vd.onclick = () => { wfShowDefault = true; ovrView = 'file'; renderEditor(); };
+  const vd = $('wfViewDefault'); if (vd) vd.onclick = () => { ovrView = 'file'; renderEditor(); };   // E6: the file view now shows BOTH copies
   renderWfPreview(row);
 }
 

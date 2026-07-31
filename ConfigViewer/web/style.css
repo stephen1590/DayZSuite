@@ -786,3 +786,12 @@
   .own-cm .cm-deletedChunk { background: rgba(239,91,82,0.12); }
   .own-cm .cm-deletedChunk del, .own-cm .cm-deletedText { background: rgba(239,91,82,0.22); text-decoration: none; }
   .own-cm .cm-changeGutter { width: 4px; }
+
+/* E6: default beside live in the file view. Two independent scroll panes, one per copy; they
+   stack on a narrow viewport rather than squeezing both into unreadable columns. */
+.fv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+@media (max-width: 900px) { .fv-split { grid-template-columns: 1fr; } }
+.fv-pane { min-width: 0; }
+.fv-pane .fv-cap { font-size: 11px; font-weight: 700; letter-spacing: .3px; color: var(--muted); padding: 0 0 4px 2px; }
+.fv-pane .fv-cap .meta { font-weight: 400; opacity: .75; }
+.fv-pane pre { margin: 0; max-height: 60vh; overflow: auto; }
