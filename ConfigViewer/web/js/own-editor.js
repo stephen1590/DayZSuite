@@ -39,6 +39,14 @@ export function ownAnyDirty() {
 
 // E4: WHICH owned files are dirty, by name - the shell pill and the save dialog
 // both need names, not a boolean. See js/dirty-files.js.
+// The live JSON handle for a row, so a purpose-built control (the day/night sliders) can edit the
+// SAME document the editor holds rather than keeping its own copy. null when the row is not
+// mounted as structured JSON (raw-text/CM6 surfaces).
+export function ownJsonHandle(key) {
+  const st = states.get(key);
+  return (st && st.json) ? st.json : null;
+}
+
 export function ownDirtyNames() {
   const out = [];
   for (const st of states.values()) if (st.draft != null && st.draft !== st.baseText) out.push(st.path);

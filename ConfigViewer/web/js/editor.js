@@ -16,7 +16,7 @@ import { bigParse, bigStringify, restoreBigInts } from './lossless-json.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own module with its OWN save path (configs/set-types), never config-overrides.json.
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
-import { renderOwnEditor, ownAnyDirty, ownDirtyNames } from './own-editor.js';
+import { renderOwnEditor, ownAnyDirty, ownDirtyNames, ownJsonHandle } from './own-editor.js';
 import { changedFiles, formatUnsaved, confirmSave } from './dirty-files.js';   // E4
 // Themed structured JSON editor (vendored @json-editor/json-editor + glue). Used as the whole-file
 // Edit-mode widget for JSON files: it REPLACES the raw textarea only - the save path is unchanged
@@ -592,7 +592,7 @@ async function renderBody(row) {
     // it reports are the file's own, so it can only ever agree with what is on screen.
     if (isCycleRow(row) && text != null) {
       let doc = null; try { doc = JSON.parse(stripBom(text)); } catch { /* unparseable: skip the panel, the editor still works */ }
-      if (doc) body.insertAdjacentHTML('afterbegin', cycleHtml(doc));
+      if (doc) { body.insertAdjacentHTML('afterbegin', cycleHtml(doc)); wireCycle(row); }
     }
     return;
   }
@@ -616,7 +616,17 @@ async function renderBody(row) {
   const eff = effectivePatches(row);
   const view = ovrView;
   if (view === 'file') { body.innerHTML = fileViewHtml(row, file, eff, def); wireFileView(row); return; }
-  if (view === 'edit' && row.access !== 'lock') { body.innerHTML = editFileHtml(row, file); wireEditFile(row); return; }
+  if (view === 'edit' && row.access !== 'lock') {
+    body.innerHTML = editFileHtml(row, file);
+    wireEditFile(row);
+    // The cycle editor belongs to the FILE, not to a particular view - it shows wherever
+    // server-settings.json is being edited (owner: "THAT WAS USEFUL VISUALLY. Keep it.").
+    if (isCycleRow(row) && file.text != null) {
+      let doc = null; try { doc = JSON.parse(stripBom(file.text)); } catch { /* unparseable: skip */ }
+      if (doc) { body.insertAdjacentHTML('afterbegin', cycleHtml(doc)); wireCycle(row); }
+    }
+    return;
+  }
   if (row.access === 'lock') {
     body.innerHTML = row.mapOwned
       ? '<div class="ovr-note"><b>Edited on the Map tab.</b> Patrols are edited individually on the map (click a patrol → Edit fields); the map-wide defaults via the map\'s <b>Global settings</b>. This file is read-only here so a raw edit can\'t break spawns. See the <b>File</b> view for its contents.</div>'
@@ -726,6 +736,83 @@ function hm(h) {
   if (!isFinite(h) || h <= 0) return '—';
   const t = Math.round(h * 60);
   return (t >= 60 ? Math.floor(t / 60) + 'h ' : '') + (t % 60) + 'm';
+}
+const CYCLE_RESTART_H = 4;     // the messages.xml restart schedule, for "cycles per restart"
+function cycleOutHtml(x, y) {
+  const c = cycleHours(x, y);
+  const ok = isFinite(c.full) && c.full > 0;
+  const dayPct = ok ? Math.max(0, Math.min(100, (c.day / c.full) * 100)) : 0;
+  const bar = !ok ? ''
+    : '<div class="cyc-bar"><i class="day" style="width:' + dayPct.toFixed(2) + '%">'
+      + (dayPct >= 18 ? 'Daylight ' + escapeHtml(hm(c.day)) : '') + '</i>'
+      + '<i class="night" style="width:' + (100 - dayPct).toFixed(2) + '%">'
+      + (100 - dayPct >= 18 ? 'Night ' + escapeHtml(hm(c.night)) : '') + '</i></div>';
+  const perRestart = ok ? (CYCLE_RESTART_H / c.full) : null;
+  const nums = '<div class="cyc-nums">'
+    + '<span>Full cycle <b>' + escapeHtml(hm(c.full)) + '</b></span>'
+    + '<span>Daylight <b>' + escapeHtml(hm(c.day)) + '</b></span>'
+    + '<span>Night <b>' + escapeHtml(hm(c.night)) + '</b></span>'
+    + '<span>Cycles per restart <b>' + (perRestart === null ? '—' : perRestart.toFixed(1)) + '</b> <span class="meta">(' + CYCLE_RESTART_H + 'h schedule)</span></span>'
+    + '</div>';
+  // Y below 1 means night runs SLOWER than day - legal, rarely intended.
+  const warn = (y < 1)
+    ? '<div class="cyc-warn">Night acceleration below 1 makes night pass slower than daylight — night becomes the longest part of the cycle.</div>' : '';
+  return bar + nums + warn;
+}
+// The day/night cycle editor. Owner 2026-07-31: "you got rid of the day/night cycle editor
+// view.... THAT WAS USEFUL VISUALLY. Keep it. That had no bearing on the 'form input' method."
+// Correct - retiring the Fields VIEW (E5) was never a reason to lose this. It is back, and the
+// sliders now drive the SAME document the editor below holds (via the navigator's setValue),
+// instead of writing override rows into config-overrides.json the way they used to.
+function cycleHtml(doc) {
+  const num = (k, d) => { const n = Number(doc && doc[k]); return (isFinite(n) && n > 0) ? n : d; };
+  const x = num(CYCLE_X, 5), y = num(CYCLE_Y, 4);
+  const ctl = (sel, label, val, min, max, step, hint) =>
+    '<div class="cyc-ctl"><label for="cyc-' + sel + '">' + escapeHtml(label) + '</label>'
+    + '<div class="cyc-row">'
+    + '<input type="range" id="cyc-' + sel + '" class="cyc-in" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
+    + '<input type="number" class="cyc-num" data-sel="' + attr(sel) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">'
+    + '</div><span class="cyc-hint">' + escapeHtml(hint) + '</span></div>';
+  return '<div class="cyc" id="cycPanel">'
+    + '<h4>Day / night cycle</h4>'
+    + '<p class="cyc-sub">What these two multipliers buy in real time, assuming ' + CYCLE_DAYLIGHT + 'h of in-game daylight. Moving a slider edits the document below - press Save, then restart to apply.</p>'
+    + '<div class="cyc-grid">'
+    + ctl(CYCLE_X, 'Time acceleration (X)', x, 1, 24, 0.5, 'Scales in-game time overall. Higher = shorter days.')
+    + ctl(CYCLE_Y, 'Night acceleration (Y)', y, 1, 24, 0.5, 'Multiplies again during night only. Higher = shorter nights.')
+    + '</div>'
+    + '<div class="cyc-out" id="cycOut">' + cycleOutHtml(x, y) + '</div>'
+    + '<div class="cyc-foot"><span class="cyc-note">Applies at the next restart - Apply-ServerCfg compiles serverDZ.cfg from this file at prestart. Map selection is unaffected (that is map.env).</span></div>'
+    + '</div>';
+}
+// Wire the sliders to whichever editor currently holds the document: the owned whole-file editor
+// when the file is owned, else the whole-file edit view. One write path, no parallel store.
+function wireCycle(row) {
+  const panel = $('cycPanel'); if (!panel) return;
+  const out = $('cycOut');
+  const readAll = () => {
+    const g = (sel) => Number(panel.querySelector('.cyc-in[data-sel="' + sel + '"]').value);
+    return { x: g(CYCLE_X), y: g(CYCLE_Y) };
+  };
+  const redraw = () => { const v = readAll(); if (out) out.innerHTML = cycleOutHtml(v.x, v.y); };
+  const commit = (sel, valStr) => {
+    const n = Number(valStr);
+    if (!isFinite(n) || n <= 0) { setGlobalMsg('Acceleration must be a positive number.', true); return; }
+    const handle = row.ownFile ? ownJsonHandle(row.key) : wfJsonHandle;
+    if (!handle || !handle.setValue) { setGlobalMsg('Edit the value in the document below - this file is not open in the structured editor.', true); return; }
+    handle.setValue([sel], n);
+    updateDirtyUi();
+    setGlobalMsg('Unsaved change - press Save.', false);
+  };
+  panel.querySelectorAll('.cyc-in').forEach((sld) => {
+    const num = panel.querySelector('.cyc-num[data-sel="' + sld.dataset.sel + '"]');
+    sld.addEventListener('input', () => { if (num) num.value = sld.value; redraw(); });
+    sld.addEventListener('change', () => commit(sld.dataset.sel, sld.value));
+  });
+  panel.querySelectorAll('.cyc-num').forEach((n) => {
+    const sld = panel.querySelector('.cyc-in[data-sel="' + n.dataset.sel + '"]');
+    n.addEventListener('input', () => { if (sld) sld.value = n.value; redraw(); });
+    n.addEventListener('change', () => commit(n.dataset.sel, n.value));
+  });
 }
 const CYCLE_RESTART_H = 4;     // the messages.xml restart schedule, for "cycles per restart"
 function cycleOutHtml(x, y) {

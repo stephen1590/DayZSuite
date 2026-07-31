@@ -352,5 +352,15 @@ export async function mountJsonNavigator(host, opts = {}) {
 
   renderCrumbs(); renderJson();
   focusTo([]);   // load the root editor by default
-  return { getDoc: () => workingDoc, focusTo, destroy: () => { if (curHandle) { try { curHandle.destroy(); } catch (_) {} } host.innerHTML = ''; } };
+  // setValue lets a purpose-built control (the day/night sliders) drive the SAME document the
+  // navigator is editing, instead of writing to a parallel store. Mutates in place, refreshes the
+  // JSON map, and fires onChange so the host's dirty tracking sees it like any other edit.
+  const setValue = (path, val) => {
+    if (!path || !path.length) return;
+    workingDoc = setP(workingDoc, path, val);
+    scheduleRerender();
+    if (curHandle && JSON.stringify(focus) === JSON.stringify(path.slice(0, focus.length))) focusTo(focus);
+    if (onChange) onChange(workingDoc);
+  };
+  return { getDoc: () => workingDoc, setValue, focusTo, destroy: () => { if (curHandle) { try { curHandle.destroy(); } catch (_) {} } host.innerHTML = ''; } };
 }

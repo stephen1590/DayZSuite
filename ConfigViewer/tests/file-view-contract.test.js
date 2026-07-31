@@ -55,3 +55,24 @@ test('E10: an absent file says so, instead of claiming it is unreadable', () => 
   assert.match(JS, /function fileMissingNote/, 'one shared wording for a file the box did not return');
   assert.match(JS, /not on the box yet/, 'the note must say the file does not exist rather than implying a permission fault');
 });
+
+// Owner 2026-07-31: "you got rid of the day/night cycle editor view.... THAT WAS USEFUL VISUALLY.
+// Keep it. That had no bearing on the 'form input' method." Retiring the Fields VIEW was never a
+// reason to lose a purpose-built visualisation. It is back, INTERACTIVE, and now drives the same
+// document the editor holds rather than writing override rows.
+test('the day/night cycle editor is interactive, not a read-only readout', () => {
+  assert.match(JS, /class="cyc-in"/, 'the sliders must exist');
+  assert.match(JS, /function wireCycle/, 'and be wired');
+});
+
+test('the cycle editor shows on BOTH edit paths, not just the owned one', () => {
+  const hits = JS.match(/wireCycle\(row\)/g) || [];
+  assert.ok(hits.length >= 2, `cycle editor wired on ${hits.length} path(s); it belongs to the FILE, so it must show in the owned editor AND the whole-file edit view`);
+});
+
+test('the sliders write through the editor document, never override rows', () => {
+  const i = JS.indexOf('function wireCycle');
+  const body = JS.slice(i, i + 1800);
+  assert.match(body, /setValue\(\[sel\], n\)/, 'must drive the open document');
+  assert.doesNotMatch(body, /layerMapRW/, 'must NOT write an override delta - that mechanism is being deleted');
+});
