@@ -1,0 +1,107 @@
+{
+    "NPCDebug": 0,
+    "version": 1,
+    "NPCLocations": [
+        {
+            "name": "Petro_Sentry",
+            "npcid": 0,
+            "npcpos": "5948.014160 31.153223 10368.039063",
+            "npcclass": "BanditAI_Keiko",
+            "npcloadout": [
+                "Ushanka_Black",
+                "HuntingJacket_Brown",
+                "HunterPants_Brown",
+                "CombatBoots_Black"
+            ],
+            "npcitem": "",
+            "npcpose": 1,
+            "triggerpos": "5948.014160 31.153223 10368.039063",
+            "triggermins": "-50 -20 -50",
+            "triggermaxs": "50 20 50",
+            "triggerradius": 100.0,
+            "triggercooldown": 30,
+            "sounds": [
+                "1",
+                "2"
+            ],
+            "emotes": [
+                "1",
+                "44"
+            ]
+        },
+        {
+            "name": "GeoES_Sentry",
+            "npcid": 0,
+            "npcpos": "8327.768555 30.790001 10331.517578",
+            "npcclass": "BanditAI_Keiko",
+            "npcloadout": [
+                "Ushanka_Black",
+                "HuntingJacket_Brown",
+                "HunterPants_Brown",
+                "CombatBoots_Black"
+            ],
+            "npcitem": "",
+            "npcpose": 2,
+            "triggerpos": "8327.768555 30.790001 10331.517578",
+            "triggermins": "-50 -20 -50",
+            "triggermaxs": "50 20 50",
+            "triggerradius": 100.0,
+            "triggercooldown": 30,
+            "sounds": [
+                "4",
+                "12",
+                "25"
+            ],
+            "emotes": [
+                "1",
+                "44"
+            ]
+        },
+        {
+            "name": "Volcano_Sentry",
+            "npcid": 0,
+            "npcpos": "11042.431641 350.380005 11497.605469",
+            "npcclass": "BanditAI_Keiko",
+            "npcloadout": [
+                "Ushanka_Black",
+                "HuntingJacket_Brown",
+                "HunterPants_Brown",
+                "CombatBoots_Black"
+            ],
+            "npcitem": "",
+            "npcpose": 3,
+            "triggerpos": "11042.431641 350.380005 11497.605469",
+            "triggermins": "-50 -20 -50",
+            "triggermaxs": "50 20 50",
+            "triggerradius": 100.0,
+            "triggercooldown": 30,
+            "sounds": [
+                "4",
+                "12",
+                "25"
+            ],
+            "emotes": [
+                "1",
+                "44"
+            ]
+        }
+    ],
+    "PredefinedWeapons": [
+        {
+            "name": "Predefined_AKM",
+            "weapon": "AKM",
+            "attachments": [
+                "Mag_AKM_30Rnd",
+                "AK_WoodHndgrd",
+                "AK_WoodBttstck"
+            ]
+        },
+        {
+            "name": "Predefined_Stick",
+            "weapon": "SharpWoodenStick",
+            "attachments": [
+                "PigSteakMeat"
+            ]
+        }
+    ]
+}
