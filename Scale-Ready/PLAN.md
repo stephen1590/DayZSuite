@@ -209,6 +209,15 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **The ordering worry resolved itself - the existing design already handles it.** `r.ownFile` requires BOTH `isOwnedRel` (the Api's OWNED_FILES) AND `ownLayerCount === 0`, so while the 12 override rows are still on the box the row keeps the override editor and only flips to the JSON editor once the Api ships AND `Convert-ToOwned` empties the block. That flip IS the migration UX, exactly as the code comment at editor.js:266 intended. Interim caveat: in the window after a ConfigViewer ship but before the cutover, the row's default view is `edit`, which saves through the whole-file OVERRIDE path - functional, but it writes a `wholeFiles` entry, so do the cutover promptly.
 - **UNVERIFIED IN A BROWSER** - no test covers rendering, and staging-vm is powered off. Needs a look on staging before prod.
 
+**E6 - "View default" shows the default SIDE BY SIDE, not instead of (owner 2026-07-31, verbatim)**
+> *"And click on view default should pull the default up along-side. Side by side comparisons are helpful :("*
+
+- **Today it REPLACES.** `wfShowDefault` is a toggle: `editor.js:846` flips Live/Default and re-renders the same pane, and `editor.js:1002` ("View default") sets `wfShowDefault = true; ovrView = 'file'`. You lose the live text to see the default, so nothing can be compared at a glance.
+- **The comparison already exists one surface over** - the own-editor mounts CodeMirror's `unifiedMergeView` against the frozen `.defaults` copy. So this is NOT a new capability, it is the same capability missing from the file/fields view. Reuse it rather than hand-rolling a second diff (need 1: abstract and reshare).
+- **Build:** replace the Live/Default toggle with a two-pane compare in the file view - default on the left, live on the right - or mount the existing merge view there. Decide WHICH at design-proof time; do not build a third diff renderer either way.
+- **Acceptance:** "View default" shows both copies at once; no surface renders a diff through code that is not the shared merge view.
+- **Deps:** none. **Deploy:** ConfigViewer. **Reversible:** yes. **NOT BUILT** - UI, so it needs a design proof first (standing rule).
+
 **T4 - Post-deploy LIVE verification (PINNED by the owner 2026-07-31 - deliberately deferred, NOT dropped)**
 > Owner: *"Put a pin in testing until we're done with the overrides migration. Remember it. Don't forget. We need to expand testing."*
 

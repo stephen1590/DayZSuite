@@ -46,6 +46,38 @@ export function inferSchema(v) {
   if (typeof v === 'string') return { type: 'string' };
   return {};   // null / undefined -> permissive (any)
 }
+// What the focused node is CALLED. The navigator mounts a fresh editor per focus, rooted at the
+// focused subtree, so json-editor's own root label is always the literal "root" however deep you
+// clicked (the 2026-07-31 bug report). The path knows better, so the path names it.
+// Array items read "Parent [i+1]" - 1-based, matching the array-item titles the decorator already
+// writes elsewhere in this file.
+export function titleForPath(path) {
+  const p = path || [];
+  if (!p.length) return 'root';
+  const last = p[p.length - 1];
+  if (typeof last === 'number') {
+    const parent = p.length > 1 ? String(p[p.length - 2]) : 'root';
+    return parent + ' [' + (last + 1) + ']';
+  }
+  return String(last);
+}
+
+// The size shown next to the name, derived from the DATA. It used to come from the editor
+// widget's internal `rows`, which only exists on array editors - so an object could never report
+// a field count, and anything whose rows were absent fell through to the empty-array text.
+// "(null)" is now reachable ONLY by a genuinely empty array.
+export function sizeBadge(v) {
+  if (Array.isArray(v)) return v.length ? '[' + v.length + ']' : '[ ] (null)';
+  if (v && typeof v === 'object') { const n = Object.keys(v).length; return n ? '{' + n + '}' : '{ }'; }
+  return '';
+}
+
+// The schema handed to a freshly mounted focus editor: the inferred shape PLUS the title its
+// header renders. Keeping these together is what stops the two drifting apart again.
+export function schemaForFocus(sub, path) {
+  return { ...inferSchema(sub), title: titleForPath(path) };
+}
+
 function mergeSchema(a, b) {
   if (!a || !a.type) return b && b.type ? b : (a || {});
   if (!b || !b.type) return a;
@@ -112,9 +144,15 @@ function decorate(root, ed) {
     if (props && name && props.previousElementSibling !== name) { props.classList.add('je-props'); name.after(props); }
     // status after the name: array length from the editor's own .rows (O(1)). getValue() here
     // would serialize the whole subtree per node - the O(n^2) storm that made big files crawl.
+    // Badge from the DATA (sizeBadge), not the widget's internal `rows`. rows exists only on array
+    // editors, so an object could never report a field count and a missing rows fell through to the
+    // empty-array text - the "[ ] (null) on everything" bug. rows.length is still preferred for a
+    // BUILT array editor because it is O(1) and always current mid-edit; getValue() here would
+    // serialize the whole subtree per node (the O(n^2) storm that made big files crawl).
     const ce = ed.getEditor(path);
     let txt = '';
     if (ce && ce.rows) txt = ce.rows.length ? '[' + ce.rows.length + ']' : '[ ] (null)';
+    else if (ce && ce.schema && ce.schema.type === 'object') txt = sizeBadge(ce.value || {});
     row.classList.toggle('je-empty', txt.indexOf('null') > -1);   // empty array -> dimmed gold
     let badge = row.querySelector(':scope > .je-status');
     if (txt && name) { if (!badge) { badge = document.createElement('span'); badge.className = 'je-status'; name.after(badge); } badge.textContent = txt; badge.classList.toggle('je-null', txt.indexOf('null') > -1); }
@@ -276,7 +314,9 @@ export async function mountJsonNavigator(host, opts = {}) {
       const sub = getP(workingDoc, path);
       if (curHandle) { try { curHandle.destroy(); } catch (_) {} curHandle = null; }
       curHandle = await mountJsonEditor(mnt, {
-        schema: inferSchema(sub), startval: sub, pathbar: true, collapseLargeOver: 400,
+        // schemaForFocus, not inferSchema: it carries the TITLE, so the header names the node you
+        // clicked instead of the literal "root" at every depth (2026-07-31 bug report).
+        schema: schemaForFocus(sub, path), startval: sub, pathbar: true, collapseLargeOver: 400,
         onChange: (val) => { if (!path.length) workingDoc = val; else setP(workingDoc, path, val); scheduleRerender(); if (onChange) onChange(workingDoc); },
       });
       if (spin) spin.remove();
