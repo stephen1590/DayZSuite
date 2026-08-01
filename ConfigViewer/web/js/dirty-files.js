@@ -6,28 +6,66 @@
 
 const isComment = (k) => typeof k === 'string' && k.startsWith('_');
 
+// A number is "big" (kept as literal digits, never reformatted) under the exact same rule
+// lossless-json.js uses to decide when to sentinel-protect it: a pure integer (no '.', no
+// exponent) with 16+ digits may exceed 2^53, so it is never routed through a JS double. Anything
+// else (a float, an exponent, or a short integer) is safe to reformat via Number->String, which
+// is what canon() below does to match what the structured editor's own round trip produces.
+const MIN_BIG_DIGITS = 16;
+
 // Do two JSON texts hold the same document? Byte equality is the wrong question for a STRUCTURED
 // editor: it re-serialises what it loaded, so its output is never byte-identical to the file on
 // the box even with zero edits. Comparing bytes made every owned JSON surface open already-dirty
 // (owner, 2026-08-01: "Going to server settings automatically detects a change - why?").
 //
+// Whitespace alone was not the whole story. REGRESSION found 2026-08-01 on the real
+// profiles/BaseBuildingPlus/BBP_Settings.json: the structured navigator's draft is the source
+// PARSED to real JS numbers and re-stringified, and JS's number formatting does not reproduce the
+// source spelling - a trailing ".0" on a whole-number float is dropped (0.0 -> 0) and an
+// exponent's case/zero-padding is normalised (-9.999999974752427E-07 -> -9.999999974752427e-7).
+// Same value, different text; comparing text alone read that as an edit. canon() now reformats
+// each number token the same way JSON.stringify would, so two spellings of the same value collapse
+// to the same canonical text - while leaving whitespace and everything else exactly as before.
+//
 // Key ORDER counts as a change on purpose - reordering a config is a real edit to the file, and
 // folding it away would silently drop it. Unparseable input counts as CHANGED, never as clean:
 // reporting "no changes" for a draft that does not parse would let a broken edit vanish.
 //
-// Big integers: compared as raw text, not through JSON.parse, so a Steam64 ID past 2^53 cannot
-// be rounded into a false match. The editors' bigParse/bigStringify pair owns that on the write
-// path; here it is enough never to introduce a double.
+// Big integers: compared as raw text, never through Number(), so a Steam64 ID past 2^53 cannot
+// be rounded into a false match (or a false mismatch). The editors' bigParse/bigStringify pair
+// owns exactness on the write path; here it is enough never to introduce a double for one.
 export function jsonEquivalent(a, b) {
   const canon = (t) => {
     if (typeof t !== 'string') return null;
-    // Strip insignificant whitespace WITHOUT parsing: everything outside a string literal.
+    // Strip insignificant whitespace and reformat number tokens, WITHOUT parsing the whole
+    // document: everything outside a string literal.
     let out = '', inStr = false, esc = false;
-    for (const ch of t) {
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
       if (esc) { out += ch; esc = false; continue; }
       if (ch === '\\' && inStr) { out += ch; esc = true; continue; }
       if (ch === '"') { inStr = !inStr; out += ch; continue; }
-      if (!inStr && (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t')) continue;
+      if (inStr) { out += ch; continue; }
+      if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') continue;
+      // A number literal outside a string: consume the whole token (same grammar
+      // preserveBigInts uses) and either keep its raw digits (big int) or its JS-canonical
+      // reformatting (everything else) - never JSON.stringify(JSON.parse(whole-doc)), so a
+      // draft that doesn't fully parse still gets a best-effort canonical form.
+      if (ch === '-' || (ch >= '0' && ch <= '9')) {
+        let j = i;
+        if (t[j] === '-') j++;
+        const dStart = j;
+        while (j < t.length && t[j] >= '0' && t[j] <= '9') j++;
+        const digits = j - dStart;
+        let isFloat = false;
+        if (t[j] === '.') { isFloat = true; j++; while (j < t.length && t[j] >= '0' && t[j] <= '9') j++; }
+        if (t[j] === 'e' || t[j] === 'E') { isFloat = true; j++; if (t[j] === '+' || t[j] === '-') j++; while (j < t.length && t[j] >= '0' && t[j] <= '9') j++; }
+        const tok = t.slice(i, j);
+        if (!isFloat && digits >= MIN_BIG_DIGITS) { out += tok; }
+        else { const n = Number(tok); out += Number.isFinite(n) ? String(n) : tok; }
+        i = j - 1;   // the for-loop's i++ advances past the token
+        continue;
+      }
       out += ch;
     }
     return inStr ? null : out;   // unterminated string -> not parseable, treat as different

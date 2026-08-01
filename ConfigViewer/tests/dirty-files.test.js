@@ -132,3 +132,49 @@ test('big integers survive the comparison', () => {
   assert.equal(jsonEquivalent(a, b), true);
   assert.equal(jsonEquivalent(a, '{"id": 76561198012345679}'), false, 'a one-digit difference must register');
 });
+
+// REGRESSION, owner 2026-08-01: opening profiles/BaseBuildingPlus/BBP_Settings.json showed
+// unsaved changes with nothing touched - the exact symptom e0a75c4 was supposed to have closed.
+//
+// canon() strips insignificant WHITESPACE but never touches the digits of a number token. The
+// structured navigator's draft is not the source bytes - it is the source PARSED to real JS
+// numbers, then JSON.stringify'd back out. JS's number-to-string does not reproduce the source
+// spelling: a trailing ".0" on a whole-number float is dropped (0.0 -> 0) and an exponent's case
+// and zero-padding are normalised (1.5E-07 -> 1.5e-7). Same value, different text, and canon()
+// only compares text - so a file with either shape reads as changed on the moment it opens, even
+// though the previous fix already made "did the bytes change" the wrong question for a structured
+// editor once.
+import { bigParse, restoreBigInts } from '../web/js/lossless-json.js';
+import { readFileSync } from 'node:fs';
+const jsonEnc = (v) => restoreBigInts(JSON.stringify(v, null, 2));   // mirrors own-editor.js's jsonEnc
+
+test('a whole-number float ("0.0") reformatted to "0" is NOT a change', () => {
+  assert.equal(jsonEquivalent('{"a": 0.0}', '{"a": 0}'), true);
+  assert.equal(jsonEquivalent('{"a": 100.0}', '{"a": 100}'), true);
+});
+
+test('exponent notation reformatted by JS number->string is NOT a change', () => {
+  // JSON.stringify(JSON.parse('-9.999999974752427E-07')) === '-9.999999974752427e-7'
+  assert.equal(jsonEquivalent('{"a": -9.999999974752427E-07}', '{"a": -9.999999974752427e-7}'), true);
+  assert.equal(jsonEquivalent('{"a": 1.5E+10}', '{"a": 15000000000}'), true);
+});
+
+test('a real change hidden inside reformatted-number text still registers', () => {
+  assert.equal(jsonEquivalent('{"a": 0.0}', '{"a": 1}'), false);
+  // NOT '...427' vs '...428' - at 16 significant digits both spellings round to the SAME IEEE-754
+  // double (proven: Number("-9.999999974752427E-07") === Number("-9.999999974752428e-7")), so no
+  // text- or value-based comparison could tell them apart; that is a real double-precision limit,
+  // not a bug. Change a leading digit instead, which changes the double unambiguously.
+  assert.equal(jsonEquivalent('{"a": -9.999999974752427E-07}', '{"a": -8.999999974752427E-07}'), false);
+});
+
+test('the real BBP_Settings.json (box bytes) does not appear dirty the moment it opens', () => {
+  // Fixture is the ACTUAL box file (fetched read-only 2026-08-01) - it holds both shapes above for
+  // real: "0.0" orientation components and one "-9.999999974752427E-07" exponent literal. A
+  // synthetic-only fixture is how this class of bug got past the first fix.
+  const raw = readFileSync(new URL('./fixtures/BBP_Settings.json', import.meta.url), 'utf8');
+  const draft = jsonEnc(bigParse(raw));   // exactly what own-editor.js produces on mount, untouched
+  assert.notEqual(draft, raw, 'sanity: the re-serialised draft really is byte-different from the source');
+  assert.equal(jsonEquivalent(raw, draft), true,
+    'no edit was made - opening the file must never read as an unsaved change');
+});
