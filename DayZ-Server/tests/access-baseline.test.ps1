@@ -40,6 +40,10 @@ $masks = @{
     Generated  = @('serverDZ.cfg', 'profiles/AI_Bandits/DynamicAIB.json', 'mpmissions/*/expansion/settings/AIPatrols.draft.json')
     Disabled   = @('profiles/AIB_Unleashed/AIB_UL_Config.json')
     OnDisk     = @(
+        'ban.txt',
+        'custom-ce/expansion_types_tuning.xml',
+        'custom-ce/expansion_types.xml',
+        'profiles/AI_Shared/map-points.json',
         'server-settings.json',
         'mpmissions/dayzOffline.sakhal/db/types.xml',
         'mpmissions/dayzOffline.sakhal/db/types.defaults.xml',
@@ -53,6 +57,10 @@ $masks = @{
     )
 }
 $registry = @(
+    @{ name = 'Bans';            box = 'ban.txt'; web = 'file'; writable = $true; mirror = $null }
+    @{ name = 'expTypesTuning';  box = 'custom-ce/expansion_types_tuning.xml'; web = 'types'; mirror = 'live' }
+    @{ name = 'expTypes';        box = 'custom-ce/expansion_types.xml'; web = 'view'; mirror = $null }
+    @{ name = 'Map-points';      box = 'profiles/AI_Shared/map-points.json'; web = 'store'; mirror = 'spawns' }
     @{ name = 'Server-settings'; box = 'server-settings.json'; web = 'file'; mirror = 'live' }
     @{ name = 'typesSakhal';     box = 'mpmissions/dayzOffline.sakhal/db/types.xml'; web = 'file'; mirror = 'live' }
     @{ name = 'mapGroupProtoS';  box = 'mpmissions/dayzOffline.sakhal/mapgroupproto.xml'; web = 'view'; mirror = $null }
@@ -92,6 +100,19 @@ Check ($proto.Listed -and -not $proto.Writable) "a web:'view' row is listed but 
 # --- an undeclared file is invisible today. THIS is the failure WS-S inverts. ---
 $vpp = A 'profiles/VPPAdminTools/BanList.json'
 Check ((-not $vpp.Listed) -and (-not $vpp.Writable) -and (-not $vpp.Mirrored)) 'an undeclared file is invisible AND unmirrored today (the silent-omission failure)'
+
+# --- WritableVia: which verb, if any. `Writable` alone was WRONG (found 2026-08-01) ---
+# The first cut measured only the own-write gate, so 5 files editable TODAY through a bespoke
+# verb were recorded as not-editable. S3 has to reproduce today's map; a baseline that
+# understates editability would make WS-S look equivalent when it is not.
+Check ((A 'server-settings.json').WritableVia -eq 'own-write')     "an OWNED_FILES row reports via own-write"
+Check ((A 'custom-ce/expansion_types_tuning.xml').WritableVia -eq 'types-write') 'a types row reports via types-write (NOT in OWNED_FILES)'
+Check ((A 'custom-ce/expansion_types_tuning.xml').Writable)         'a types row IS editable today, despite failing _own_check'
+Check (-not (A 'custom-ce/expansion_types_tuning.xml').OwnWritable) 'the same row is NOT own-writable - the two axes differ'
+Check ((A 'custom-ce/expansion_types.xml').WritableVia -eq 'none')  'the vendor types file beside it is not editable by any verb'
+Check ((A 'ban.txt').WritableVia -eq 'file-write')                  'a writable:true text row reports via file-write'
+Check ((A 'ban.txt').Writable)                                      'ban.txt is editable today (it is neither json nor xml)'
+Check ((A 'profiles/AI_Shared/map-points.json').WritableVia -eq 'spawn-write') 'the map store reports via spawn-write'
 
 # --- mirrored follows the registry, not the masks ---
 Check ((A 'mpmissions/dayzOffline.sakhal/db/types.xml').Mirrored) "mirror:'live' means mirrored"

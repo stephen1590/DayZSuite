@@ -52,7 +52,12 @@ PY
 $masksBox = $maskRaw | ConvertFrom-Json
 
 # 2. every candidate config file on the box (same exclusions the WS-S sizing used)
-$fileRaw = Remote "find $RemotePath -maxdepth 6 \( -name '@*' -o -name '.*' -o -name 'deploy-stage' -o -name 'storage_*' \) -prune -o -type f \( -name '*.json' -o -name '*.xml' \) -printf '%P\n'"
+# Extensions widened 2026-08-01 (owner: add an "other" category so separate file types come
+# in as text). json+xml alone MISSED ban.txt, whitelist.txt and map.env - three owned
+# surfaces absent from a baseline whose entire job is completeness. .cfg is included so the
+# record is honest about files like beserver_x64.cfg existing and being invisible; listing a
+# path in a CSV is not exposing it.
+$fileRaw = Remote "find $RemotePath -maxdepth 6 \( -name '@*' -o -name '.*' -o -name 'deploy-stage' -o -name 'storage_*' \) -prune -o -type f \( -name '*.json' -o -name '*.xml' -o -name '*.txt' -o -name '*.env' -o -name '*.conf' -o -name '*.cfg' \) -printf '%P\n'"
 $files = @($fileRaw -split "`n" | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() } | Sort-Object)
 Write-Host "  files on box: $($files.Count)"
 
@@ -72,7 +77,9 @@ $rows = foreach ($f in $files) {
     $a = Get-TodayAccess -RelPath $f -Masks $masks -Registry $registry
     [pscustomobject]@{
         relpath = $a.RelPath; listed = $a.Listed; writable = $a.Writable
+        writableVia = $a.WritableVia; ownWritable = $a.OwnWritable
         mirrored = $a.Mirrored; generated = $a.Generated; disabled = $a.Disabled
+        ext = [IO.Path]::GetExtension($a.RelPath)
         isDefault = ($f -match '\.defaults\.[^.]+$')
     }
 }
@@ -82,17 +89,19 @@ Write-Host "  wrote $OutFile ($($rows.Count) rows)"
 $sum = [ordered]@{
     listed    = @($rows | Where-Object listed).Count
     writable  = @($rows | Where-Object writable).Count
+    ownWrite  = @($rows | Where-Object ownWritable).Count
+    bespoke   = @($rows | Where-Object { $_.writable -and -not $_.ownWritable }).Count
     mirrored  = @($rows | Where-Object mirrored).Count
     invisible = @($rows | Where-Object { -not $_.listed -and -not $_.writable }).Count
     defaults  = @($rows | Where-Object isDefault).Count
 }
-Write-Host "  listed=$($sum.listed)  writable=$($sum.writable)  mirrored=$($sum.mirrored)  INVISIBLE=$($sum.invisible)  (.defaults files: $($sum.defaults))"
+Write-Host "  listed=$($sum.listed)  writable=$($sum.writable) (own-write $($sum.ownWrite), bespoke verb $($sum.bespoke))  mirrored=$($sum.mirrored)  INVISIBLE=$($sum.invisible)  (.defaults files: $($sum.defaults))"
 
 # 4. PROVE the model matches the box. own-read shares _own_check with own-write, so a
 #    success/refusal here is exactly the gate the model claims to reproduce.
 Write-Host "`n--- spot-check: model vs real dayz-ctl own-read (sample $SampleSize) ---" -ForegroundColor Cyan
-$wr  = @($rows | Where-Object writable)
-$nwr = @($rows | Where-Object { -not $_.writable })
+$wr  = @($rows | Where-Object ownWritable)
+$nwr = @($rows | Where-Object { -not $_.ownWritable })
 $half = [Math]::Max(1, [int]($SampleSize / 2))
 # Deterministic spread, not random: evenly-spaced picks so a re-run samples the same files.
 function Spread($set, $n) {
@@ -105,10 +114,10 @@ $mismatch = 0
 foreach ($r in $sample) {
     $rc = (Remote "sudo -n dayz-ctl own-read '$($r.relpath)' >/dev/null 2>&1; echo `$?").Trim()
     $boxWritable = ($rc -eq '0')
-    $agree = ($boxWritable -eq $r.writable)
+    $agree = ($boxWritable -eq $r.ownWritable)
     if (-not $agree) { $mismatch++ }
     $tag = if ($agree) { 'ok  ' } else { 'MISMATCH' }
-    Write-Host ("  {0} model={1,-5} box={2,-5} {3}" -f $tag, $r.writable, $boxWritable, $r.relpath)
+    Write-Host ("  {0} model={1,-5} box={2,-5} {3}" -f $tag, $r.ownWritable, $boxWritable, $r.relpath)
 }
 
 if (-not $NoLog) {

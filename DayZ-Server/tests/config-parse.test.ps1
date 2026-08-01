@@ -44,6 +44,21 @@ Check (-not (Test-ConfigParses "  `n " 'xml'))                        'whitespac
 Check (-not (Test-ConfigParses $xml 'none'))                          "an undeclared check kind is rejected (never pull unvalidated)"
 Check (-not (Test-ConfigParses $xml ''))                              'an empty check kind is rejected'
 
+# --- 'text': the OTHER kind (owner 2026-08-01) ---
+# ban.txt / whitelist.txt / map.env are real owned surfaces that are neither JSON nor XML.
+# They declared check:'none', so the validator refused them and they could never mirror.
+# 'text' means "readable text, not binary" - that is the only claim we can honestly make
+# about a freeform file, and it is enough to refuse a truncated or binary pull.
+Check (Test-ConfigParses "line one`nline two`n" 'text') 'plain text parses as text'
+Check (Test-ConfigParses '7656119xxxxxxxxxx' 'text')    'a single-line text file parses'
+Check (Test-ConfigParses "MAP=dayzOffline.sakhal`n" 'text') 'a key=value env file parses as text'
+Check (-not (Test-ConfigParses '' 'text'))              'empty text is rejected (a truncated pull is not a valid file)'
+Check (-not (Test-ConfigParses "  `n`t " 'text'))       'whitespace-only text is rejected'
+Check (-not (Test-ConfigParses "bad`0binary" 'text'))   'text containing a NUL byte is rejected (that is a binary file)'
+Check (Test-ConfigParses ($BOM + "hello`n") 'text')     'text with a UTF-8 BOM parses'
+# 'text' must NOT become a way to smuggle malformed structured content past its own check.
+Check (-not (Test-ConfigParses '<variables><var></variables>' 'xml')) "'text' does not weaken the xml check"
+
 # --- a BOM must not be mistaken for content ---
 Check (-not (Test-ConfigParses $BOM 'xml')) 'a lone BOM is not valid XML'
 

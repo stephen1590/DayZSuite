@@ -62,7 +62,31 @@ function Get-TodayAccess {
     foreach ($d in @($Masks.OwnedDirs)) {
         if ($d -and $rel.StartsWith("$d/")) { $inOwnedDir = $true; break }   # case "$_r" in "$_d"/*
     }
-    $writable = $isDoc -and ($inOwnedFiles -or $inOwnedDir) -and -not $generated -and -not $disabled -and $onDisk
+    # own-write's own gate. NOT the same as "can an operator change this file" - see below.
+    $ownWritable = $isDoc -and ($inOwnedFiles -or $inOwnedDir) -and -not $generated -and -not $disabled -and $onDisk
+
+    # --- WRITE gate, part 2: the FOUR bespoke verbs that bypass own-write entirely ---
+    # Corrected 2026-08-01. The first cut equated "writable" with the own-write gate, which
+    # understated reality for 5 files: the two CE tuning files are NOT in OWNED_FILES and are
+    # written by `types-write`; ban.txt/whitelist.txt by `file-write`; map-points by
+    # `spawn-write`. S3 must reproduce today's map, so today's map has to include them.
+    # These five are also every WS-S/WS-U collision point: making one `rw` would give it a
+    # SECOND write path unless its bespoke verb retires in the same change.
+    $writableVia = 'none'
+    if ($ownWritable) {
+        $writableVia = 'own-write'
+    } else {
+        foreach ($row in $Registry) {
+            if ([string]$row.box -ne $rel) { continue }
+            $web = [string]$row.web
+            if ($generated -or $disabled) { break }          # both still veto every path
+            if ($web -eq 'types')      { $writableVia = 'types-write'; break }
+            elseif ($web -eq 'store')  { $writableVia = 'spawn-write'; break }
+            elseif ($row.writable -eq $true) { $writableVia = 'file-write'; break }
+            break
+        }
+    }
+    $writable = ($writableVia -ne 'none')
 
     # --- READ/list gate: a registry row that is not web:'none', or a browse folder ---
     $listed = $false
@@ -85,10 +109,12 @@ function Get-TodayAccess {
     }
 
     return @{
-        RelPath   = $rel
-        Listed    = [bool]$listed
-        Writable  = [bool]$writable
-        Mirrored  = [bool]$mirrored
+        RelPath     = $rel
+        Listed      = [bool]$listed
+        Writable    = [bool]$writable        # editable by ANY verb - the operator's view
+        OwnWritable = [bool]$ownWritable     # passes _own_check - what own-read/own-write allow
+        WritableVia = [string]$writableVia
+        Mirrored    = [bool]$mirrored
         Generated = [bool]$generated
         Disabled  = [bool]$disabled
         OnDisk    = [bool]$onDisk

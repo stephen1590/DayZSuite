@@ -28,7 +28,7 @@ function Test-ConfigParses {
     param(
         # The file CONTENT, already read into a string.
         [Parameter(Position = 0)][AllowNull()][AllowEmptyString()][string]$Text,
-        # The registry row's `check` tag: 'json' | 'xml'. Anything else = not validatable.
+        # The registry row's `check` tag: 'json' | 'xml' | 'text'. Anything else = not validatable.
         [Parameter(Position = 1)][AllowNull()][AllowEmptyString()][string]$Kind
     )
     if ($null -eq $Text) { return $false }
@@ -39,6 +39,12 @@ function Test-ConfigParses {
     switch ([string]$Kind) {
         'json'  { try { $null = $t | ConvertFrom-Json; return $true } catch { return $false } }
         'xml'   { try { $null = [xml]$t;               return $true } catch { return $false } }
+        # 'text' - the OTHER kind (owner 2026-08-01). ban.txt / whitelist.txt / map.env are
+        # real owned surfaces that are neither JSON nor XML; declaring check:'none' left them
+        # permanently unmirrorable. The only honest claim about a freeform file is "this is
+        # readable text, not binary or truncated" - which still catches the failures that
+        # matter for a pull. A NUL byte means we fetched a binary, so refuse.
+        'text'  { return (-not $t.Contains([char]0)) }
         # No default validator ON PURPOSE: refuse to bless content nothing checked.
         default { return $false }
     }
