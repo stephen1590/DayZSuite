@@ -85,3 +85,50 @@ test('confirmSaveText can never render an empty bullet list', () => {
     assert.match(t, /nothing to save|no unsaved/i, 'say what is actually true');
   }
 });
+
+// Owner, 2026-08-01: "Going to server settings automatically detects a change - why?"
+//
+// The structured JSON navigator fires its change event ON MOUNT, so the editor's draft became a
+// RE-SERIALISED copy of the document before the owner touched anything. The box's file is
+// pretty-printed; the re-serialisation was not. Different bytes, identical data -> the file
+// showed unsaved changes the moment it opened, on every owned JSON surface.
+//
+// Byte equality is the wrong question for a structured editor. It can never round-trip a file
+// byte-for-byte, so "did the bytes change" always answers yes. The right question is whether the
+// DATA changed. That is this function, and it lives here because dirty-files.js is the one place
+// that decides what "unsaved" means.
+import { jsonEquivalent } from '../web/js/dirty-files.js';
+
+test('formatting-only differences are NOT a change', () => {
+  assert.equal(jsonEquivalent('{\n  "a": 1\n}', '{"a":1}'), true, 'indentation is not an edit');
+  assert.equal(jsonEquivalent('{"a":1}\n', '{"a":1}'), true, 'a trailing newline is not an edit');
+  assert.equal(jsonEquivalent('{ "a" : 1 }', '{"a":1}'), true, 'whitespace is not an edit');
+});
+
+test('a real value change IS a change', () => {
+  assert.equal(jsonEquivalent('{"a":1}', '{"a":2}'), false);
+  assert.equal(jsonEquivalent('{"a":1}', '{"a":1,"b":2}'), false, 'an added key is an edit');
+  assert.equal(jsonEquivalent('{"a":1,"b":2}', '{"a":1}'), false, 'a removed key is an edit');
+});
+
+test('key ORDER is a change - a config file is read by humans in order', () => {
+  // Not folded away: reordering is a real edit to the file even though the data is equal, and
+  // silently discarding it would lose the owner's change.
+  assert.equal(jsonEquivalent('{"a":1,"b":2}', '{"b":2,"a":1}'), false);
+});
+
+test('unparseable input is treated as changed, never as clean', () => {
+  // A draft that does not parse must never report "no changes" - that would let the editor
+  // discard a broken-but-real edit without warning.
+  assert.equal(jsonEquivalent('{not json', '{"a":1}'), false);
+  assert.equal(jsonEquivalent('{"a":1}', '{also not json'), false);
+});
+
+test('big integers survive the comparison', () => {
+  // Steam64 IDs exceed 2^53. If the comparison round-tripped through a JS double, a file holding
+  // one would flip between "changed" and "not changed" on formatting alone.
+  const a = '{"id": 76561198012345678}';
+  const b = '{\n  "id": 76561198012345678\n}';
+  assert.equal(jsonEquivalent(a, b), true);
+  assert.equal(jsonEquivalent(a, '{"id": 76561198012345679}'), false, 'a one-digit difference must register');
+});

@@ -16,12 +16,15 @@ import { loadCred, handle } from './auth.js';
 // It replaces only the WIDGET; the save path stays whole-file `configs/set-own`. That is the
 // difference from the old wf-json mount, which fed the override-delta flow being deleted (A3).
 import { mountJsonNavigator } from './json-editor-ui.js';
-import { confirmSave } from './dirty-files.js';           // E4: name the files before saving
+import { confirmSave, jsonEquivalent } from './dirty-files.js';   // name the files before saving; compare data not bytes
 import { bigParse, restoreBigInts } from './lossless-json.js';
 
 // Big-int-safe encode, identical to editor.js jsonEnc: the sentinel round-trips so a 17-digit
 // Steam64 in a config never degrades to a float.
-function jsonEnc(v) { return restoreBigInts(JSON.stringify(v)); }
+// INDENTED on purpose. This was JSON.stringify(v) with no spacing, so the first save through the
+// structured navigator would have rewritten the entire config as a single line - technically valid,
+// unreadable on the box and in every diff after. 2 spaces matches what the box writes.
+function jsonEnc(v) { return restoreBigInts(JSON.stringify(v, null, 2)); }
 
 // Above this combined size the unified diff is skipped - see the size guard in renderOwnEditor.
 const DIFF_MAX_CHARS = 400_000;
@@ -33,7 +36,7 @@ function loadCM() { CMp ??= import('../vendor/codemirror/cm6.esm.js'); return CM
 const states = new Map();
 
 export function ownAnyDirty() {
-  for (const st of states.values()) if (st.draft != null && st.draft !== st.baseText) return true;
+  for (const st of states.values()) if (isDirtySt(st)) return true;
   return false;
 }
 
@@ -49,7 +52,7 @@ export function ownJsonHandle(key) {
 
 export function ownDirtyNames() {
   const out = [];
-  for (const st of states.values()) if (st.draft != null && st.draft !== st.baseText) out.push(st.path);
+  for (const st of states.values()) if (isDirtySt(st)) out.push(st.path);
   return out;
 }
 
@@ -79,7 +82,16 @@ async function loadState(row) {
   return st;
 }
 
-function isDirtySt(st) { return st.draft != null && st.draft !== st.baseText; }
+// The structured navigator re-serialises the document, so its draft can never be byte-identical
+// to the box's file even with zero edits - byte comparison reported EVERY owned JSON surface as
+// dirty the moment it opened (owner, 2026-08-01). For a JSON file the question is whether the
+// DATA changed; jsonEquivalent answers that and treats unparseable input as changed, never clean.
+// Raw-text surfaces (XML, the CodeMirror path) keep byte comparison - there the bytes ARE the doc.
+function isDirtySt(st) {
+  if (st.draft == null || st.draft === st.baseText) return false;
+  if (st.json && !st.path.endsWith('.xml')) return !jsonEquivalent(st.draft, st.baseText);
+  return true;
+}
 
 function toolbarHtml(st) {
   const dirty = isDirtySt(st);

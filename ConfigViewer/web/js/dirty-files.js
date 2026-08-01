@@ -6,6 +6,52 @@
 
 const isComment = (k) => typeof k === 'string' && k.startsWith('_');
 
+// Do two JSON texts hold the same document? Byte equality is the wrong question for a STRUCTURED
+// editor: it re-serialises what it loaded, so its output is never byte-identical to the file on
+// the box even with zero edits. Comparing bytes made every owned JSON surface open already-dirty
+// (owner, 2026-08-01: "Going to server settings automatically detects a change - why?").
+//
+// Key ORDER counts as a change on purpose - reordering a config is a real edit to the file, and
+// folding it away would silently drop it. Unparseable input counts as CHANGED, never as clean:
+// reporting "no changes" for a draft that does not parse would let a broken edit vanish.
+//
+// Big integers: compared as raw text, not through JSON.parse, so a Steam64 ID past 2^53 cannot
+// be rounded into a false match. The editors' bigParse/bigStringify pair owns that on the write
+// path; here it is enough never to introduce a double.
+export function jsonEquivalent(a, b) {
+  const canon = (t) => {
+    if (typeof t !== 'string') return null;
+    // Strip insignificant whitespace WITHOUT parsing: everything outside a string literal.
+    let out = '', inStr = false, esc = false;
+    for (const ch of t) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === '\\' && inStr) { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; out += ch; continue; }
+      if (!inStr && (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t')) continue;
+      out += ch;
+    }
+    return inStr ? null : out;   // unterminated string -> not parseable, treat as different
+  };
+  const ca = canon(a), cb = canon(b);
+  if (ca === null || cb === null) return false;
+  // A canonical form that is not plausibly a document (unbalanced) must not compare equal.
+  const balanced = (s) => {
+    let d = 0, inStr = false, esc = false;
+    for (const ch of s) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\' && inStr) { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{' || ch === '[') d++;
+      else if (ch === '}' || ch === ']') d--;
+      if (d < 0) return false;
+    }
+    return d === 0;
+  };
+  if (!balanced(ca) || !balanced(cb)) return false;
+  return ca === cb;
+}
+
 // Which FILES differ between two overrides-doc snapshots. Labels: 'file' for the
 // server-dir layer, 'file (common)' / 'file (<mission>)' for mission layers.
 // Underscore keys are comments at every level - the apply engine ignores them, so do we.
