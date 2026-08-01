@@ -494,6 +494,12 @@ $items = @(
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
     @{ Src = "../Capture-OwnedDefaults.ps1"; Dst = Join-Path $ServerDir "Capture-OwnedDefaults.ps1"; Sudo = $false; Exec = $true }
+    # The registry is CODE-side truth, but Capture-OwnedDefaults reads it AT RUNTIME on the box,
+    # so the box needs the file itself - not just the masks the deploy renders into dayz-ctl.
+    # Missing this row meant the tool died on every prestart with "config-registry.json not
+    # found" and prestart's `|| true` swallowed it (found live on staging 2026-08-01, its first
+    # boot after deployment). Asserted by tests/capture-owned-defaults.test.ps1.
+    @{ Src = "../config-registry.json"; Dst = Join-Path $ServerDir "config-registry.json"; Sudo = $false; Exec = $false }
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     # serverDZ.cfg renderer (template + host.env secrets + server-settings.json). Lives in the

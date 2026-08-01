@@ -84,6 +84,19 @@ Check (-not (Test-Path (Join-Path $work "$M/notondisk.defaults.xml")))     "fix:
 $out2 = & $tool @common -Fix 6>&1 | Out-String
 Check ($LASTEXITCODE -eq 0 -and (Get-Content -Raw (Join-Path $work "$M/cfgweather.defaults.xml")).Trim() -eq '<weather><x>1</x></weather>') "fix: idempotent - second run changes nothing"
 
+
+# ---------------------------------------------------------------------------------------------
+# Found LIVE on staging 2026-08-01, first boot after the tool was actually deployed: it died with
+#   config-registry.json not found: /home/ubuntu/servers/dayz-server/config-registry.json
+# The registry is in the deploy's PAYLOAD cross-check list (so it reaches deploy-stage) but no
+# $items row ever copied it into the server dir. The tool reads the registry AT RUNTIME on the
+# box, so it had never once completed - prestart just swallowed the failure via `|| true`.
+# The tool cannot assert this about itself; the SHIP LIST is where the contract lives.
+$deploy = Get-Content -Raw (Join-Path $here '../Deploy-DayZServer.ps1')
+# '../' on purpose: a bare Src resolves against deploy/, and the registry lives one level up.
+Check ($deploy -match "Src\s*=\s*[`"']\.\./config-registry\.json[`"']") `
+    "deploy ships config-registry.json into the server dir (Capture-OwnedDefaults reads it there at prestart)"
+
 Remove-Item -Recurse -Force $work
 Write-Host "`ncapture-owned-defaults: $pass passed, $fail failed"
 exit ($fail -gt 0 ? 1 : 0)
