@@ -106,12 +106,18 @@ if [ -f "$SERVER/messages.xml" ]; then
     cp -f "$SERVER/messages.xml" "$MISSIONS/$TARGET/db/messages.xml"
 fi
 
-# Two-copy model: seed the frozen `default` companion for any OWNED surface that has none.
-# Never overwrites an existing default, so on a settled box this is a no-op; it only fires
-# when a NEW owned surface is declared. Same `|| true` fail-soft rule as every other step.
-if [ -f "$SERVER/Capture-OwnedDefaults.ps1" ] && command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -File "$SERVER/Capture-OwnedDefaults.ps1" -ServerDir "$SERVER" -Fix || true
-fi
+# NOTE (2026-08-01): the frozen-default capture used to run HERE. It is REMOVED, and must not
+# come back. Capturing at prestart reads the file's CURRENT content - i.e. AFTER whatever edit
+# prompted the boot - so it froze the EDIT as the "baseline" and every diff against it showed
+# nothing. Proven twice on prod: expansion_types_tuning.xml and its .defaults were byte-identical
+# with the same mtime, and five out-of-scope defaults archived off the box were re-created here,
+# from live content, at the very next restart.
+#
+# Capture belongs in the WRITE path, which is the only place that sees the bytes BEFORE they are
+# replaced: dayz-ctl own-write now captures <stem>.defaults.<ext> when none exists (2026-08-01).
+# Owner's rule: a server-made file needs its original kept when a change is made; a generated
+# file or one we authored never needs one. Nothing is left uncovered - the surfaces still edited
+# through the bespoke verbs (types-write / file-write / spawn-write) are all files we author.
 
 # NOTE (2026-07-31): the field-override applier used to run HERE, between the default capture
 # and the serverDZ.cfg render. It is deleted - owner's ruling: "No Overrides. Just whole file

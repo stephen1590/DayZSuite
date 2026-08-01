@@ -237,7 +237,7 @@ if (-not $Local) {
     # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-CustomCE.ps1',
-                   'Apply-ServerCfg.ps1', 'Capture-OwnedDefaults.ps1',
+                   'Apply-ServerCfg.ps1',
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo',
@@ -493,12 +493,12 @@ $items = @(
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
-    @{ Src = "../Capture-OwnedDefaults.ps1"; Dst = Join-Path $ServerDir "Capture-OwnedDefaults.ps1"; Sudo = $false; Exec = $true }
-    # The registry is CODE-side truth, but Capture-OwnedDefaults reads it AT RUNTIME on the box,
-    # so the box needs the file itself - not just the masks the deploy renders into dayz-ctl.
-    # Missing this row meant the tool died on every prestart with "config-registry.json not
-    # found" and prestart's `|| true` swallowed it (found live on staging 2026-08-01, its first
-    # boot after deployment). Asserted by tests/capture-owned-defaults.test.ps1.
+    # The registry is CODE-side truth, but box-side tooling reads it AT RUNTIME, so the box needs
+    # the file itself - not just the masks the deploy renders into dayz-ctl. (Historic: the
+    # prestart default-capture died on every boot with "config-registry.json not found" because
+    # this row was missing, and prestart's `|| true` swallowed it - found live on staging
+    # 2026-08-01. That capture step is gone as of the same day; the row stays because
+    # Confirm-LiveConfigs and the recovery tooling read the registry on the box.)
     @{ Src = "../config-registry.json"; Dst = Join-Path $ServerDir "config-registry.json"; Sudo = $false; Exec = $false }
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).

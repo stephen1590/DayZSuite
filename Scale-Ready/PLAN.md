@@ -272,7 +272,7 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** a named "design contract" section exists in Test-Configs; each assertion's failure text says WHY and points here.
 - **Deps:** U1, T3. **Deploy:** none. **Reversible:** yes.
 
-### Added 2026-08-01 - WS-S tasks (REVISED same day; order S1 → S2 → S6 → S3 → S4 → S5 → S7)
+### Added 2026-08-01 - WS-S tasks (REVISED twice on 2026-08-01; order S1 → S2 → S3 → S4 → S5 → S7, with S8 alongside)
 
 > **Owner ruling:** *"The server box owns all files now... a 'drop in place' server config manager that doesn't need a deployment to seed files. I don't want these configs in my repo anymore."* Plus, on defaults: *"Generated files don't need defaults. Server made files (like types.xml) need defaults when a change is made (we need the original version persistent if we need to rollback to state 0)."*
 >
@@ -287,22 +287,26 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** met - `own-verbs.test.sh` 21 → 27, 8 new red first, 2 proven non-vacuous by reverting the read mode.
 - **Deploy:** Api. **Reversible:** yes.
 
-**S6 - Secret-shaped-field gate (BLOCKS S4 - non-negotiable)**
-- Scan every surface the resolver does NOT mark `hidden` for a `*_KEY`/`*_SECRET`/password/token with a non-empty value, or a 17-digit Steam64. Fail closed, name the file.
-- Seeded by the measured cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, **empty today** - not a live leak, a loaded one), `BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`.
-- **Acceptance:** a planted key in a non-hidden fixture fails; the same file under `hidden` passes; an empty-valued key does not false-positive (that is today's real `SteamAPI.json`).
-- **Deps:** none. **Deploy:** none. **If this slips, WS-S stops.**
-
-**S3 - Config leaves `$items`; the box owns it**
+**S3 - Config leaves `$items`; the box owns it; write the deny list**
 - Remove the 5 config rows from the deploy's `$items` (`custom-ce/{custom-ce.json, custom_types.xml, expansion_types.xml, expansion_spawnabletypes.xml, maps/dayzOffline.enoch/expansion_types.xml}`) so scenario 1 holds CODE ONLY. Delete the registry seed step with it - a drop-in-place manager does not seed.
-- Write the deny list (scenario 4 + secret-bearing paths). That list is the whole declaration; everything else derives.
+- Write the deny list (scenario 4 + secret-bearing paths). That list is the whole declaration; everything else derives:
+```
+profiles/VPPAdminTools    STEAM_API_KEY + BanList player IDs
+profiles/CodeLock         player lock permissions
+profiles/users            player profile data
+storage_*                 persistence, not config
+mapgroup* / mapcluster*   vendor geometry: 25 files, 52.8 MB, never edited
+profiles/LiveTracker      20s runtime snapshots - would churn git every pull
+```
+- **Absorbed S6 (owner, 2026-08-01).** S6 was scoped as a dynamic content scanner hunting `*_KEY`/password/token/Steam64 shapes across every non-hidden surface. Owner: *"You're just applying blanket guesses as a dynamic solution... this shouldn't change often and secrets should be known/static to begin with. Just hide them from the UI."* Correct - the secret-bearing paths are four known folders, not a discovery problem. What survives is ONE assertion that those four resolve to `hidden`, so a later refactor cannot silently drop a row. No content scanning.
+- **There is no exposure today.** Those paths have no registry row, and today a file with no row is already invisible. The risk begins the moment opt-in-by-default ships - which is why the deny list and its assertion land in the SAME task, not as a separate gate in front of it.
 - **Acceptance:** `$items` contains no `.json`/`.xml` config; a dry-run deploy reports zero config placements; the resolver reproduces the S1 baseline except for the intended, listed differences.
-- **Deps:** S1, S2, S6. **Deploy:** DayZ. **Reversible:** yes.
+- **Deps:** S1, S2. **Deploy:** DayZ. **Reversible:** yes.
 
 **S4 - Box masks derived, not declared**
 - `Deploy-Api.ps1` renders the owned masks from the five-scenario resolver instead of per-row fields. `ro` becomes enforceable ON THE BOX rather than a UI convention.
 - **Blocked on a decision:** 5 files carry a bespoke write verb (2 CE tuning via `types-write`, map-points via `spawn-write`, bans/allowlist via `file-write`). Making one `rw` grants it `own-write` **on top of** its existing verb - two write paths for one file. Either hold them out of the mask or retire the verb in the same change (WS-U). Not yet decided.
-- **Deps:** S3, S6. **Deploy:** Api.
+- **Deps:** S3. **Deploy:** Api.
 
 **S5 - Mirror is a BACKUP, never a seed**
 - Pull-Configs keeps mirroring every owned file for history and disaster recovery; nothing is ever copied from the mirror onto a running box. The per-row `seed`/`mirror` fields are deleted - both derive. `owned-mirror-contract.test.ps1` is rewritten against the resolver.

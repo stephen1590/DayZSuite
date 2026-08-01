@@ -5,7 +5,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 9 / 35 done · **WS-S (2026-08-01): the box owns every config. S1 DONE, S2 BUILT-not-deployed. S6 + S8 are hard blockers - both are hazards the new default CREATES, do not reorder around them** · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
+**Rollup:** 9 / 35 done · **WS-S (2026-08-01): the box owns every config. S1 DONE, S2 LIVE. S6 absorbed into S3 (secrets are 4 known folders, not a scan). S8 is the remaining blocker - a data-loss path, not a disclosure one** · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -73,8 +73,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | P2 | 2 | P | Design decisions as named gate assertions (counts, parity, niche cap) | plan | U1, T3 | none | TODO — niche cap + mods.conf single-owner already exist as the pattern's proof |
 | S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | **DONE 2026-08-01** — 907 files; model spot-checked against real `dayz-ctl` 44/44 then 30/30 after a correction (`writable` had measured only the own-write gate, understating 5 bespoke-verb files) |
 | S2 | 1 | S | Capture state 0 on the first write; `.defaults` readable, never writable | plan | - | Api | **BUILT 2026-08-01, NOT DEPLOYED** (1616f48) — capture moves INTO own-write (prestart capture froze the edit as the baseline: tuning file and its .defaults byte-identical, same mtime). `_defaults_path` restored — the A3 delete had removed it. `_own_check` gains a mode: served 0/33 → served; 21 writable baselines → refused. own-verbs 21→27, 8 red first, 2 non-vacuity proven |
-| S3 | 2 | S | Config leaves `$items`; the box owns it; write the deny list | plan | S1, S2, S6 | DayZ | TODO — 5 `custom-ce` config files are still deploy-stamped, so scenario 1 does not yet hold code only. Drop-in-place means no seed step at all |
-| S6 | 1 | S | **Secret-shaped-field gate — BLOCKS S4** | plan | - | none | TODO — `STEAM_API_KEY` (empty today), BanList, CodeLock perms, player profiles. Opt-in-by-default makes the deny list a security boundary; a boundary maintained by memory is not one |
+| S3 | 2 | S | Config leaves `$items`; the box owns it; write the deny list | plan | S1, S2 | DayZ | TODO — 5 `custom-ce` config files are still deploy-stamped. **Absorbed S6** (owner 2026-08-01): a dynamic secret-scanner was the wrong shape - the secret-bearing paths are 4 known folders, so they go in the deny list with ONE assertion that they resolve `hidden`. No exposure exists today (a file with no row is already invisible); the risk starts when opt-in-by-default ships, so list + assertion land together |
 | S4 | 2 | S | Box masks derived from the five-scenario resolver; `ro` enforced on the box | plan | S3, S6 | Api | TODO — **blocked on a decision**: 5 files carry a bespoke write verb, so making one `rw` grants a SECOND write path unless WS-U retires the verb in the same change |
 | S5 | 2 | S | Mirror is a BACKUP, never a seed; delete the per-row seed/mirror | plan | S3 | DayZ | TODO — supersedes the 2026-08-01 per-row wiring (29 rows), correct for the old model, boilerplate under this one |
 | S7 | 3 | S | UI reads the mode; DELETE `web`/`writable`/`seed`/`mirror` | plan | S4, S5 | ConfigViewer | TODO — a migration ends at deletion |
@@ -157,6 +156,22 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
   fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
   BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
+- 2026-08-01 (third pass) - **S2 LIVE + S6 ABSORBED + a symptom-vs-cause correction.**
+  Api deployed 23:17 UTC, ConfigViewer pushed. Verified on the box, not assumed: `.defaults`
+  served beside file rows went 0/33 -> 25 served with 8 refused, and all 8 refusals are correct
+  (5 disabled-mod configs + 3 non-json/xml). `own-write` on a .defaults now returns "the frozen
+  default is read-only", closing the 21 writable baselines. Owner restarted 23:27:58 and the 19
+  Sakhal vehicle lifetimes are LIVE at 3888000, 19/19, with CE logging on.
+  **S6 absorbed into S3** (owner): it was scoped as a dynamic content scanner; the secret-bearing
+  paths are 4 known static folders. What survives is one assertion that they resolve `hidden`.
+  Also established there is NO exposure today - a file with no registry row is already invisible -
+  so the deny list and its assertion belong in the same task, not as a gate before it.
+  **Symptom vs cause, caught by verifying after the restart:** I archived 5 out-of-scope
+  `.defaults` and prestart RE-CREATED all 5 within minutes, because `Capture-OwnedDefaults` still
+  runs there and captures for every owned row missing one - from the CURRENT content, i.e. after
+  any edit. Deleting the files treated the symptom. The fix is removing that call: capture-on-write
+  (S2, now live) covers the legitimate case and is the only path that captures BEFORE the edit.
+  Consistent with the owner's rule - the 5 are files we author, and files we author need no state 0.
 - 2026-08-01 (second pass) - **WS-S MODEL CORRECTED, and the first version of it was wrong.**
   I proposed declaring rw/ro/hidden per path across three then four axes. The owner pushed back:
   ownership is not a preference, it is **whoever writes the file last** - which the pipeline
