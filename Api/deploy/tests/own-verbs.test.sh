@@ -128,5 +128,57 @@ n="$(printf '%s' "$out" | awk -F'\t' '{print NF}')"
 [ "$(printf '%s' "$out" | cut -f8)" = "https://low.ms/knowledgebase/dayz-server-configuration" ] \
   && ok "config-list field 8 = aboutUrl" || bad "config-list field 8 (aboutUrl) wrong: $(printf '%s' "$out" | cut -f8)"
 
+echo
+# 20-24. CAPTURE-ON-WRITE (owner 2026-08-01). A server/mod-made config must keep its ORIGINAL
+# bytes the first time we modify it, so there is always a state-0 to roll back to.
+#
+# It has to happen IN THE WRITE VERB, before the replace. Capturing at prestart (the old
+# Capture-OwnedDefaults path) runs AFTER the edit and therefore freezes the EDIT as the
+# baseline - proven on prod: expansion_types_tuning.xml and its .defaults are byte-identical
+# with the same mtime, so their diff shows nothing.
+#
+# own-write is replace-only (_own_check requires the file to exist), so every target
+# pre-existed. That means no origin classification is needed: capture if missing, always.
+orig='{"a":1,"orig":true}'
+printf '%s' "$orig" > "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.json"
+rm -f "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json"
+
+printf '{"a":2}' | $CTL own-write - profiles/ExpansionMod/Loadouts/CaptureMe.json >/dev/null 2>&1
+[ -f "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json" ] \
+  && ok "own-write captured a .defaults on first modification" || bad "no .defaults captured on first write"
+[ "$(cat "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json")" = "$orig" ] \
+  && ok "the captured default holds the ORIGINAL bytes, not the edit" \
+  || bad "captured default is not the pre-edit content: $(cat "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json")"
+
+# Second write must NOT re-capture - that would overwrite state 0 with state 1.
+printf '{"a":3}' | $CTL own-write - profiles/ExpansionMod/Loadouts/CaptureMe.json >/dev/null 2>&1
+[ "$(cat "$SD/profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json")" = "$orig" ] \
+  && ok "a later write does NOT re-capture (state 0 survives)" || bad "second write clobbered the default"
+
+# A .defaults path is never itself a write target - the baseline must be immutable.
+printf '{"evil":1}' | $CTL own-write - profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && ok "own-write refuses to target a .defaults path" || bad "a .defaults file was writable"
+
+# A REFUSED write must not leave a default behind (no side effect on the failure path).
+printf '%s' '{"z":9}' > "$SD/profiles/ExpansionMod/Loadouts/BadWrite.json"
+rm -f "$SD/profiles/ExpansionMod/Loadouts/BadWrite.defaults.json"
+printf '{broken' | $CTL own-write - profiles/ExpansionMod/Loadouts/BadWrite.json >/dev/null 2>&1
+[ ! -f "$SD/profiles/ExpansionMod/Loadouts/BadWrite.defaults.json" ] \
+  && ok "a rejected write captures nothing" || bad "invalid write still created a .defaults"
+
+# 25-27. own-read SERVES a .defaults companion (owner: "we should be seeing default XMLs and
+# JSONs adjacent to our owned files"). Measured on prod before this change: served=0 of 33,
+# because OWNED_FILES is matched with grep -qxF and a companion is not itself a row. That is
+# the whole reason the side-by-side default view was impossible for file rows.
+out="$($CTL own-read profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json 2>&1)"; rc=$?
+[ $rc -eq 0 ] && ok "own-read SERVES a .defaults companion (the side-by-side fix)" \
+  || bad "own-read still refuses a .defaults (rc=$rc out=$out)"
+[ "$(printf '%s\n' "$out" | sed -n 2p)" = "$orig" ] \
+  && ok "own-read returns the ORIGINAL bytes from the companion" || bad "companion content wrong"
+
+# ...but only when its STEM is an owned surface. A companion of a reference file stays refused.
+$CTL own-read mpmissions/dayzOffline.sakhal/mapgroupproto.defaults.xml >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && ok "a .defaults whose stem is NOT owned is still refused" || bad "defaults of a non-owned file was served"
+
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

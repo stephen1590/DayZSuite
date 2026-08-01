@@ -97,30 +97,67 @@ _is_generated() {
   IFS="$_oldifs_ig"; return 1
 }
 # --- Owned-file guard (generic own-read/own-write, CONFIG-ARCHITECTURE.md Phase 1) -----------
+# <name>.<ext> -> <name>.defaults.<ext>; extensionless -> <name>.defaults. The frozen state-0
+# companion of an owned file. Re-added 2026-08-01: the A3 override delete removed this helper
+# along with the override machinery that used to be its only caller, but the two-copy model
+# needs it MORE than the override engine did - it is how capture-on-write finds where to put
+# the baseline, and how own-read serves it back for the side-by-side diff.
+_defaults_path() {
+  case "$1" in
+    *.*) printf '%s.defaults.%s' "${1%.*}" "${1##*.}" ;;
+    *)   printf '%s.defaults' "$1" ;;
+  esac
+}
+
+# Strip a .defaults marker back to the live stem, or print nothing if there is none.
+# 'a/b.defaults.json' -> 'a/b.json'
+_defaults_stem() {
+  case "$1" in
+    *.defaults.*) printf '%s.%s' "${1%.defaults.*}" "${1##*.defaults.}" ;;
+    *.defaults)   printf '%s' "${1%.defaults}" ;;
+    *)            printf '' ;;
+  esac
+}
+
 # Is <relpath> a readable/writable OWNED config file? Guards in order: syntax, extension
 # (json/xml ONLY - .env and friends can never ride these verbs), the OWNED masks (registry
 # category:'owned', rendered at deploy time), the generated mask (artifacts are never edit
 # inputs), the disabled-mod mask, existence (replace-only - a typo'd path can't create files),
 # and the realpath jail. Return 0 = allowed, 2 = refused with the reason on stderr.
 # `|| true` guards on the greps: a no-match grep in a plain statement would trip set -e.
+# $2 = 'read' | 'write' (default write). A <stem>.defaults.<ext> companion is READABLE when
+# its STEM is an owned surface, and never writable. Two live defects this closes (measured on
+# prod 2026-08-01):
+#   - OWNED_FILES is matched with grep -qxF (exact), so a companion beside a FILE row was
+#     refused outright: served=0 of 33. That is why "view default side by side" was impossible.
+#   - OWNED_DIRS is a PREFIX match, so 21 companions under the four Expansion folders were
+#     fully WRITABLE - an admin could overwrite a frozen baseline through the API.
+# Same rule fixes both: resolve the mask against the stem, allow read, refuse write.
 _own_check() {
   _r="$1"
+  _mode="${2:-write}"
   case "$_r" in ''|*..*|/*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
   case "$_r" in *[!A-Za-z0-9_./-]*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
   case "$_r" in *.json|*.xml) ;; *) echo "dayz-ctl: own verbs take json/xml only: $_r" >&2; return 2 ;; esac
+  _maskpath="$_r"
+  _stem="$(_defaults_stem "$_r")"
+  if [ -n "$_stem" ]; then
+    [ "$_mode" = read ] || { echo "dayz-ctl: the frozen default is read-only - edit the live file: $_r" >&2; return 2; }
+    _maskpath="$_stem"
+  fi
   _hit=''
-  { printf '%s\n' "$OWNED_FILES" | grep -qxF "$_r" && _hit=1; } || true
+  { printf '%s\n' "$OWNED_FILES" | grep -qxF "$_maskpath" && _hit=1; } || true
   if [ -z "$_hit" ] && [ -n "$OWNED_DIRS" ]; then
     while IFS= read -r _d; do
       [ -n "$_d" ] || continue
-      case "$_r" in "$_d"/*) _hit=1; break ;; esac
+      case "$_maskpath" in "$_d"/*) _hit=1; break ;; esac
     done <<EOF
 $OWNED_DIRS
 EOF
   fi
   [ -n "$_hit" ] || { echo "dayz-ctl: not an owned config surface: $_r" >&2; return 2; }
-  if _is_generated "$_r"; then echo "dayz-ctl: generated artifact - edit the inputs, never the output: $_r" >&2; return 2; fi
-  if [ -n "$DISABLED_TARGETS" ] && printf '%s\n' "$DISABLED_TARGETS" | grep -qxF "$_r"; then
+  if _is_generated "$_maskpath"; then echo "dayz-ctl: generated artifact - edit the inputs, never the output: $_r" >&2; return 2; fi
+  if [ -n "$DISABLED_TARGETS" ] && printf '%s\n' "$DISABLED_TARGETS" | grep -qxF "$_maskpath"; then
     echo "dayz-ctl: owning mod is disabled in mods.conf: $_r" >&2; return 2
   fi
   [ -f "$SERVER_DIR/$_r" ] || { echo "dayz-ctl: owned file not present: $_r" >&2; return 2; }
@@ -870,7 +907,7 @@ for c in r:
     # target model (CONFIG-ARCHITECTURE.md Phase 1); the bespoke types-read/settings-read verbs
     # predate it and migrate onto it later.
     [ -n "$arg" ] || die "own-read needs a relpath"
-    _own_check "$arg" || exit $?
+    _own_check "$arg" read || exit $?
     file="$SERVER_DIR/$arg"
     sha256sum "$file" | awk '{print $1}'
     cat "$file"
@@ -910,6 +947,21 @@ for c in r:
     if [ "$_base" != '__none__' ]; then
       _cur="$(sha256sum "$file" | awk '{print $1}')"
       [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
+    fi
+    # CAPTURE-ON-WRITE (owner 2026-08-01). Keep the ORIGINAL bytes of a server/mod-made config
+    # the first time we modify it, so there is always a state 0 to roll back to.
+    #
+    # It MUST happen here, before the replace. The old path captured at prestart, which runs
+    # AFTER the edit and therefore froze the edit as the baseline - proven on prod, where
+    # expansion_types_tuning.xml and its .defaults are byte-identical with the same mtime, so
+    # they diff to nothing.
+    #
+    # No origin classification is needed: own-write is replace-only (_own_check requires the
+    # file to exist), so every target pre-existed. Capture if missing, never re-capture -
+    # a second capture would overwrite state 0 with state 1, which is the bug above.
+    _def="$(_defaults_path "$rel")"
+    if [ -n "$_def" ] && [ ! -f "$SERVER_DIR/$_def" ]; then
+      cp -p "$file" "$SERVER_DIR/$_def" 2>/dev/null || true
     fi
     OWN_VERSIONS="$SERVER_DIR/.own-versions"
     mkdir -p "$OWN_VERSIONS"
