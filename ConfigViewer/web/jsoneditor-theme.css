@@ -79,16 +79,22 @@
 .je-mount.je-stacked div:has(> label.je-form-input-label) > label.je-form-input-label{ display:block; margin:0 0 2px; }
 
 /* ===================== jump-to-node navigator ===================== */
-.jn-wrap{ display:flex; flex-direction:column; gap:8px; min-height:340px; }
+/* ONE height for both navigator panes (owner 2026-08-01: "make jn-editor and jn-json have
+   independent scrolling"). Declared once on purpose - two literals drift, and the moment the
+   panes differ in height you are scrolling one out of alignment with the other, which defeats
+   showing them side by side. */
+.jn-wrap{ display:flex; flex-direction:column; gap:8px; min-height:340px; --jn-pane-h:62vh; }
 .jn-bar{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-height:20px; }
 .jn-bar .jn-crumb{ color:var(--muted); cursor:pointer; padding:1px 5px; border-radius:4px; }
 .jn-bar .jn-crumb:hover{ background:color-mix(in srgb,var(--fg) 10%,transparent); color:var(--fg); }
 .jn-bar .jn-crumb.jn-cur{ color:var(--accent); font-weight:600; cursor:default; }
 .jn-bar .jn-sep{ color:var(--faint); }
-.jn-split{ display:flex; gap:12px; align-items:flex-start; flex:1; min-height:0; flex-wrap:wrap; }
-.jn-editor{ flex:1 1 340px; min-width:0; position:relative; min-height:260px; }
+/* stretch, not flex-start: flex-start sizes each pane to its own content, so the taller one
+   sets the page height and neither scrolls internally. */
+.jn-split{ display:flex; gap:12px; align-items:stretch; flex:1; min-height:0; flex-wrap:wrap; }
+.jn-editor{ flex:1 1 340px; min-width:0; position:relative; min-height:0; max-height:var(--jn-pane-h,62vh); overflow:auto; }
 .jn-mnt{ min-height:1px; }
-.jn-json{ flex:1 1 340px; min-width:0; margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:var(--pre-fg); background:var(--pre-bg); border:1px solid var(--border); border-radius:8px; padding:10px; overflow:auto; max-height:60vh; white-space:pre; }
+.jn-json{ flex:1 1 340px; min-width:0; min-height:0; margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:var(--pre-fg); background:var(--pre-bg); border:1px solid var(--border); border-radius:8px; padding:10px; overflow:auto; max-height:var(--jn-pane-h,62vh); white-space:pre; }
 .jn-hint{ color:var(--faint); font-style:italic; font-size:12px; padding:18px 4px; }
 /* clickable json nodes */
 .jn-json .jn-node{ cursor:pointer; border-radius:3px; padding:0 1px; }

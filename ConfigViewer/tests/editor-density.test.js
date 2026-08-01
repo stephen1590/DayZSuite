@@ -62,3 +62,36 @@ test('the tier guide itself survives - density must not delete the visual hierar
   assert.match(TIER, /border-left/, 'the left tier rule is the hierarchy cue; reducing padding must not remove it');
   assert.ok(px(TIER, 'padding-left') >= 4, 'keep enough inset that the guide reads as a tier, not a smudge');
 });
+
+// Owner, 2026-08-01: "Please make jn-editor and jn-json have independent scrolling."
+//
+// Before: .jn-json was capped (max-height 60vh, overflow auto) but .jn-editor had NO bound, so
+// the form pane grew to its content and pushed the whole page. Scrolling to the bottom of a long
+// form scrolled the document away from the JSON preview - the two panes could not be read against
+// each other, which is the entire point of showing them side by side.
+//
+// Both panes must be independently scrollable AND share one height, so neither can drift past the
+// other. The height lives in a custom property for exactly that reason: two literals would be two
+// places to change.
+test('the navigator panes scroll independently', () => {
+  const ed = CSS.match(/\.jn-editor\s*\{([^}]*)\}/);
+  const js = CSS.match(/\.jn-json\s*\{([^}]*)\}/);
+  assert.ok(ed && js, 'both panes must be styled');
+  for (const [name, rule] of [['.jn-editor', ed[1]], ['.jn-json', js[1]]]) {
+    assert.match(rule, /overflow\s*:\s*auto/, `${name} must scroll on its own`);
+    assert.match(rule, /max-height\s*:\s*var\(--jn-pane-h/, `${name} must take the SHARED pane height, not its own literal`);
+    assert.match(rule, /min-height\s*:\s*0/, `${name} needs min-height:0 or flex refuses to let it shrink and scroll`);
+  }
+});
+
+test('the shared pane height is defined once', () => {
+  const decls = CSS.match(/--jn-pane-h\s*:/g) || [];
+  assert.equal(decls.length, 1, `--jn-pane-h declared ${decls.length} times; one definition or it is not shared`);
+});
+
+test('the split stretches both panes to equal height', () => {
+  const split = CSS.match(/\.jn-split\s*\{([^}]*)\}/);
+  assert.ok(split, '.jn-split must be styled');
+  assert.doesNotMatch(split[1], /align-items\s*:\s*flex-start/,
+    'flex-start lets each pane size to its own content - they must stretch to the same height');
+});
