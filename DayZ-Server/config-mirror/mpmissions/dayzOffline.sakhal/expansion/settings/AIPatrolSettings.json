@@ -3779,7 +3779,7 @@
       "Formation": "",
       "FormationScale": 1.5,
       "FormationLooseness": 0,
-      "Loadout": "MercenariesLoadout",
+      "Loadout": "MilitaryLoadout",
       "Units": [],
       "NumberOfAI": 1,
       "NumberOfAIMax": 3,
