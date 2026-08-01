@@ -272,53 +272,51 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - **Acceptance:** a named "design contract" section exists in Test-Configs; each assertion's failure text says WHY and points here.
 - **Deps:** U1, T3. **Deploy:** none. **Reversible:** yes.
 
-### Added 2026-08-01 - WS-S tasks (opt-in by default; order is S1 → S2 → S3 → S6 → S4 → S5 → S7)
+### Added 2026-08-01 - WS-S tasks (REVISED same day; order S1 → S2 → S6 → S3 → S4 → S5 → S7)
 
-> **Owner ruling that starts this workstream:** *"Can't we just track which files are explicitly locked and show the remaining XML or JSON files? I don't want this to be complicated... it's easier to track the one-off special cases than track only tracked files."* Plus the three requirements, verbatim: **(1) opt in by default; (2) allow for rw, ro, hidden flags - for files and folders (with all subfolders and files inheriting); (3) reconfigure the application to be equivalent to today's opt-out ros (opt-in rw will be default).**
+> **Owner ruling:** *"The server box owns all files now... a 'drop in place' server config manager that doesn't need a deployment to seed files. I don't want these configs in my repo anymore."* Plus, on defaults: *"Generated files don't need defaults. Server made files (like types.xml) need defaults when a change is made (we need the original version persistent if we need to rollback to state 0)."*
 >
-> Requirement 3 is the hard one and it is why S1/S3 exist: the cutover must reproduce **today's exact effective access map**, file for file, before anything is simplified. A migration that changes behaviour while changing mechanism cannot be reviewed.
+> **The first cut of this section was wrong.** It proposed declaring `rw`/`ro`/`hidden` per path across three or four axes. Ownership is not a preference - it is **whoever writes the file last**, which the pipeline already encodes. The model is the five scenarios in [CONFIG-ARCHITECTURE.md](CONFIG-ARCHITECTURE.md#the-box-owns-every-config--ws-s-owner-ruling-2026-08-01); the only thing genuinely declared is the deny list.
 
-**S1 - Freeze today's effective access map (the equivalence baseline)**
-- Enumerate every `.json`/`.xml` under the server dir and record what the system does with it TODAY: listed or not, writable or not, mirrored or not. Sources are the rendered `OWNED_FILES`/`OWNED_DIRS`/`GENERATED`/`DISABLED_TARGETS` masks on the box, the registry rows, and the UI's own access decision.
-- Output is a committed CSV baseline (`Scale-Ready/access-baseline.csv`), not a description. It is the thing S3 must reproduce.
-- **Acceptance:** the baseline names every file and its three booleans; running the capture twice is identical; a spot-check of 5 rows matches the live UI.
-- **Deps:** none. **Deploy:** none (read-only capture). **Reversible:** n/a.
+**S1 - Freeze today's effective access map** — **DONE 2026-08-01** (`Scale-Ready/access-baseline.csv`, 907 files). Model spot-checked against real `dayz-ctl` on 44 of 44, then 30 of 30 after a correction: `writable` initially measured only the own-write gate and understated 5 files editable through a bespoke verb. Columns are now `writable` / `ownWritable` / `writableVia`.
 
-**S2 - The resolver: ONE function, path → `rw` | `ro` | `hidden`**
-- `DayZ-Server/SurfaceAccess.ps1`, dot-sourceable and side-effect free (same shape as `ConfigParse.ps1`): `Resolve-SurfaceAccess -RelPath` walks the declarations and returns the mode. Rules: default `rw`; a declaration matches a file or a folder prefix; **longest match wins**, so a deeper declaration re-opens a subtree inside a locked one; `generated` globs resolve `ro` by construction.
-- Mirroring is DERIVED here too (`rw` → mirrored, else not) so no consumer re-implements the rule.
-- **Acceptance:** TDD - inheritance, longest-match override, glob folders, an unknown path defaulting to `rw`, `generated` forcing `ro`. Non-vacuity: flipping one declaration flips the resolved mode.
-- **Deps:** none. **Deploy:** none. **Reversible:** yes.
+**S2 - Capture state 0 on the first write** — **BUILT 2026-08-01, NOT DEPLOYED** (commit 1616f48).
+- `own-write` captures `<stem>.defaults.<ext>` from the current bytes before replacing, only when none exists. No origin classification needed: own-write is replace-only, so every target pre-existed. Prestart capture retires to a backstop.
+- `_defaults_path` restored to the template - the A3 delete had removed it, so the next Api deploy would have dropped the only code that can locate a baseline.
+- `_own_check` takes a mode: a `.defaults` resolves masks against its STEM, is served on read, refused on write. Closes both prod defects at once (**served 0 of 33** beside file rows; **21 WRITABLE** under the Expansion dirs).
+- **Acceptance:** met - `own-verbs.test.sh` 21 → 27, 8 new red first, 2 proven non-vacuous by reverting the read mode.
+- **Deploy:** Api. **Reversible:** yes.
 
-**S3 - Author the declarations that reproduce S1 EXACTLY (the equivalence gate)**
-- Write the `access` list in `config-registry.json`, then assert `Resolve-SurfaceAccess` reproduces the S1 baseline for every file. Any disagreement is either a missing declaration or a deliberate, listed change - never a silent one.
-- Expected shape (~6-10 entries, folder-shaped): `mapgroup*`/`mapcluster*` → `ro`; `profiles/VPPAdminTools`, `profiles/CodeLock`, `profiles/users` → `hidden`; `profiles/LiveTracker`, `profiles/FlyingDutchman` runtime snapshots → `hidden`; `ban.txt`/`whitelist.txt` → `hidden` (this also retires the open PII-mirroring question - see the root Open Work ledger).
-- **Acceptance:** resolver output == S1 baseline for all ~459 files, asserted by a test, with an explicit allowlist of intended differences (expected: zero).
-- **Deps:** S1, S2. **Deploy:** none. **Reversible:** yes.
+**S6 - Secret-shaped-field gate (BLOCKS S4 - non-negotiable)**
+- Scan every surface the resolver does NOT mark `hidden` for a `*_KEY`/`*_SECRET`/password/token with a non-empty value, or a 17-digit Steam64. Fail closed, name the file.
+- Seeded by the measured cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, **empty today** - not a live leak, a loaded one), `BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`.
+- **Acceptance:** a planted key in a non-hidden fixture fails; the same file under `hidden` passes; an empty-valued key does not false-positive (that is today's real `SteamAPI.json`).
+- **Deps:** none. **Deploy:** none. **If this slips, WS-S stops.**
 
-**S6 - The secret-shaped-field gate (SHIPS BEFORE S4 - non-negotiable)**
-- Opt-in-by-default makes the deny list a security boundary, so it gets an assertion instead of a memo. Scan every surface the resolver does NOT mark `hidden` for secret-shaped content: a key named `*_KEY`/`*_SECRET`/`*password*`/`*token*` with a non-empty value, or a 17-digit Steam64 id. Any hit fails the gate and names the file.
-- Seeded by the measured cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, empty today), `VPPAdminTools/BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`.
-- **Acceptance:** TDD - a planted key in a non-hidden fixture fails the gate; the same file under a `hidden` declaration passes; an empty-valued key does not false-positive (that is today's real `SteamAPI.json`).
-- **Deps:** S2. **Deploy:** none (gate only). **Reversible:** yes. **This is the task that makes WS-S safe; if it slips, WS-S stops.**
+**S3 - Config leaves `$items`; the box owns it**
+- Remove the 5 config rows from the deploy's `$items` (`custom-ce/{custom-ce.json, custom_types.xml, expansion_types.xml, expansion_spawnabletypes.xml, maps/dayzOffline.enoch/expansion_types.xml}`) so scenario 1 holds CODE ONLY. Delete the registry seed step with it - a drop-in-place manager does not seed.
+- Write the deny list (scenario 4 + secret-bearing paths). That list is the whole declaration; everything else derives.
+- **Acceptance:** `$items` contains no `.json`/`.xml` config; a dry-run deploy reports zero config placements; the resolver reproduces the S1 baseline except for the intended, listed differences.
+- **Deps:** S1, S2, S6. **Deploy:** DayZ. **Reversible:** yes.
 
-**S4 - Box masks rendered from the resolver**
-- `Deploy-Api.ps1` stops rendering `OWNED_FILES`/`OWNED_DIRS` from per-row fields and renders them from `Resolve-SurfaceAccess` instead. `dayz-ctl`'s `_own_check` gains the `ro` distinction (readable, never writable) so read-only is enforced on the BOX, not just hidden in the UI.
-- Fold in the already-diagnosed `_own_check` defect: it matches `OWNED_FILES` with `grep -qxF`, so a `<stem>.defaults.<ext>` companion is refused for every FILE row (measured on prod: served=0, REFUSED=33). The resolver answers `.defaults` paths as READ-ONLY siblings of their stem - which is what finally makes E6's side-by-side diff possible for file rows.
-- **Acceptance:** rendered masks are byte-identical to the S1 baseline's derived masks; `own-read` serves all 33 defaults; `own-write` still refuses a `.defaults` path and every `ro`/`hidden` path.
-- **Deps:** S3, S6. **Deploy:** Api. **Reversible:** yes (revert + redeploy Api).
+**S4 - Box masks derived, not declared**
+- `Deploy-Api.ps1` renders the owned masks from the five-scenario resolver instead of per-row fields. `ro` becomes enforceable ON THE BOX rather than a UI convention.
+- **Blocked on a decision:** 5 files carry a bespoke write verb (2 CE tuning via `types-write`, map-points via `spawn-write`, bans/allowlist via `file-write`). Making one `rw` grants it `own-write` **on top of** its existing verb - two write paths for one file. Either hold them out of the mask or retire the verb in the same change (WS-U). Not yet decided.
+- **Deps:** S3, S6. **Deploy:** Api.
 
-**S5 - Mirror + seed driven by the resolver**
-- `Pull-Configs` mirrors every `rw` surface; the deploy seeds every `rw` surface when missing. The per-row `seed`/`mirror` fields are DELETED - they become derived. `tests/owned-mirror-contract.test.ps1` is rewritten against the resolver (its current form asserts the per-row fields this task removes).
-- **Acceptance:** a pull produces the same file set the per-row wiring produces today, plus anything newly in scope, minus the vendor bulk; no file loses a mirror it had.
-- **Deps:** S3. **Deploy:** DayZ (Pull/deploy scripts). **Reversible:** yes.
+**S5 - Mirror is a BACKUP, never a seed**
+- Pull-Configs keeps mirroring every owned file for history and disaster recovery; nothing is ever copied from the mirror onto a running box. The per-row `seed`/`mirror` fields are deleted - both derive. `owned-mirror-contract.test.ps1` is rewritten against the resolver.
+- **Deps:** S3. **Deploy:** DayZ.
 
-**S7 - UI cutover + delete the per-row access fields**
-- ConfigViewer reads the mode from the API rather than inferring access from `web`/`writable`/`category`. Then DELETE `web`, `writable`, `seed`, `mirror` from the rows; what remains is display metadata (`label`, `group`, `about`, `aboutUrl`) and editor selection for the three genuine one-offs. A migration ends at deletion.
-- **Acceptance:** the registry has no access fields left; `ro` rows render read-only and `hidden` rows do not appear; mechanism-count gate records the drop.
-- **Deps:** S4, S5. **Deploy:** ConfigViewer. **Reversible:** yes.
+**S7 - UI reads the mode; DELETE the per-row access fields**
+- ConfigViewer takes the mode from the API instead of inferring it from `web`/`writable`/`category`. Then delete `web`, `writable`, `seed`, `mirror`. What survives per row is display metadata (`label`, `group`, `about`) and editor choice for the genuine one-offs.
+- **Deps:** S4, S5. **Deploy:** ConfigViewer.
 
-**Sequencing note.** S6 before S4 is the whole safety story: the gate that catches a leaked key must exist before the box starts exposing by default. S4 before S5 because exposure is the risky half and mirroring is the recoverable half. S7 last because deleting the old fields is the point of no return for this workstream.
+**S8 - Prove the generated set is complete**
+- Every prestart builder declares its output paths, and a gate cross-checks them against the `generated` set. Found unverifiable 2026-08-01: all five builders write through a `$outPath` variable, so no grep can resolve them, and `mpmissions/*/custom/` (6 files Apply-CustomCE rewrites every boot) is in NEITHER the box mask nor any declaration. Harmless today because those files are not writable; under opt-in-by-default an edit would be silently wiped at next restart.
+- **Deps:** none. **Deploy:** none. **Same class of blocker as S6 - a hazard the new default creates.**
+
+**Known category error, not scheduled:** `cfgeconomycore.xml` is scenario 2 AND 3 at once - the UI edits the CE log toggles while `Apply-CustomCE` regenerates its `<ce folder="custom">` block every prestart. Two writers, one file; a whole-file save races the builder. It has to become a generator input, or the builder must stop writing it.
 
 ### Phase 4 - Verify scale (Definition of Done)
 

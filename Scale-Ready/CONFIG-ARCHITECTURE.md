@@ -65,44 +65,63 @@ Every regular xml/json has a `*.defaults.*` copy beside it. Two kinds:
 - **2.1 Direct replacements** = Category A above. The live file is edited whole; the default is the frozen diff baseline.
 - **2.2 Generator inputs** = Category B above, with a requirement the original table under-specified: inputs include **COMMON files that propagate into multiple per-map files** (we edit for 3 maps). Propagation is ONE declarative mechanism - registry rows declare a surface's inputs and builder - not N hand-rolled builders each inventing its own layout. As of 2026-07-31 only custom-CE has a common→per-map overlay; the other builders (`Apply-ServerCfg`, `Build-TransferSpawns`, `Build-MapPoints`, `Build-BabakuSpawns`) are bespoke. Unifying them is **WS-G in [PLAN.md](PLAN.md)** (G1 declare inputs, G2 one engine, delete bespoke logic per cutover).
 
-### Surface access model — OPT-IN BY DEFAULT (owner ruling 2026-08-01, supersedes the per-row allowlist)
+### The box owns every config — WS-S (owner ruling 2026-08-01)
 
-Owner's words: *"Can't we just track which files are explicitly locked and show the remaining XML or JSON files? I don't want this to be complicated. It's easier to track the one-off special cases than track only tracked files."*
+Owner's words: *"The server box owns all files now. The server box (via ui) maintains the owned versions and keeps a .default if modified. This should be easily a 'drop in place' server config manager that doesn't need a deployment to seed files. I don't want these configs in my repo anymore."*
 
-**The rule.** Every `.json` / `.xml` file under the server dir is an owned, editable, mirrored surface **by default**. Nothing is declared to be included. Only the exceptions are written down.
+**Target: a drop-in-place config manager.** A fresh box installs DayZ and its mods, which write their own configs. The UI owns them from first touch. **No deploy step seeds config.** The repo ships CODE — scripts, PBOs, templates, `prestart.sh` — and nothing else.
 
-Why the old shape had to go: 58 registry rows each restating "this is a normal config file" is bookkeeping, and it fails in the WRONG direction — a surface nobody remembered to declare is invisible, unmirrored, and silently reverts on a rebuilt box. That is exactly how the 19 Sakhal vehicle lifetimes were lost (2026-07-31). Opt-in-by-default fails the other way: a new mod config is tracked automatically, and the worst case is noise instead of data loss.
+#### Ownership is not a flag we pick. It is whoever writes the file LAST.
 
-**Three access modes.** Declared on a PATH — a file or a folder. A folder declaration **inherits to every file and subfolder beneath it**. Most-specific match wins, so an explicit file (or a deeper folder) re-opens a subtree inside a locked one.
+That is the whole model. Five scenarios, and `ro`/`rw` falls out of them rather than being declared per path:
 
-| mode | web UI | write path | mirrored to repo |
-|---|---|---|---|
-| `rw` | listed + editable | `own-write` | yes |
-| `ro` | listed, read-only | none | no |
-| `hidden` | not listed, not readable | none | no |
+| # | last writer | example | an edit on the box survives? | resolves to |
+|---|---|---|---|---|
+| 1 | **the deploy** (`$items`) | `custom-ce/expansion_types.xml`, `mods.conf`, `prestart.sh` | no — next deploy stamps it | `ro` |
+| 2 | **the web editor** | `db/types.xml`, `expansion_types_tuning.xml`, `server-settings.json` | **yes** | `rw` — THE owned case |
+| 3 | **a prestart builder** | `serverDZ.cfg`, `mpmissions/*/custom/*`, `map-points.generated.json` | no — next restart rebuilds it | `ro` + generated |
+| 4 | **the game engine** | `storage_*/`, logs, `profiles/users/` | n/a — not config | `hidden` |
+| 5 | **capture, once** | `*.defaults.*` | must not be edited | `ro` |
 
-`rw` is the DEFAULT and is only ever written down to override an inherited `ro`/`hidden`.
+**Scenario 1 is a defect to remove, not a category to keep.** Five config files are still deploy-stamped (`custom-ce/{custom-ce.json, custom_types.xml, expansion_types.xml, expansion_spawnabletypes.xml, maps/dayzOffline.enoch/expansion_types.xml}`). Under the target they leave `$items` and become scenario 2. When scenario 1 holds only code, "the box owns every config" is true by construction and needs no declaration.
 
-**Mirroring is derived, not declared.** This is what collapses the two lists into one:
+#### The `.defaults` rule — state 0, captured at the moment of change
 
-- `rw` → mirrored. You can change it, so git history and fresh-box recovery both matter.
-- `ro` → not mirrored. You cannot change it, so the box copy is reproducible from the game/mod install (vendor content) or from the deploy payload (content we author and ship). Git history of a file nobody edits is noise — and it is 52.8 MB of it (measured below).
-- `hidden` → never mirrored, by definition.
+Owner: *"Generated files don't need defaults. Server made files (like types.xml) need defaults when a change is made (we need the original version persistent if we need to rollback to state 0)."*
 
-Consequence to accept knowingly: if an `ro` surface ever needs history, the fix is to promote it to `rw`, not to add a fourth flag.
+**Capture a default if one is missing, immediately before the first write. Never re-capture.**
 
-**Why `hidden` is a security boundary, not a convenience.** Measured on prod 2026-08-01 across the 459 non-default `.json`/`.xml` files under the server dir:
+No origin classification is required, because `own-write` is replace-only — `_own_check` requires the file to exist — so every write target already existed. "Pre-existing when we first touched it" IS "server/mod made". A generated file never reaches the write path at all (scenario 3 is `ro`), so it can never acquire one.
 
-| bucket | files | size |
-|---|---:|---:|
-| vendor map geometry (`mapgroup*`, `mapcluster*`) | 25 | **52.8 MB** |
-| everything else | 434 | 8.0 MB |
+**Capturing at prestart is wrong and was actively harmful.** It runs AFTER the edit, so it freezes the edit as the baseline. Measured on prod 2026-08-01:
 
-That 434 contains `profiles/VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (a `STEAM_API_KEY` field — **empty today**, so nothing is leaking, but opt-in-by-default would publish it to the web UI and commit it to git the moment it is filled), `profiles/VPPAdminTools/BanList.json` and `profiles/CodeLock/CodeLockPerms.json` (player Steam64 IDs), and `profiles/users/` (player profile data).
+```
+custom-ce/expansion_types_tuning.xml           81476 B  Jul 30 18:14
+custom-ce/expansion_types_tuning.defaults.xml  81476 B  Jul 30 18:14
+```
 
-So the deny list carries real consequence, and "remember to lock it" is not a control. **WS-S ships a gate assertion that scans every non-`hidden` surface for secret-shaped fields (`*_KEY`, `password`, 17-digit Steam64) and fails closed.** Without that assertion this model is one mod update away from a leak, and it must not ship without it.
+Same size, same second — the "baseline" is a copy of the change, so the diff shows nothing. Enoch identical. Capture belongs in the write verb; `Capture-OwnedDefaults` at prestart retires to a backstop.
 
-**What survives as a per-surface row.** Only genuine one-offs, and none of them are about access: display metadata (`label`, `group`, `about`/`aboutUrl`) and editor selection for the surfaces that do not use the standard whole-file editor (the CE types table, the map-owned patrol file, `server-settings.json` as a generator input). The `generated` list stays as it is — a generated artifact is `ro` by construction because you edit its inputs.
+**A default is immutable and readable.** Both were broken, in opposite directions, measured on prod: a companion beside a FILE row was refused entirely (**served 0 of 33** — the reason side-by-side comparison was impossible), while **21** companions under the four Expansion folders were fully WRITABLE because `OWNED_DIRS` matches by prefix. `_own_check` now resolves a `.defaults` path against its stem, serves it on read, and refuses it on write.
+
+#### What the repo keeps
+
+Code, plus a **read-only mirror** of the live configs for history and disaster recovery. The mirror is a BACKUP, never a seed — nothing is copied from it onto a running box. That distinction is what lets "no config in the repo as a source" and "the change is tracked in git" both be true.
+
+#### Deny list — the only thing genuinely declared
+
+Everything else is derived. What remains to write down is scenario 4 plus anything secret-bearing:
+
+```
+profiles/users            player profile data
+profiles/VPPAdminTools    STEAM_API_KEY (empty today) + BanList player IDs
+profiles/CodeLock         player lock permissions
+profiles/LiveTracker      20s runtime snapshots - would churn git every pull
+storage_*                 persistence, not config
+mapgroup* / mapcluster*   vendor geometry: 25 files, 52.8 MB, never edited
+```
+
+Measured 2026-08-01: of 459 non-default json/xml under the server dir, those 25 geometry files hold 52.8 MB and the other 434 hold 8.0 MB. **WS-S cannot ship without the S6 gate** — a scan that fails closed on secret-shaped fields in anything not hidden. Opt-in-by-default makes this list a security boundary, and a boundary maintained by memory is not one.
 
 **Defaults location convention (name the split, don't paper it):** on the BOX the default lives alongside the live file (`<stem>.defaults.<ext>`, written by Apply-ConfigOverrides for patch targets and `Capture-OwnedDefaults.ps1` for owned files). In the REPO, frozen baselines live in the parallel `config-defaults/` tree. Two conventions for one concept - acceptable while documented HERE, but any new code follows the box convention and reads locations from the registry, never hardcodes either layout.
 

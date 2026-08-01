@@ -5,7 +5,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 7 / 34 done · **WS-S opened 2026-08-01 (opt-in by default, S1-S7) - S6 is a hard blocker on S4, do not reorder** · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
+**Rollup:** 9 / 35 done · **WS-S (2026-08-01): the box owns every config. S1 DONE, S2 BUILT-not-deployed. S6 + S8 are hard blockers - both are hazards the new default CREATES, do not reorder around them** · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -26,7 +26,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 ---
 
 ## Workstreams
-- **S** - one surface declaration, opt-in by default (owner 2026-08-01). Declare the exceptions, not the surfaces.
+- **S** - the box owns every config (owner 2026-08-01). Ownership is whoever writes the file LAST, not a flag we pick; the only declaration is the deny list.
 - **A** - retire the override delta engine (two-copy). Removes Wall 1 + the HIGH drift risk.
 - **B** - UI render abstraction + god-file split. Removes Wall 2. Aligns with the parallel editor-UI effort.
 - **C** - foundations (formatting, naming, TYPES_BASE, conformance scaffold).
@@ -71,13 +71,14 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | G2 | 2 | G | ONE propagation engine (common → 3 maps); bespoke builder logic deleted per cutover | plan | G1, T1 | DayZ per builder | TODO — 5 bespoke builders today; only custom-CE has a common→per-map overlay |
 | P1 | 0 | P | Design contract into GameServices/CLAUDE.md | plan | - | none | **BUILT 2026-07-31** (this doc update; uncommitted) — contract section added, changelog entry logged |
 | P2 | 2 | P | Design decisions as named gate assertions (counts, parity, niche cap) | plan | U1, T3 | none | TODO — niche cap + mods.conf single-owner already exist as the pattern's proof |
-| S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | TODO — the equivalence baseline requirement 3 is measured against; capture only, no behaviour change |
-| S2 | 1 | S | `SurfaceAccess.ps1` resolver: path → rw / ro / hidden | plan | - | none | TODO — dot-sourceable + side-effect free (same shape as the new `ConfigParse.ps1`); default rw, folders inherit, longest match wins, mirroring DERIVED from mode |
-| S3 | 1 | S | Author the ~6-10 declarations that reproduce S1 exactly | plan | S1, S2 | none | TODO — equivalence asserted file-for-file across all ~459; also retires the open ban.txt/whitelist.txt PII-mirroring question by declaring them `hidden` |
-| S6 | 1 | S | **Secret-shaped-field gate — BLOCKS S4** | plan | S2 | none | TODO — scans every non-`hidden` surface for `*_KEY`/`*_SECRET`/password/token with a non-empty value, or a 17-digit Steam64. Seeded by the real cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, **empty today** — not a live leak, a loaded one), `BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`. Opt-in-by-default is not safe without this |
-| S4 | 2 | S | Box masks rendered from the resolver; `ro` enforced on the box | plan | S3, S6 | Api | TODO — folds in the measured `_own_check` defect (`grep -qxF` refuses every `.defaults` companion for FILE rows: served=0, REFUSED=33 on prod), which is what unblocks **E6**'s side-by-side diff |
-| S5 | 2 | S | Mirror + seed derived from the resolver; delete the per-row fields | plan | S3 | DayZ | TODO — supersedes the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows), which was the correct fix for the old model and becomes boilerplate under this one. Rewrites `owned-mirror-contract.test.ps1` against the resolver |
-| S7 | 3 | S | UI reads mode from the API; DELETE `web`/`writable`/`seed`/`mirror` | plan | S4, S5 | ConfigViewer | TODO — a migration ends at deletion; what survives per row is display metadata + editor choice for the 3 genuine one-offs |
+| S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | **DONE 2026-08-01** — 907 files; model spot-checked against real `dayz-ctl` 44/44 then 30/30 after a correction (`writable` had measured only the own-write gate, understating 5 bespoke-verb files) |
+| S2 | 1 | S | Capture state 0 on the first write; `.defaults` readable, never writable | plan | - | Api | **BUILT 2026-08-01, NOT DEPLOYED** (1616f48) — capture moves INTO own-write (prestart capture froze the edit as the baseline: tuning file and its .defaults byte-identical, same mtime). `_defaults_path` restored — the A3 delete had removed it. `_own_check` gains a mode: served 0/33 → served; 21 writable baselines → refused. own-verbs 21→27, 8 red first, 2 non-vacuity proven |
+| S3 | 2 | S | Config leaves `$items`; the box owns it; write the deny list | plan | S1, S2, S6 | DayZ | TODO — 5 `custom-ce` config files are still deploy-stamped, so scenario 1 does not yet hold code only. Drop-in-place means no seed step at all |
+| S6 | 1 | S | **Secret-shaped-field gate — BLOCKS S4** | plan | - | none | TODO — `STEAM_API_KEY` (empty today), BanList, CodeLock perms, player profiles. Opt-in-by-default makes the deny list a security boundary; a boundary maintained by memory is not one |
+| S4 | 2 | S | Box masks derived from the five-scenario resolver; `ro` enforced on the box | plan | S3, S6 | Api | TODO — **blocked on a decision**: 5 files carry a bespoke write verb, so making one `rw` grants a SECOND write path unless WS-U retires the verb in the same change |
+| S5 | 2 | S | Mirror is a BACKUP, never a seed; delete the per-row seed/mirror | plan | S3 | DayZ | TODO — supersedes the 2026-08-01 per-row wiring (29 rows), correct for the old model, boilerplate under this one |
+| S7 | 3 | S | UI reads the mode; DELETE `web`/`writable`/`seed`/`mirror` | plan | S4, S5 | ConfigViewer | TODO — a migration ends at deletion |
+| S8 | 2 | S | Prove the `generated` set is complete (builders declare outputs) | plan | - | none | TODO — unverifiable today: all 5 builders write via a `$outPath` variable, and `mpmissions/*/custom/` (6 files rewritten every boot) is in no declaration at all |
 | -- | 4 | - | Verify / Definition of Done | plan | all | - | TODO |
 | WS-D | - | D | Api actions split at ~50 (deferred, not scheduled) | plan | - | Api | TODO — ~42 actions today |
 
@@ -156,6 +157,32 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
   fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
   BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
+- 2026-08-01 (second pass) - **WS-S MODEL CORRECTED, and the first version of it was wrong.**
+  I proposed declaring rw/ro/hidden per path across three then four axes. The owner pushed back:
+  ownership is not a preference, it is **whoever writes the file last** - which the pipeline
+  already encodes in $items, the registry seeds and the builder outputs. Five scenarios replace
+  the axes (CONFIG-ARCHITECTURE.md); the only thing genuinely declared is the deny list.
+  Target restated in the owner's words: *"The server box owns all files now... a 'drop in place'
+  server config manager that doesn't need a deployment to seed files."* So scenario 1 (deploy
+  stamps the file) is a DEFECT TO REMOVE, not a category to keep - 5 custom-ce config files
+  still sit in $items.
+  **Defaults rule narrowed by the owner:** generated files never need one; a server-made file
+  needs its original kept WHEN A CHANGE IS MADE, for rollback to state 0. No origin
+  classification is needed to implement that - own-write is replace-only, so every target
+  pre-existed: capture if missing, before the replace, never re-capture.
+  **S2 BUILT (1616f48).** Three defects, one cause - nothing captured a baseline at the moment
+  of change. (a) no write path captured anything, and Capture-OwnedDefaults runs at PRESTART,
+  i.e. AFTER the edit, which froze the edit as the baseline (proven: tuning file and its
+  .defaults byte-identical, same mtime, so they diff to nothing). (b) `_defaults_path` had been
+  DELETED from the template by the A3 override sweep, so the next Api deploy would have removed
+  the only code that can locate a baseline. (c) .defaults was backwards in BOTH directions -
+  served 0 of 33 beside file rows (why side-by-side was impossible) while 21 under the Expansion
+  dirs were WRITABLE. own-verbs 21 -> 27, 8 red first, 2 non-vacuity proven.
+  **S8 added:** the `generated` set cannot currently be proven complete - all 5 builders write
+  through a `$outPath` variable, and `mpmissions/*/custom/` (6 files rewritten every boot) is in
+  no declaration at all. Harmless today; under opt-in-by-default an edit there is silently wiped.
+  **Not deployed, not cleaned:** the Api deploy and the removal of 5 out-of-scope `.defaults`
+  from prod both need the owner to name them.
 - 2026-07-31 (fifth pass) - **T4 PINNED** by the owner (testing expansion deferred until the
   overrides migration is done; recorded in PLAN.md T4, the row above, and the root Open Work
   ledger). **NO-DATA-LOSS finding on the A3 delete**: freezing protects the live box but NOT a
