@@ -5,7 +5,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 7 / 27 done · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
+**Rollup:** 7 / 34 done · **WS-S opened 2026-08-01 (opt-in by default, S1-S7) - S6 is a hard blocker on S4, do not reorder** · **Workstream A: A3's last BUILD blocker is cleared (E5) - what remains is the box cutover + deploys, both owner-gated** · **Workstream B not started** · WS-U/G/T/P from the 2026-07-31 reframe (PLAN.md §1a) - T1 + U1 + P1 delivered; **T4 PINNED by the owner** until the overrides migration lands · owner requests E4 + E5 both BUILT, neither deployed · last updated 2026-07-31 (fifth pass).
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -26,6 +26,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 ---
 
 ## Workstreams
+- **S** - one surface declaration, opt-in by default (owner 2026-08-01). Declare the exceptions, not the surfaces.
 - **A** - retire the override delta engine (two-copy). Removes Wall 1 + the HIGH drift risk.
 - **B** - UI render abstraction + god-file split. Removes Wall 2. Aligns with the parallel editor-UI effort.
 - **C** - foundations (formatting, naming, TYPES_BASE, conformance scaffold).
@@ -70,6 +71,13 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | G2 | 2 | G | ONE propagation engine (common → 3 maps); bespoke builder logic deleted per cutover | plan | G1, T1 | DayZ per builder | TODO — 5 bespoke builders today; only custom-CE has a common→per-map overlay |
 | P1 | 0 | P | Design contract into GameServices/CLAUDE.md | plan | - | none | **BUILT 2026-07-31** (this doc update; uncommitted) — contract section added, changelog entry logged |
 | P2 | 2 | P | Design decisions as named gate assertions (counts, parity, niche cap) | plan | U1, T3 | none | TODO — niche cap + mods.conf single-owner already exist as the pattern's proof |
+| S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | TODO — the equivalence baseline requirement 3 is measured against; capture only, no behaviour change |
+| S2 | 1 | S | `SurfaceAccess.ps1` resolver: path → rw / ro / hidden | plan | - | none | TODO — dot-sourceable + side-effect free (same shape as the new `ConfigParse.ps1`); default rw, folders inherit, longest match wins, mirroring DERIVED from mode |
+| S3 | 1 | S | Author the ~6-10 declarations that reproduce S1 exactly | plan | S1, S2 | none | TODO — equivalence asserted file-for-file across all ~459; also retires the open ban.txt/whitelist.txt PII-mirroring question by declaring them `hidden` |
+| S6 | 1 | S | **Secret-shaped-field gate — BLOCKS S4** | plan | S2 | none | TODO — scans every non-`hidden` surface for `*_KEY`/`*_SECRET`/password/token with a non-empty value, or a 17-digit Steam64. Seeded by the real cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, **empty today** — not a live leak, a loaded one), `BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`. Opt-in-by-default is not safe without this |
+| S4 | 2 | S | Box masks rendered from the resolver; `ro` enforced on the box | plan | S3, S6 | Api | TODO — folds in the measured `_own_check` defect (`grep -qxF` refuses every `.defaults` companion for FILE rows: served=0, REFUSED=33 on prod), which is what unblocks **E6**'s side-by-side diff |
+| S5 | 2 | S | Mirror + seed derived from the resolver; delete the per-row fields | plan | S3 | DayZ | TODO — supersedes the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows), which was the correct fix for the old model and becomes boilerplate under this one. Rewrites `owned-mirror-contract.test.ps1` against the resolver |
+| S7 | 3 | S | UI reads mode from the API; DELETE `web`/`writable`/`seed`/`mirror` | plan | S4, S5 | ConfigViewer | TODO — a migration ends at deletion; what survives per row is display metadata + editor choice for the 3 genuine one-offs |
 | -- | 4 | - | Verify / Definition of Done | plan | all | - | TODO |
 | WS-D | - | D | Api actions split at ~50 (deferred, not scheduled) | plan | - | Api | TODO — ~42 actions today |
 
@@ -133,6 +141,21 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   cutover: verify-then-freeze, refuse on any unapplied row, live file provably untouched.
   Box step deliberately NOT run (prod + possible restart = owner's call). Corrected the stale
   "NOT a whole-file ownership case" header in vehicle-lifetime-overrides.test.ps1.
+- 2026-08-01 - **WS-S OPENED (owner ruling): opt-in by default.** *"Can't we just track which files are
+  explicitly locked and show the remaining XML or JSON files? I don't want this to be complicated."* Three
+  requirements, verbatim: (1) opt in by default; (2) rw / ro / hidden flags for files AND folders, subfolders
+  and files inheriting; (3) reconfigure to be equivalent to today's access map, with rw as the default.
+  Model written into CONFIG-ARCHITECTURE.md § Surface access model; tasks S1-S7 in PLAN.md.
+  **Mirroring becomes DERIVED from access** (`rw` → mirrored; `ro`/`hidden` → not), which is what collapses
+  "what is tracked" and "what is exposed" into ONE list - the actual simplification.
+  Measured on prod to size it: 459 non-default json/xml under the server dir; 25 files of vendor map geometry
+  hold **52.8 MB**, the other 434 hold **8.0 MB**. So one `ro` glob removes 98% of the weight.
+  **The catch, and why S6 blocks S4:** that 434 includes `VPPAdminTools/ConfigurablePlugins/SteamAPI.json`
+  with a `STEAM_API_KEY` field (**empty today - nothing is leaking**), plus BanList / CodeLock perms /
+  player profiles. Opt-in-by-default turns the deny list into a security boundary, so it gets a gate
+  assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
+  fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
+  BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
 - 2026-07-31 (fifth pass) - **T4 PINNED** by the owner (testing expansion deferred until the
   overrides migration is done; recorded in PLAN.md T4, the row above, and the root Open Work
   ledger). **NO-DATA-LOSS finding on the A3 delete**: freezing protects the live box but NOT a

@@ -65,6 +65,45 @@ Every regular xml/json has a `*.defaults.*` copy beside it. Two kinds:
 - **2.1 Direct replacements** = Category A above. The live file is edited whole; the default is the frozen diff baseline.
 - **2.2 Generator inputs** = Category B above, with a requirement the original table under-specified: inputs include **COMMON files that propagate into multiple per-map files** (we edit for 3 maps). Propagation is ONE declarative mechanism - registry rows declare a surface's inputs and builder - not N hand-rolled builders each inventing its own layout. As of 2026-07-31 only custom-CE has a common→per-map overlay; the other builders (`Apply-ServerCfg`, `Build-TransferSpawns`, `Build-MapPoints`, `Build-BabakuSpawns`) are bespoke. Unifying them is **WS-G in [PLAN.md](PLAN.md)** (G1 declare inputs, G2 one engine, delete bespoke logic per cutover).
 
+### Surface access model — OPT-IN BY DEFAULT (owner ruling 2026-08-01, supersedes the per-row allowlist)
+
+Owner's words: *"Can't we just track which files are explicitly locked and show the remaining XML or JSON files? I don't want this to be complicated. It's easier to track the one-off special cases than track only tracked files."*
+
+**The rule.** Every `.json` / `.xml` file under the server dir is an owned, editable, mirrored surface **by default**. Nothing is declared to be included. Only the exceptions are written down.
+
+Why the old shape had to go: 58 registry rows each restating "this is a normal config file" is bookkeeping, and it fails in the WRONG direction — a surface nobody remembered to declare is invisible, unmirrored, and silently reverts on a rebuilt box. That is exactly how the 19 Sakhal vehicle lifetimes were lost (2026-07-31). Opt-in-by-default fails the other way: a new mod config is tracked automatically, and the worst case is noise instead of data loss.
+
+**Three access modes.** Declared on a PATH — a file or a folder. A folder declaration **inherits to every file and subfolder beneath it**. Most-specific match wins, so an explicit file (or a deeper folder) re-opens a subtree inside a locked one.
+
+| mode | web UI | write path | mirrored to repo |
+|---|---|---|---|
+| `rw` | listed + editable | `own-write` | yes |
+| `ro` | listed, read-only | none | no |
+| `hidden` | not listed, not readable | none | no |
+
+`rw` is the DEFAULT and is only ever written down to override an inherited `ro`/`hidden`.
+
+**Mirroring is derived, not declared.** This is what collapses the two lists into one:
+
+- `rw` → mirrored. You can change it, so git history and fresh-box recovery both matter.
+- `ro` → not mirrored. You cannot change it, so the box copy is reproducible from the game/mod install (vendor content) or from the deploy payload (content we author and ship). Git history of a file nobody edits is noise — and it is 52.8 MB of it (measured below).
+- `hidden` → never mirrored, by definition.
+
+Consequence to accept knowingly: if an `ro` surface ever needs history, the fix is to promote it to `rw`, not to add a fourth flag.
+
+**Why `hidden` is a security boundary, not a convenience.** Measured on prod 2026-08-01 across the 459 non-default `.json`/`.xml` files under the server dir:
+
+| bucket | files | size |
+|---|---:|---:|
+| vendor map geometry (`mapgroup*`, `mapcluster*`) | 25 | **52.8 MB** |
+| everything else | 434 | 8.0 MB |
+
+That 434 contains `profiles/VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (a `STEAM_API_KEY` field — **empty today**, so nothing is leaking, but opt-in-by-default would publish it to the web UI and commit it to git the moment it is filled), `profiles/VPPAdminTools/BanList.json` and `profiles/CodeLock/CodeLockPerms.json` (player Steam64 IDs), and `profiles/users/` (player profile data).
+
+So the deny list carries real consequence, and "remember to lock it" is not a control. **WS-S ships a gate assertion that scans every non-`hidden` surface for secret-shaped fields (`*_KEY`, `password`, 17-digit Steam64) and fails closed.** Without that assertion this model is one mod update away from a leak, and it must not ship without it.
+
+**What survives as a per-surface row.** Only genuine one-offs, and none of them are about access: display metadata (`label`, `group`, `about`/`aboutUrl`) and editor selection for the surfaces that do not use the standard whole-file editor (the CE types table, the map-owned patrol file, `server-settings.json` as a generator input). The `generated` list stays as it is — a generated artifact is `ro` by construction because you edit its inputs.
+
 **Defaults location convention (name the split, don't paper it):** on the BOX the default lives alongside the live file (`<stem>.defaults.<ext>`, written by Apply-ConfigOverrides for patch targets and `Capture-OwnedDefaults.ps1` for owned files). In the REPO, frozen baselines live in the parallel `config-defaults/` tree. Two conventions for one concept - acceptable while documented HERE, but any new code follows the box convention and reads locations from the registry, never hardcodes either layout.
 
 **One honest catch:** deltas re-stamped your changes onto a vendor rewrite. But defaults are already refreshed by hand today, so that survival was already manual. The target keeps the same touch-point as a reviewed 3-way merge instead of a silent re-stamp.

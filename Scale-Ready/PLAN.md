@@ -62,6 +62,7 @@ Seven days of work proved the walls are symptoms. The disease: **mechanisms get 
 - **WS-U - One write path** (added 2026-07-31). Migrate each bespoke write verb (`types-write`, `settings-write`, `file-write`, `spawn-write`, the patrol path) onto the generic registry-driven path, then DELETE the verb. Per-surface validation stays - it becomes the registry row's `check`, not a private verb.
 - **WS-G - One propagation mechanism** (added 2026-07-31). Generator inputs declared per registry row (`inputs:` - common + per-map); ONE engine renders them into the generated live files. The 5 builders become rows on that engine or thin wrappers over a shared library; each cutover deletes the bespoke logic it replaces.
 - **WS-T - Testing architecture** (added 2026-07-31). One runner (`Invoke-Tests.ps1`) that discovers `tests/*.test.*` repo-wide; every deploy gate runs it fail-closed; one shared harness convention (one pass/fail counter, not three); cross-map behavior-parity assertions so the 3 missions cannot silently diverge. Tests are written FIRST (the existing CLAUDE.md TDD rule) - WS-T is what makes them KEEP running.
+- **WS-S - One surface declaration, opt-in by default** (added 2026-08-01, owner ruling). Stop declaring which files are surfaces; declare only the exceptions. Every `.json`/`.xml` under the server dir is `rw` (visible, editable, mirrored) unless a path declares `ro` or `hidden`; folders inherit to everything beneath. Mirroring is DERIVED from access, which is what collapses "what is tracked" and "what is exposed" into ONE list. Kills 27+ rows of boilerplate and removes the silent-omission failure mode that lost the vehicle lifetimes. Model + the measured numbers: [CONFIG-ARCHITECTURE.md](CONFIG-ARCHITECTURE.md) § Surface access model. **Cannot ship without S6** - opt-in-by-default makes the deny list a security boundary.
 - **WS-P - Design enforcement** (added 2026-07-31). The design contract goes into GameServices/CLAUDE.md (auto-loaded) and into gate assertions (fail-closed): mechanism counts (write verbs, editor mounts) may only go DOWN; a feature request names its surface category, editor, and write path before build. The niche leaf-cap assertion is the existence proof of this pattern.
 
 ## 6. The convergence point
@@ -270,6 +271,54 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - Every design decision that CAN be asserted, IS: the U1 count freezes, the niche leaf-cap (exists - the pattern's proof), mods.conf single-owner (exists), T3 parity. New decisions add an assertion in the same named gate section, with the rationale in the failure message.
 - **Acceptance:** a named "design contract" section exists in Test-Configs; each assertion's failure text says WHY and points here.
 - **Deps:** U1, T3. **Deploy:** none. **Reversible:** yes.
+
+### Added 2026-08-01 - WS-S tasks (opt-in by default; order is S1 → S2 → S3 → S6 → S4 → S5 → S7)
+
+> **Owner ruling that starts this workstream:** *"Can't we just track which files are explicitly locked and show the remaining XML or JSON files? I don't want this to be complicated... it's easier to track the one-off special cases than track only tracked files."* Plus the three requirements, verbatim: **(1) opt in by default; (2) allow for rw, ro, hidden flags - for files and folders (with all subfolders and files inheriting); (3) reconfigure the application to be equivalent to today's opt-out ros (opt-in rw will be default).**
+>
+> Requirement 3 is the hard one and it is why S1/S3 exist: the cutover must reproduce **today's exact effective access map**, file for file, before anything is simplified. A migration that changes behaviour while changing mechanism cannot be reviewed.
+
+**S1 - Freeze today's effective access map (the equivalence baseline)**
+- Enumerate every `.json`/`.xml` under the server dir and record what the system does with it TODAY: listed or not, writable or not, mirrored or not. Sources are the rendered `OWNED_FILES`/`OWNED_DIRS`/`GENERATED`/`DISABLED_TARGETS` masks on the box, the registry rows, and the UI's own access decision.
+- Output is a committed CSV baseline (`Scale-Ready/access-baseline.csv`), not a description. It is the thing S3 must reproduce.
+- **Acceptance:** the baseline names every file and its three booleans; running the capture twice is identical; a spot-check of 5 rows matches the live UI.
+- **Deps:** none. **Deploy:** none (read-only capture). **Reversible:** n/a.
+
+**S2 - The resolver: ONE function, path → `rw` | `ro` | `hidden`**
+- `DayZ-Server/SurfaceAccess.ps1`, dot-sourceable and side-effect free (same shape as `ConfigParse.ps1`): `Resolve-SurfaceAccess -RelPath` walks the declarations and returns the mode. Rules: default `rw`; a declaration matches a file or a folder prefix; **longest match wins**, so a deeper declaration re-opens a subtree inside a locked one; `generated` globs resolve `ro` by construction.
+- Mirroring is DERIVED here too (`rw` → mirrored, else not) so no consumer re-implements the rule.
+- **Acceptance:** TDD - inheritance, longest-match override, glob folders, an unknown path defaulting to `rw`, `generated` forcing `ro`. Non-vacuity: flipping one declaration flips the resolved mode.
+- **Deps:** none. **Deploy:** none. **Reversible:** yes.
+
+**S3 - Author the declarations that reproduce S1 EXACTLY (the equivalence gate)**
+- Write the `access` list in `config-registry.json`, then assert `Resolve-SurfaceAccess` reproduces the S1 baseline for every file. Any disagreement is either a missing declaration or a deliberate, listed change - never a silent one.
+- Expected shape (~6-10 entries, folder-shaped): `mapgroup*`/`mapcluster*` → `ro`; `profiles/VPPAdminTools`, `profiles/CodeLock`, `profiles/users` → `hidden`; `profiles/LiveTracker`, `profiles/FlyingDutchman` runtime snapshots → `hidden`; `ban.txt`/`whitelist.txt` → `hidden` (this also retires the open PII-mirroring question - see the root Open Work ledger).
+- **Acceptance:** resolver output == S1 baseline for all ~459 files, asserted by a test, with an explicit allowlist of intended differences (expected: zero).
+- **Deps:** S1, S2. **Deploy:** none. **Reversible:** yes.
+
+**S6 - The secret-shaped-field gate (SHIPS BEFORE S4 - non-negotiable)**
+- Opt-in-by-default makes the deny list a security boundary, so it gets an assertion instead of a memo. Scan every surface the resolver does NOT mark `hidden` for secret-shaped content: a key named `*_KEY`/`*_SECRET`/`*password*`/`*token*` with a non-empty value, or a 17-digit Steam64 id. Any hit fails the gate and names the file.
+- Seeded by the measured cases: `VPPAdminTools/ConfigurablePlugins/SteamAPI.json` (`STEAM_API_KEY`, empty today), `VPPAdminTools/BanList.json`, `CodeLock/CodeLockPerms.json`, `profiles/users/**`.
+- **Acceptance:** TDD - a planted key in a non-hidden fixture fails the gate; the same file under a `hidden` declaration passes; an empty-valued key does not false-positive (that is today's real `SteamAPI.json`).
+- **Deps:** S2. **Deploy:** none (gate only). **Reversible:** yes. **This is the task that makes WS-S safe; if it slips, WS-S stops.**
+
+**S4 - Box masks rendered from the resolver**
+- `Deploy-Api.ps1` stops rendering `OWNED_FILES`/`OWNED_DIRS` from per-row fields and renders them from `Resolve-SurfaceAccess` instead. `dayz-ctl`'s `_own_check` gains the `ro` distinction (readable, never writable) so read-only is enforced on the BOX, not just hidden in the UI.
+- Fold in the already-diagnosed `_own_check` defect: it matches `OWNED_FILES` with `grep -qxF`, so a `<stem>.defaults.<ext>` companion is refused for every FILE row (measured on prod: served=0, REFUSED=33). The resolver answers `.defaults` paths as READ-ONLY siblings of their stem - which is what finally makes E6's side-by-side diff possible for file rows.
+- **Acceptance:** rendered masks are byte-identical to the S1 baseline's derived masks; `own-read` serves all 33 defaults; `own-write` still refuses a `.defaults` path and every `ro`/`hidden` path.
+- **Deps:** S3, S6. **Deploy:** Api. **Reversible:** yes (revert + redeploy Api).
+
+**S5 - Mirror + seed driven by the resolver**
+- `Pull-Configs` mirrors every `rw` surface; the deploy seeds every `rw` surface when missing. The per-row `seed`/`mirror` fields are DELETED - they become derived. `tests/owned-mirror-contract.test.ps1` is rewritten against the resolver (its current form asserts the per-row fields this task removes).
+- **Acceptance:** a pull produces the same file set the per-row wiring produces today, plus anything newly in scope, minus the vendor bulk; no file loses a mirror it had.
+- **Deps:** S3. **Deploy:** DayZ (Pull/deploy scripts). **Reversible:** yes.
+
+**S7 - UI cutover + delete the per-row access fields**
+- ConfigViewer reads the mode from the API rather than inferring access from `web`/`writable`/`category`. Then DELETE `web`, `writable`, `seed`, `mirror` from the rows; what remains is display metadata (`label`, `group`, `about`, `aboutUrl`) and editor selection for the three genuine one-offs. A migration ends at deletion.
+- **Acceptance:** the registry has no access fields left; `ro` rows render read-only and `hidden` rows do not appear; mechanism-count gate records the drop.
+- **Deps:** S4, S5. **Deploy:** ConfigViewer. **Reversible:** yes.
+
+**Sequencing note.** S6 before S4 is the whole safety story: the gate that catches a leaked key must exist before the box starts exposing by default. S4 before S5 because exposure is the risky half and mirroring is the recoverable half. S7 last because deleting the old fields is the point of no return for this workstream.
 
 ### Phase 4 - Verify scale (Definition of Done)
 
