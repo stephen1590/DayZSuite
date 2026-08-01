@@ -5,7 +5,7 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 20 / 42 done · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · last updated **2026-08-01 (sixth pass)**.
+**Rollup:** 21 / 44 done · **scripts 17 → 14 (U3); U4 = the capability gap that leaves** · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · last updated **2026-08-01 (sixth pass)**.
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -71,6 +71,8 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | G2 | 2 | G | ONE propagation engine (common → 3 maps); bespoke builder logic deleted per cutover | plan | G1, T1 | DayZ per builder | TODO — 5 bespoke builders today; only custom-CE has a common→per-map overlay |
 | P1 | 0 | P | Design contract into GameServices/CLAUDE.md | plan | - | none | **DONE 2026-07-31** (396023d) — contract section in GameServices/CLAUDE.md, committed |
 | P2 | 2 | P | Design decisions as named gate assertions (counts, parity, niche cap) | plan | U1, T3 | none | TODO — niche cap + mods.conf single-owner already exist as the pattern's proof |
+| U3 | 2 | U | **Script inventory: retire what the migrations replaced** | plan | - | none | **PARTLY DONE 2026-08-01** — audited all 17 DayZ-Server `.ps1` by CALLER, not by name. 3 deleted (`Sync-Loadouts` 0 refs, `Capture-OwnedDefaults` orphaned by capture-on-write, `Reconcile-Defaults` never invoked) + their 2 tests. **17 → 14.** Ratchet: `tests/no-dead-scripts.test.ps1` fails if any returns or a caller is re-added. REMAINING: the sync family (`_DZSync`, `Pull-Configs`, `Pull-DayZServer`, `Sync-ConfigDefaults`, `Sync-StagingFromProd`) is 5 scripts for one job — collapses to ~2 once S3/S5 remove seeding, so do it THERE, not as a separate cleanup |
+| U4 | 3 | U | **Game-update reconciliation is UNBUILT** (capability gap, opened by U3) | plan | S3 | DayZ | TODO — `Reconcile-Defaults.ps1` (3-way merge via `git merge-file`, TDD 7/7) was deleted because NOTHING ever called it, so no live behaviour changed. But the problem is real: a DayZ/mod update rewrites a vendor baseline and there is now no merge path between the new baseline and our owned edits. Recoverable from git (`git show HEAD~1:DayZ-Server/Reconcile-Defaults.ps1`) — the work is WIRING it into the update path, which is why rebuilding it blind would repeat the mistake |
 | S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | **DONE 2026-08-01** — 907 files; model spot-checked against real `dayz-ctl` 44/44 then 30/30 after a correction (`writable` had measured only the own-write gate, understating 5 bespoke-verb files) |
 | S2 | 1 | S | Capture state 0 on the first write; `.defaults` readable, never writable | plan | - | Api | **DONE + LIVE 2026-08-01** (1616f48, Api deployed 23:17) — capture moved INTO own-write, before the replace. Prestart capture REMOVED (4bbee2b, not yet deployed) — it read post-edit content and froze the edit as the baseline, proven twice on prod. own-verbs 21→27 |
 | S3 | 2 | S | Config leaves `$items`; the box owns it; write the deny list | plan | S1, S2 | DayZ | TODO — 5 `custom-ce` config files are still deploy-stamped. **Absorbed S6** (owner 2026-08-01): a dynamic secret-scanner was the wrong shape - the secret-bearing paths are 4 known folders, so they go in the deny list with ONE assertion that they resolve `hidden`. No exposure exists today (a file with no row is already invisible); the risk starts when opt-in-by-default ships, so list + assertion land together |
@@ -156,6 +158,24 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
   fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
   BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
+- 2026-08-01 (seventh pass) - **SCRIPT INVENTORY. 17 -> 14, and the tracker gets it this time.**
+  Owner: *"Why do we have so many single-purpose powershell scripts? ... Either update the
+  fucking tracker or delete the files you're not using."* Both, in that order.
+  Audited every DayZ-Server `.ps1` by CALLER rather than by name. Three had their job taken over
+  and were never retired: `Sync-Loadouts` (ZERO references repo-wide - the Loadouts became owned
+  files in A2 and the generic own-write path replaced it), `Capture-OwnedDefaults` (orphaned the
+  same day by capture-on-write, and it was producing WRONG baselines), `Reconcile-Defaults`
+  (built 07-29, invoked by nothing, ever). Deleted with their 2 tests; `no-dead-scripts.test.ps1`
+  is the ratchet so none can drift back.
+  **The pattern the owner spotted is real:** FOUR scripts existed for the `.defaults` lifecycle
+  alone - create / pull / merge / generate - one per step, none retired when the mechanism moved.
+  **Named, not silently swallowed:** deleting Reconcile-Defaults leaves a REAL capability gap
+  (U4) - a game update that rewrites a vendor baseline now has no merge path to our owned edits.
+  It changed no live behaviour, because nothing called it; the missing piece was always the
+  wiring, not the merger.
+  **Not consolidated yet, deliberately:** the sync family is 5 scripts doing one job, but S3/S5
+  delete config seeding outright, at which point pull collapses to ~2. Doing it now would be
+  cleanup that S5 then redoes.
 - 2026-08-01 (sixth pass) - **TRACKER RECONCILED. It had gone stale again - the same failure this
   file recorded on 2026-07-31.** I appended log entries all day but never revisited the BOARD, so
   rows still said "BUILT, not deployed" for work that shipped hours earlier. Owner: *"why do all
