@@ -97,14 +97,14 @@ function isOwnedRel(rel) {
   if (ownedFiles.has(rel)) return true;
   return ownedDirs.some((d) => rel.startsWith(d + '/'));
 }
-function buildRows(items, writable, doc, mission) {
+function buildRows(items, writable, mission) {
   const list = [];
   const byRel = new Map();
   const wByKey = new Map();
   for (const w of writable || []) { if (w && w.name) { wByKey.set(w.name, w); if (w.path) wByKey.set(w.path, w); } }
   for (const it of items || []) {
     const c = (typeof it === 'string') ? { group: 'General', name: it, label: it, path: it } : it;
-    if (!c || !c.name || c.name === 'overrides' || c.path === 'config-overrides.json') continue;
+    if (!c || !c.name) continue;
     const rel = c.path || c.name;
     if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
     const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
@@ -137,36 +137,11 @@ function buildRows(items, writable, doc, mission) {
     byRel.set(rel, row); list.push(row);
   }
   // Override entries with no curated row -> their own sections.
-  const missionKeys = new Set(list.filter((r) => r.scope === 'mission').map((r) => r.mission + '\n' + r.fileKey));
-  const synth = (relpath, name, label, group) => {
-    if (relpath && byRel.has(relpath)) return;
-    const row = makeRow(relpath, name, label, group);
-    row.access = row.kind === 'other' ? 'lock' : 'edit';
-    if (relpath) byRel.set(relpath, row);
-    list.push(row);
-  };
-  for (const f of Object.keys(doc.files || {})) {
-    if (f.startsWith('_') || byRel.has(f)) continue;
-    synth(f, null, f, 'overrides · server dir');
-  }
-  for (const [layer, files] of Object.entries(doc.mpmissions || {})) {
-    if (layer.startsWith('_') || !files || typeof files !== 'object') continue;
-    for (const f of Object.keys(files)) {
-      if (f.startsWith('_')) continue;
-      if (layer === 'common') {
-        // The common layer gets its OWN row per file, ALWAYS — 'Map - All Missions'
-        // is where all-missions changes live; mission folders show only their own
-        // layer. Never registered in byRel (a mission row shares the resolved path).
-        const row = makeRow(activeMissionRel(mission, f), null, f, 'Map - All Missions');
-        row.key = 'common|' + f; row.scope = 'mission'; row.mission = null; row.fileKey = f; row.kind = kindOf(f);
-        row.access = row.kind === 'other' ? 'lock' : 'edit';
-        list.push(row);
-      } else {
-        if (missionKeys.has(layer + '\n' + f)) continue;
-        synth('mpmissions/' + layer + '/' + f, null, f, 'overrides · ' + layer);
-      }
-    }
-  }
+  // (2026-07-31) A block here SYNTHESISED extra rows from config-overrides.json - every file
+  // the manifest patched appeared in the tree whether or not the registry declared it. That is
+  // how 22 undeclared surfaces got into the UI. The manifest is deleted: rows now come only from
+  // the registry-backed listings, so an undeclared file is a missing registry row to fix, not a
+  // ghost row to click.
   // Final sweep: any row that resolves to a GENERATED (compiler-output) file is read-only,
   // however it was created (curated listing, writable, or override-synth). This is the ONE place
   // the generated rule is enforced in the UI, so every code path above inherits it.
@@ -175,20 +150,20 @@ function buildRows(items, writable, doc, mission) {
   // (direct-write, out of the override system). Read-only here so it is never override-patched
   // and the Patrols array is never dumped as a field blob.
   for (const r of list) { if (r.relpath && /(^|\/)mpmissions\/[^/]+\/expansion\/settings\/AIPatrolSettings\.json$/.test(r.relpath)) { r.access = 'lock'; r.mapOwned = true; } }
-  // Two-copy routing (CONFIG-ARCHITECTURE.md Phase 1): an owned file with ZERO active override
-  // patches edits WHOLE in the own-editor. Files still carrying patches keep the override editor
-  // until their Phase 2 cutover empties the block - then they flip here automatically, which IS
-  // the migration UX. Types rows keep their table; set-file rows ('own') and locked rows keep theirs.
+  // Two-copy routing: an owned surface edits WHOLE in the own-editor. This used to carry a second
+  // condition - `&& ownLayerCount(r) === 0` - so a file still holding override rows was denied the
+  // whole-file editor until its cutover emptied the block. With the override document deleted that
+  // count is always zero, so the condition is not simplified away, it is SATISFIED away: being
+  // declared owned in the registry is now the whole test.
   for (const r of list) {
     if (r.access === 'edit' && !r.types && !r.generated && !r.mapOwned && !r.readonly
-        && isOwnedRel(r.relpath) && ownLayerCount(r) === 0) r.ownFile = true;
+        && isOwnedRel(r.relpath)) r.ownFile = true;
   }
-  // Final drop: any row whose owning mod is disabled in mods.conf (curated row OR override-synth)
-  // is removed entirely — a turned-off mod must not surface here. Done last so every path above is
-  // covered. The box-owned patches remain on disk (reversible); re-enable the mod + redeploy the Api.
+  // Final drop: any row whose owning mod is disabled in mods.conf is removed entirely — a turned-off
+  // mod must not surface here. Done last so every path above is covered. The box-side files remain
+  // on disk (reversible); re-enable the mod + redeploy the Api.
   return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
-function activeMissionRel(mission, fileKey) { return mission ? 'mpmissions/' + mission + '/' + fileKey : null; }
 function rowByKey(k) { return rows.find((r) => r.key === k) || null; }
 function currentRow() { return selKey ? rowByKey(selKey) : null; }
 
@@ -219,14 +194,11 @@ function renderFilesNav() {
       bySub.get(sub).push(Object.assign({}, r, { file: slash >= 0 ? r.label.slice(slash + 1) : r.label }));
     }
     const rowHtml = (r) => {
-      const n = ownLayerCount(r);   // a mission row counts ONLY its own layer; common has its own row
-      // E7 (owner: "how come the RO/RW only applies to a few items? Be consistent."): every row
-      // states its access, always. It used to fall through to '' for a plain editable row, and an
-      // override count REPLACED the rw/ro badge - so writability was shown for some rows and not
-      // others for two different reasons. Access badge always; the count rides alongside it.
+      // Owner 2026-07-31: "how come the RO/RW only applies to a few items? Be consistent." Every
+      // row states its access, always - no empty fallback. The override COUNT that used to ride
+      // alongside (and sometimes replace) this badge is gone with the document it counted.
       const writable = r.access !== 'lock';
-      const badge = (n > 0 ? '<span class="ovr-badge">' + n + '</span>' : '')
-        + (writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>');
+      const badge = writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>';
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
         '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
     };

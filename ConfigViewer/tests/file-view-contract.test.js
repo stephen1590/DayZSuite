@@ -48,11 +48,17 @@ test('E7: EVERY nav row states its access - no silent fallback to no badge', () 
   assert.doesNotMatch(block, /:\s*''\s*;/, 'no empty-string fallback - that is what left most rows unlabelled');
 });
 
-test('E7: an override count no longer REPLACES the access badge', () => {
+// The original form of this asserted that the override count rode ALONGSIDE the access badge
+// instead of replacing it. There is no count now - the document it counted is deleted - so the
+// owner's actual complaint ("how come the RO/RW only applies to a few items? Be consistent") is
+// satisfied more strongly: exactly one badge per row, no second thing that can displace it.
+test('E7: the access badge is the ONLY badge - nothing can displace it again', () => {
   const i = JS.indexOf('const writable = r.access !== ');
   const block = JS.slice(i, i + 400);
-  // count and access badge must both be emitted, concatenated - not chosen between
-  assert.match(block, /ovr-badge[\s\S]{0,120}\+\s*\(writable/, 'the count rides alongside the access badge');
+  assert.doesNotMatch(block, /ovr-badge/, 'the override count is deleted, not merely reordered');
+  const badges = block.match(/const badge = ([^;]*);/);
+  assert.ok(badges, 'the badge must be built in one place');
+  assert.match(badges[1], /^\s*writable \? /, 'one ternary, one badge - no concatenated second badge to fight it');
 });
 
 test('E10: an absent file says so, instead of claiming it is unreadable', () => {
