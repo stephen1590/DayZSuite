@@ -85,6 +85,7 @@ if ($failed.Count) {
 # them and no pull captured them, so they lived ONLY on prod - a fresh box and every staging VM
 # had none of it, and enoch silently lost 17 patrols for five days with no diff to notice it.
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
+. (Join-Path $PSScriptRoot "ConfigParse.ps1")             # Test-ConfigParses - BOM-tolerant, kind-driven
 . (Join-Path $PSScriptRoot "../../../common/Utils.ps1")   # Get-Stdout - strips ErrorRecords from 2>&1
 Resolve-DZDeployerEnv -ScriptRoot $PSScriptRoot -RemoteHost ([ref]$RemoteHost) -RemoteUser ([ref]$RemoteUser) -BoundParameters $PSBoundParameters
 $target    = "${RemoteUser}@${RemoteHost}"
@@ -147,12 +148,12 @@ foreach ($row in $liveFileRows) {
     if (-not $row.seed) { Write-Warning "  SKIP $($row.name) - mirror:'live' file row has no seed path (nowhere to pull to)."; $fBad++; continue }
     $text = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$($row.box)'" } | Out-String
     if (-not $text.Trim()) { Write-Warning "  SKIP $($row.name) - box copy missing/empty ($($row.box))."; $fBad++; continue }
-    $ok = switch ([string]$row.check) {
-        'json'  { try { $null = $text | ConvertFrom-Json; $true } catch { $false } }
-        'xml'   { try { $null = [xml]$text;               $true } catch { $false } }
-        default { $false }   # a mirrored file row must declare a parse check - refuse unvalidated pulls
-    }
-    if (-not $ok) { Write-Warning "  SKIP $($row.name) - box copy does not parse as $($row.check)."; $fBad++; continue }
+    # Shared validator (ConfigParse.ps1). It strips a leading UTF-8 BOM before parsing: the
+    # bare `[xml]$text` cast this replaced rejected every BOM'd mission file, so db/globals.xml
+    # on all three maps + Sakhal db/events.xml reported "does not parse" and never mirrored,
+    # while the box copies were valid the whole time (2026-08-01). An undeclared check kind is
+    # still false - a mirrored file row must declare one; never pull unvalidated content.
+    if (-not (Test-ConfigParses $text $row.check)) { Write-Warning "  SKIP $($row.name) - box copy does not parse as $($row.check)."; $fBad++; continue }
     $dst = Join-Path $PSScriptRoot $row.seed
     $liveFilePaths += $row.seed
     $old = if (Test-Path $dst) { Get-Content -Raw -LiteralPath $dst } else { $null }
