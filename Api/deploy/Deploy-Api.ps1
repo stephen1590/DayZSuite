@@ -35,7 +35,7 @@
 param(
     [switch]$Apply,
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
+    [string]$Env = 'staging',   # which box: staging default, prod explicit - picks host.config.<env>.env
     [string]$ConfigPath,
     [switch]$NoLog,
     [switch]$SkipTests    # bypass the repo-wide unit-test gate (emergency only)
@@ -65,7 +65,7 @@ if (-not $cfg.Dayz -or -not $cfg.Dayz.Unit -or -not $cfg.Dayz.ServerDir) {
 }
 $restartWarnSec = if ($cfg.Dayz.RestartWarningSeconds) { [int]$cfg.Dayz.RestartWarningSeconds } else { 15 }
 
-# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root): every
 # *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
 # refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback on
 # purpose). Under -Apply a failure ABORTS; a dry run just reports it. -SkipTests bypasses
@@ -222,14 +222,14 @@ $disabledTargetsRendered = ($disabledTargets -join "`n")
 if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled in mods.conf): $($disabledTargets -join ', ')`n" }
 
 # Owned-surface masks -> OWNED_FILES / OWNED_DIRS (one ServerDir-relative path per line). The
-# registry's category:'owned' rows (CONFIG-ARCHITECTURE.md two-copy model, Phase 0 classification)
+# registry's category:'owned' rows - the two-copy model's editable set
 # gate dayz-ctl's generic own-read/own-write - the Phase 1 whole-file mechanism the bespoke
 # types-/settings- verbs migrate onto. File rows contribute their box path; folder rows their dir
 # (files beneath are reachable, json/xml + replace-only enforced box-side by _own_check).
 # web:'types' rows are EXCLUDED even when owned: types-write is their ONLY writer (structural CE
 # validation own-write doesn't do). They join the generic verb when it gains per-kind validation.
 #
-# category:'input' joins them (Scale-Ready E5, 2026-07-31). An input is a GENERATOR DRIVER -
+# category:'input' joins them. An input is a GENERATOR DRIVER -
 # server-settings.json drives Apply-ServerCfg, which compiles serverDZ.cfg. It is still box-owned
 # content the web edits whole, so own-write is its transport; the categories differ only in what
 # READS the file (the game vs a compiler), not in how it is written. Safe because the compiler's

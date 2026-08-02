@@ -38,7 +38,7 @@ $DZ_HEAVY_EXCLUDES = @(
 #
 # $Env defaults to PROD here on purpose: every consumer of this resolver is a mirror/backup
 # tool (Sync-*, Pull-*) and those are prod-only — staging state must never be pulled into
-# the repo mirrors (STAGING-PLAN.md deviation table). Confirm-LiveConfigs is the one caller
+# the repo mirrors - staging state must never reach them. Confirm-LiveConfigs is the one caller
 # that passes its own -Env through.
 function Resolve-DZDeployerEnv {
     param(

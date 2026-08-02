@@ -55,3 +55,7 @@
 .claude/
 .DS_Store
 Thumbs.db
+
+# Local project plans - working docs, not repository code. Plans change; nothing
+# in the repo may cite them (Dev/CLAUDE.md: comments never reference internal docs).
+Scale-Ready/

@@ -16,7 +16,7 @@ IGNORE_EXT='__IGNORE_EXT__'        # global comma list of extensions hidden from
 WRITE_MAP='__WRITE_MAP__'          # rendered "name<TAB>relpath" WRITE mask (config-registry.json entries flagged "writable")
 GENERATED='__GENERATED__'          # rendered relpath globs of COMPILER OUTPUTS (config-registry.json "generated") - read-only; own-write refuses to target them
 DISABLED_TARGETS='__DISABLED_TARGETS__'  # rendered relpaths of config surfaces whose owning mod is DISABLED in mods.conf (config-registry.json "mod" x deploy/mods.conf, resolved at deploy time) - the web editor DROPS these rows
-OWNED_FILES='__OWNED_FILES__'      # rendered relpaths of registry FILE rows with category:'owned' - the generic own-read/own-write allowlist (CONFIG-ARCHITECTURE.md two-copy model, Phase 1)
+OWNED_FILES='__OWNED_FILES__'      # rendered relpaths of registry FILE rows with category:'owned' - the generic own-read/own-write allowlist
 OWNED_DIRS='__OWNED_DIRS__'        # rendered reldirs of registry FOLDER rows with category:'owned' - files under these are own-read/own-write reachable (json/xml only, replace-only)
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
@@ -96,7 +96,7 @@ _is_generated() {
   done
   IFS="$_oldifs_ig"; return 1
 }
-# --- Owned-file guard (generic own-read/own-write, CONFIG-ARCHITECTURE.md Phase 1) -----------
+# --- Owned-file guard (the generic own-read/own-write allowlist) ----------------------------
 # <name>.<ext> -> <name>.defaults.<ext>; extensionless -> <name>.defaults. The frozen state-0
 # companion of an owned file. Re-added 2026-08-01: the A3 override delete removed this helper
 # along with the override machinery that used to be its only caller, but the two-copy model
@@ -904,7 +904,7 @@ for c in r:
     # base= for own-write), rest = RAW contents (the editor round-trips it back, so no redaction
     # backstop - safe because 'owned' rows are game/mod config, never secret-bearing files, and
     # _own_check refuses anything but .json/.xml outright). THE generic read of the two-copy
-    # target model (CONFIG-ARCHITECTURE.md Phase 1); the bespoke types-read/settings-read verbs
+    # target model; the bespoke types-read/settings-read verbs
     # predate it and migrate onto it later.
     [ -n "$arg" ] || die "own-read needs a relpath"
     _own_check "$arg" read || exit $?
@@ -915,7 +915,7 @@ for c in r:
 
   own-write)
     # own-write <doc|-> <relpath> [base=<sha256>] — REPLACE one category-'owned' config file
-    # whole. THE generic write of the two-copy target model (CONFIG-ARCHITECTURE.md Phase 1).
+    # whole. THE generic write of the two-copy target model.
     # Same contract as types-write: the doc rides $2 ('-' = stdin, 2MB cap), replace-only,
     # validated BEFORE the write (parse by extension: .json = JSON, .xml = well-formed XML),
     # base= optimistic concurrency (exit 5 = conflict, the editor says "reload"), snapshot the

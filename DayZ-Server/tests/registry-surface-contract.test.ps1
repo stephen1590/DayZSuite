@@ -80,7 +80,7 @@ foreach ($m in $missions) {
 
 # --- generator INPUTS are not owned files ---------------------------------------------------
 # server-settings.json is not a file the game reads: Apply-ServerCfg turns it into serverDZ.cfg
-# (a read-only generated artifact). CONFIG-ARCHITECTURE.md's target table calls this Category B -
+# (a read-only generated artifact). This is a GENERATOR INPUT -
 # "UI: edits the inputs". Classifying it 'owned' put it in the box's OWNED_FILES, which permits
 # own-write - a whole-file replace that bypasses the 14-toggle allowlist Apply-ServerCfg enforces,
 # so an admin could store keys the renderer silently drops. An input must never be own-writable.

@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  The ONE test runner (Scale-Ready T1). Discovers every test suite in the repo and
+  The ONE test runner. Discovers every test suite in the repo and
   runs them all; any red suite - or an empty discovery - is a failure.
 
 .DESCRIPTION

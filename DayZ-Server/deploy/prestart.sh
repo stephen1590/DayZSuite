@@ -16,7 +16,7 @@ KEEP=10        # storage backups per mission
 KEEP_LOGS=40   # raw RPT/ADM safety net only — dayz-logarchive.timer zips dead logs daily; this must stay well above one day's boot count so pruning never beats the archiver
 UPDATE_TIMEOUT=2400   # hard ceiling (40m) for an armed update; MUST stay below the unit's TimeoutStartSec so systemd never kills us mid-download
 
-# mods.conf is the ONE owner of mod enablement (GameServices/CLAUDE.md structural rule).
+# mods.conf is the ONE owner of mod enablement - nothing else may hold a copy of that state.
 # Every consumer DERIVES from it: Deploy-Api renders dayz-ctl's DISABLED_TARGETS from it, the
 # web editor drops a surface whose registry 'mod' is disabled, and prestart gates mod-specific
 # build steps through this function. Never hand-sync a second copy of this fact.

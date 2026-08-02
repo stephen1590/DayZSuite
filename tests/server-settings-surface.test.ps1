@@ -1,8 +1,8 @@
 #requires -Version 7
 <#
-  server-settings-surface.test.ps1 - Scale-Ready E5 contract, across all three tiers.
+  server-settings-surface.test.ps1 - the server-settings surface contract, across all three tiers.
 
-  Owner (2026-07-31, verbatim in PLAN.md E5): "We are getting rid of the fields view,
+  Owner, verbatim: "We are getting rid of the fields view,
   remember? Use the JSON/XML editor. The server-settings compiles (not explicit write) on
   a save to create our OWNED file... It's a driver for the settings."
 

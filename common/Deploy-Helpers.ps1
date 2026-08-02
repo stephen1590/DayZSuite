@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
   Shared SHIP+RUN helpers for this repo's deploy scripts — the P1 deploy-layer
-  extraction from MAINTENANCE-PLAN.md ("Extract Invoke-RemoteDeploy + New-SshArgs...
+  Shared SHIP+RUN so each deploy does not re-implement ssh/rsync argument handling...
   replaces the ~25-line SHIP+RUN block duplicated in all four Deploy-*.ps1").
 
   First consumer: Monitoring/deploy/Deploy-Monitoring.ps1. The four older
@@ -17,7 +17,7 @@
 # -p on the command line OVERRIDES a Host alias's Port, so a hardcoded default of 22
 # silently sends a deploy meant for `staging-vm` (alias: 127.0.0.1 port 2222) to
 # 127.0.0.1:22 — the dev machine's own sshd. Only set SshPort for a box reached by real
-# hostname; alias-reached boxes leave it unset (../STAGING-PLAN.md).
+# hostname; alias-reached boxes leave it unset, so ~/.ssh/config decides the port.
 function New-SshArgs([hashtable]$Cfg) {
     $list = @()
     if ($Cfg.SshPort) { $list += @('-p', "$([int]$Cfg.SshPort)") }

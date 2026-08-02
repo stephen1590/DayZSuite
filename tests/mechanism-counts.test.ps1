@@ -1,12 +1,12 @@
 #requires -Version 7
 <#
-  mechanism-counts.test.ps1 - Scale-Ready U1: the one-off freeze.
-  Design decisions as gate assertions (design contract, GameServices/CLAUDE.md):
+  mechanism-counts.test.ps1 - the one-off freeze.
+  Design decisions that CAN be gate assertions ARE ones - a rule in a doc gets missed:
   the mechanism counts below are pinned at their 2026-07-31 measured values as
   MAXIMUMS. They may only go DOWN (WS-U migrations delete a verb, then the pin
   here is lowered in the same change). Adding an Nth+1 write verb or a new
   box-writing UI module is a STOP-AND-SURFACE decision, never a drive-by -
-  see Scale-Ready/PLAN.md (U1/U2) before touching a pin.
+  a pin only ever moves DOWN - raising one means a mechanism was added, which is the defect.
 
   Runs on EVERY deploy via Invoke-Tests.ps1 (T1) - including Deploy-Api, which
   Test-Configs does not gate.
@@ -35,7 +35,7 @@ $writeVerbs = [regex]::Matches($tpl, '(?m)^\s*([a-z][a-z-]*-write)\)') | ForEach
 $MAX_WRITE_VERBS = 6
 Assert "dayz-ctl write verbs <= $MAX_WRITE_VERBS (found $($writeVerbs.Count): $($writeVerbs -join ', '))" `
     ($writeVerbs.Count -le $MAX_WRITE_VERBS) `
-    "A NEW write verb violates WS-U (one write path). Use the generic own-write path, or STOP and surface the gap - Scale-Ready/PLAN.md U2."
+    "A NEW write verb breaks the one-write-path rule. Use the generic own-write path, or STOP and surface the gap."
 
 # --- 2. box-writing UI modules: the exact set, no additions ------------------
 # Every file under web/js that calls apiPost (the ONE write transport). A new
@@ -56,7 +56,7 @@ $writers = Get-ChildItem (Join-Path $repo 'ConfigViewer/web/js') -Filter '*.js' 
 $unexpected = @($writers | Where-Object { $_ -notin $allowedWriters })
 Assert "box-writing UI modules = the pinned set (found $($writers.Count))" `
     ($unexpected.Count -eq 0) `
-    "NEW writer(s): $($unexpected -join ', '). A module gaining box-write access is a stop-and-surface decision - Scale-Ready/PLAN.md U1."
+    "NEW writer(s): $($unexpected -join ', '). A module gaining box-write access is a stop-and-surface decision."
 
 # --- 3. apiPost is defined ONCE - the transport has one owner ----------------
 $defs = Get-ChildItem (Join-Path $repo 'ConfigViewer/web/js') -Filter '*.js' |

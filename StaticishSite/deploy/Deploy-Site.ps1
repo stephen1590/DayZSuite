@@ -27,7 +27,7 @@
 param(
     [switch]$Push,                       # actually deploy (default: dry-run only)
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',            # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
+    [string]$Env = 'staging',            # which box: staging default, prod explicit - picks host.config.<env>.env
     [string]$Server,                     # e.g. myhost.example.com
     [string]$SshUser,                    # e.g. deploy
     [string]$RemotePath,                 # e.g. /var/www/personal-projects

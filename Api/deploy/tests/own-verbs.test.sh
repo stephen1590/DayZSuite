@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # own-verbs.test.sh - offline TDD harness for dayz-ctl's generic owned-file verbs
-# (own-read / own-write), the Phase 1 mechanism of the CONFIG-ARCHITECTURE.md migration.
+# (own-read / own-write), the generic whole-file mechanism for owned config.
 # Renders dayz-ctl.template with fixture values into a temp dir and exercises the verbs
 # against a fake ServerDir. No box, no sudo, no network. Written BEFORE the implementation
 # (TDD): first run must FAIL with "unknown verb".

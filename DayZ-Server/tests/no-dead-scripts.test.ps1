@@ -3,7 +3,7 @@
 .SYNOPSIS
   Retired scripts are DELETED, and nothing still points at them.
 
-  Standing rule (GameServices/CLAUDE.md): a migration ENDS AT DELETION. An abstraction that
+  A migration ENDS AT DELETION. An abstraction that
   leaves the old path on disk is two mechanisms, not one. These three each had their job taken
   over and were then left lying around:
 

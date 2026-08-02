@@ -32,7 +32,7 @@
 param(
     [switch]$Apply,
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',   # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
+    [string]$Env = 'staging',   # which box: staging default, prod explicit - picks host.config.<env>.env
     [switch]$NoLog
 )
 

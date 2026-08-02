@@ -1,5 +1,5 @@
 // own-editor.js — the whole-file two-copy editor for category-'owned' surfaces
-// (CONFIG-ARCHITECTURE.md Phase 1). The LIVE file is edited in place as TEXT (CodeMirror 6,
+// The LIVE file is edited in place as TEXT (CodeMirror 6,
 // JSON/XML syntax by extension); the frozen DEFAULT (<stem>.defaults.<ext>, reachable via the
 // same configs/own read since it sits under the owned dir) is the read-only reference shown as
 // a unified diff — the diff is DISPLAY, never something the box applies. Save ships the whole

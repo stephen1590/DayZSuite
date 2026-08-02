@@ -31,7 +31,7 @@
 param(
     [switch]$Push,                       # actually deploy (default: dry-run only)
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',            # which box: staging default, prod explicit (../../STAGING-PLAN.md) - picks host.config.<env>.env
+    [string]$Env = 'staging',            # which box: staging default, prod explicit - picks host.config.<env>.env
     [string]$Server,                     # e.g. myhost.example.com
     [string]$SshUser,                    # e.g. deploy
     [string]$RemotePath,                 # e.g. /var/www/config-viewer
@@ -73,7 +73,7 @@ foreach ($tool in 'rsync', 'ssh') {
 $webDir = Join-Path $SiteRoot 'web'
 if (-not (Test-Path (Join-Path $webDir 'index.html'))) { throw "No app at $webDir (expected index.html)." }
 
-# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+# Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root): every
 # *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
 # refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback on
 # purpose). Under -Push a failure ABORTS; a dry run just reports it. -SkipTests bypasses

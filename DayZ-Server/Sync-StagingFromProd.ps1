@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Seed the STAGING box's config from PROD's LIVE state - the required starting point for any
-    staging test (STAGING-PLAN.md). One-way and enforced: prod is read-only, only staging is
+    staging test. One-way and enforced: prod is read-only, only staging is
     written. It can never write prod or the repo mirror.
 .DESCRIPTION
     Staging seeds config only when MISSING, and the pull family is prod-pinned, so nothing ever

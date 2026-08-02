@@ -45,7 +45,7 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 - **CryptPad reaches in, never the reverse.** Its edge is `./Provision-Tls.ps1 -Service CryptPad` (the engine's sibling lookup); its payload script dot-sources `Load-DeployConfig.ps1` from here and passes `-HostConfigDir` at this root. There is ONE TLS engine and ONE `host.config.<env>.env` - never copy either into CryptPad. The two repos must stay side by side under `UbuntuHost/`.
 - **Loopback port map (check before adding a service, either repo):** CryptPad `3000`+`3003`, Grafana `3001`, API `3100`, Prometheus `9090`, node_exporter `9100`. Grafana's default is 3000 - it collides with CryptPad, hence 3001. The map lives here because port claims span both repos.
 
-## Design contract (owner, 2026-07-31 - standing scope; plan + tasks: `Scale-Ready/PLAN.md`)
+## Design contract (owner, standing scope)
 
 - **One mechanism per concept.** (Maintain-before-you-add, delete-dead-code-in-the-same-change and migrations-end-at-deletion are GLOBAL rules - `Dev/CLAUDE.md` § Maintain before you add. Not restated here.) One write path (the generic registry-driven own-write; the bespoke verbs are being retired - NEVER add one), one editor family (json-editor-ui navigator for structured JSON, CM6 for XML/raw text), one propagation engine for generator inputs. A new parallel mechanism is a defect to surface, not a shortcut; mechanism counts only go down (gate-asserted as the assertions land).
 - **Two-copy config model, no field-patch layer.** Every regular config has a `*.defaults.*` companion. A surface is either a direct replacement (edited whole, diffed vs the frozen default) or a generator input (common + per-map inputs propagate into the generated files - one shared engine, WS-G).
@@ -56,7 +56,7 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 ## Structural rules (a violation is STOP-and-surface, never work-around)
 
 - **One concept, one owner.** Mod enablement = `mods.conf`. A config surface = its registry row. Any system holding a hand-synced copy of that state is a defect to surface, not a place to remember.
-- **If a change requires edits beyond the declaring row + one consumer, the design is the bug** - name it before patching the N places, and it enters Open Work (Dev/CLAUDE.md).
+- **If a change requires edits beyond the declaring row + one consumer, the design is the bug** - name it before patching the N places, and it enters `Dev/OPEN-WORK.md`.
 - **A cross-system invariant is a gate assertion (Test-Configs) or it does not exist.** "Keep X in sync with Y" written in a doc = a missing assertion.
 - **This file carries contracts, traps, and intent - never structure maps.** Needing a map to edit safely means the structure failed; fix or gate it instead.
 

@@ -72,7 +72,7 @@ function Import-DeployConfig {
     param(
         [Parameter(Mandatory)][string]$ServiceDeployDir,  # the <service>/deploy folder
         [ValidateSet('staging','prod')]
-        [string]$Env = 'staging',                          # which box: staging is the DEFAULT, prod must be explicit (../STAGING-PLAN.md). Picks host.config.<env>.env
+        [string]$Env = 'staging',                          # which box: staging is the DEFAULT, prod must be explicit. Picks host.config.<env>.env
         [string]$HostConfigDir,                            # repo root; default = two levels above the deploy dir (nested services)
         [string]$HostConfigPath                            # override the whole path; default = <HostConfigDir>/host.config.<env>.env
     )
@@ -108,7 +108,7 @@ function Import-DeployConfig {
     foreach ($k in $hostCfg.Keys) { $cfg[$k] = $hostCfg[$k] }
     foreach ($k in $svcCfg.Keys)  { $cfg[$k] = $svcCfg[$k] }
     # Expose the selected environment (and ${Env} in templates). Any `if ($cfg.Env ...)`
-    # branch in deploy code must map to a row in ../STAGING-PLAN.md's deviation table.
+    # branch in deploy code is a deliberate staging/prod deviation - justify it at the branch.
     $cfg['Env'] = $Env
 
     return (Resolve-ConfigRefs $cfg $cfg)

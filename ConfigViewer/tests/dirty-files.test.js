@@ -1,7 +1,7 @@
-// TDD for E4 (Scale-Ready): the ONE named-dirty mechanism. Written BEFORE
+// TDD for the ONE named-dirty mechanism. Written BEFORE
 // web/js/dirty-files.js exists - first run must fail with a module-not-found.
 //
-// Owner spec (verbatim, PLAN.md E4): "saving should prompt for confirmation now.
+// Owner spec, verbatim: "saving should prompt for confirmation now.
 // The dialogue should tell you what files you edited and are currently saving."
 // The pure logic lives here: which files changed between two overrides-doc
 // snapshots, the pill text, and the confirm-dialog text. The DOM wiring in the

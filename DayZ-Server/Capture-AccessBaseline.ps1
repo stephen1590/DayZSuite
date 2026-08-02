@@ -31,7 +31,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'AccessBaseline.ps1')
-if (-not $OutFile) { $OutFile = Join-Path $PSScriptRoot '../Scale-Ready/access-baseline.csv' }
+if (-not $OutFile) { $OutFile = Join-Path $PSScriptRoot 'logs/access-baseline.csv' }
 
 function Remote([string]$cmd) { ssh -o ConnectTimeout=10 $Target $cmd }
 

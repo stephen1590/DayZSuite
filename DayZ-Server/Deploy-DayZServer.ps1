@@ -54,7 +54,7 @@ param(
     [int]$MaxProdSyncAgeHours = 24,                         # staging gate: refuse if the last prod->staging sync is older than this
     [switch]$Local,                                         # apply to THIS machine (the ssh leg uses this on the VPS)
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',                               # which box: staging is the DEFAULT, prod must be explicit (STAGING-PLAN.md). Picks deployer.<env>.env; ignored under -Local
+    [string]$Env = 'staging',                               # which box: staging is the DEFAULT, prod must be explicit. Picks deployer.<env>.env; ignored under -Local
     [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
     [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
     [string]$RemoteDir    = "servers/dayz-server/deploy-stage",  # transient payload staging INSIDE the server dir (home-relative for ssh/rsync) — wiped and re-shipped every deploy, so the box has exactly ONE DayZ location and this subfolder is just the delivery truck: templates land here, get rendered with host.env's secrets, pass the player guard, then are PLACED into the server dir / systemd. Never a second copy of the repo (~/dayz-tooling retired 2026-07-16).
@@ -101,7 +101,7 @@ if (-not $Local) {
     $sshOpt = "ssh -o ConnectTimeout=10"
     Write-Host "=== env: $Env -> $RemoteTarget ===`n" -ForegroundColor Cyan
 
-    # PROD DEPLOY GUARD (STAGING-PLAN.md phase 1): prod only ever runs a REVIEWED commit —
+    # PROD DEPLOY GUARD: prod only ever runs a REVIEWED commit —
     # a -Fix to prod refuses a dirty tree or a non-main branch. Staging deploys the working
     # tree freely (that's what it's for). Checked before anything touches the network.
     if ($Env -eq 'prod' -and $Fix) {
@@ -118,7 +118,7 @@ if (-not $Local) {
         $marker   = (ssh -o ConnectTimeout=10 $RemoteTarget "cat servers/dayz-server/.prod-sync 2>/dev/null" 2>$null | Out-String)
         $syncedAt = if ($marker -match 'synced_at=(\S+)') { $Matches[1] } else { $null }
         if (-not $syncedAt) {
-            Write-Error "staging deploy refused: config is not seeded from prod (no .prod-sync marker). Run ./Sync-StagingFromProd.ps1 -Fix first so staging starts from prod parity (STAGING-PLAN.md), or pass -SkipProdSync to override."
+            Write-Error "staging deploy refused: config is not seeded from prod (no .prod-sync marker). Run ./Sync-StagingFromProd.ps1 -Fix first so staging starts from prod parity, or pass -SkipProdSync to override."
             exit 6
         }
         $ageH = ([datetime]::UtcNow - [datetimeoffset]::Parse($syncedAt).UtcDateTime).TotalHours
@@ -129,7 +129,7 @@ if (-not $Local) {
         Write-Host ("--- prod-parity OK: staging synced from prod {0:N1}h ago ---`n" -f $ageH) -ForegroundColor Green
     }
 
-    # MIRROR PULLS + AUTO-COMMIT ARE PROD-ONLY (STAGING-PLAN.md deviation table): the repo
+    # MIRROR PULLS + AUTO-COMMIT ARE PROD-ONLY: the repo
     # mirror is the committed history of what runs on PROD. Pulling a staging box here would
     # auto-commit staging config into that history — so under any other env the three pulls
     # and the backup commit below are skipped entirely; staging is never pulled back.
@@ -175,7 +175,7 @@ if (-not $Local) {
         }
     }
 
-    # Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root — Scale-Ready T1): every
+    # Pre-deploy UNIT-TEST gate (Invoke-Tests.ps1 at the repo root): every
     # *.test.* suite in the repo, one runner, fail-closed — a red suite OR an empty discovery
     # refuses to ship, and a missing/erroring runner stops the script (no Test-Path fallback
     # on purpose). Under -Fix a failure ABORTS; a bare dry-run just reports it. -SkipTests
@@ -207,7 +207,7 @@ if (-not $Local) {
     }
 
     # PULL-ONLY CONFIG MODEL (2026-07-16): the dev box does not push config content, full
-    # stop (MAINTENANCE-PLAN.md addendum 2026-07-16b). Config-content items in $items below
+    # stop. Config-content items in $items below
     # are flagged Seed=$true: copied only when MISSING on the box (fresh box / disaster
     # recovery), never overwriting a live copy. New config fields are created box-side by
     # the overrides engine (force-create) via the web editor — nothing config-shaped ships

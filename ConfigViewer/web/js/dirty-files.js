@@ -1,4 +1,4 @@
-// dirty-files.js - E4 (Scale-Ready): the ONE named-dirty mechanism.
+// dirty-files.js - the ONE named-dirty mechanism.
 // The shell's guard and the header pill knew THAT something was unsaved; nobody
 // could say WHICH files. Every editor now reports names through here, and every
 // save prompts with the exact list first. Pure logic only - no DOM, so the node

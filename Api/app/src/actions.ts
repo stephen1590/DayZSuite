@@ -904,7 +904,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/own': {
       destructive: false,
       readOnly: true,
-      describe: 'one category-\'owned\' config file raw, plus its version hash — the generic whole-file read of the two-copy model (CONFIG-ARCHITECTURE.md Phase 1). path = a ServerDir-relative file under an owned registry surface (json/xml only). Pass the version back to configs/set-own as baseVersion so a concurrent admin edit is rejected (409).',
+      describe: 'one category-\'owned\' config file raw, plus its version hash — the generic whole-file read of the two-copy model (Phase 1). path = a ServerDir-relative file under an owned registry surface (json/xml only). Pass the version back to configs/set-own as baseVersion so a concurrent admin edit is rejected (409).',
       schema: {
         query: { type: 'object', required: ['path'], properties: { path: { type: 'string', description: 'ServerDir-relative path of an owned config file (e.g. profiles/ExpansionMod/Loadouts/TownLoadout.json)' } } },
         response: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'string' }, content: { type: 'string' } } },
@@ -926,7 +926,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/set-own': {
       destructive: false,
       readOnly: false,
-      describe: 'replace one category-\'owned\' config file whole — the generic whole-file write of the two-copy model (CONFIG-ARCHITECTURE.md Phase 1); the bespoke types/settings writers migrate onto it. The box validates by extension (JSON parse / well-formed XML), refuses generated + disabled-mod + non-owned paths, snapshots the outgoing version (.own-versions/, keep 30), and writes atomically. Pass baseVersion (from configs/own) for optimistic concurrency (409 on conflict).',
+      describe: 'replace one category-\'owned\' config file whole — the generic whole-file write of the two-copy model; the bespoke types/settings writers migrate onto it. The box validates by extension (JSON parse / well-formed XML), refuses generated + disabled-mod + non-owned paths, snapshots the outgoing version (.own-versions/, keep 30), and writes atomically. Pass baseVersion (from configs/own) for optimistic concurrency (409 on conflict).',
       schema: {
         body: { type: 'object', required: ['path', 'content'], properties: {
           path: { type: 'string', description: 'ServerDir-relative path of an owned config file (same path configs/own takes)' },

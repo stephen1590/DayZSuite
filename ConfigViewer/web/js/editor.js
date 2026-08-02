@@ -226,13 +226,13 @@ function selectRow(key) {
   if (row.access === 'own') { el.editorPage.classList.remove('types-mode'); selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
   // EDIT is the default view for every OWNED surface, XML included (owner call 2026-07-31,
-  // Scale-Ready E1). The Fields view is retired for those: it renders the override DELTA, and
+  // The Fields view is retired for those: it renders the override DELTA, and
   // the delta engine is being deleted (A3), so a field grid is a view onto something going away.
   //
   // server-settings.json is the ONE exception and it is not an exception to the rule - it is a
   // different KIND of surface. It is not a file the game reads; it is the INPUT set that
   // Apply-ServerCfg turns into serverDZ.cfg (which is itself a read-only generated artifact).
-  // That is Category B in CONFIG-ARCHITECTURE.md's target table: "UI: edits the inputs".
+  // That makes it a GENERATOR INPUT: the UI edits the inputs, never the generated output.
   // Its form is purpose-built for generator parameters - custom fields that drive other things -
   // so whole-file editing would be meaningless here and would let an admin type keys the
   // renderer's allowlist silently drops. It keeps its form.

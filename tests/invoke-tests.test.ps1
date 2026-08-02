@@ -1,6 +1,6 @@
 #requires -Version 7
 <#
-  invoke-tests.test.ps1 - TDD harness for Invoke-Tests.ps1 (Scale-Ready T1: the ONE
+  invoke-tests.test.ps1 - TDD harness for Invoke-Tests.ps1 (the ONE
   test runner, wired fail-closed into all three deploys).
   Written BEFORE the runner exists: first run must FAIL ("runner exists").
 

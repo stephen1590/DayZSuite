@@ -63,17 +63,17 @@ param(
     [Parameter(Mandatory)][string]$Service, # e.g. StaticishSite | Api
     [switch]$Apply,
     [ValidateSet('staging','prod')]
-    [string]$Env = 'staging',   # which box: staging default, prod explicit (STAGING-PLAN.md) - picks host.config.<env>.env
+    [string]$Env = 'staging',   # which box: staging default, prod explicit - picks host.config.<env>.env
     [switch]$SkipTls,       # plain HTTP only — use before DNS points here; REQUIRED on staging
     [string]$ConfigPath,    # override; default <Service>/deploy/deploy.config.json, looked up in the two places below
     [switch]$NoLog
 )
 
-# Staging is http-only by design (STAGING-PLAN.md deviation table: no public DNS, no
+# Staging is http-only by design (no public DNS, no
 # HTTP-01). The bootstrap path (-SkipTls) is exactly the staging vhost; certbot never
 # runs there.
 if ($Env -eq 'staging' -and -not $SkipTls) {
-    Write-Error "staging is http-only: re-run with -SkipTls (TLS/certbot is prod-only - see STAGING-PLAN.md deviation table)."
+    Write-Error "staging is http-only: re-run with -SkipTls (certbot needs public DNS, which staging has not got)."
     exit 2
 }
 

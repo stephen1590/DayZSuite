@@ -9,7 +9,7 @@
   that is disaster recovery. So `seed: null` means BOTH "the change never reaches git" AND
   "a rebuilt box silently reverts to the vendor default".
 
-  That is the no-data-loss rule CONFIG-ARCHITECTURE.md wrote for the override-engine delete:
+  That is the no-data-loss rule the override-engine delete depended on:
   once nothing patches the file at boot, THE SEED IS THE VALUE. It was measured on
   db/types.xml, where 19 restored vehicle lifetimes existed on the box and nowhere else.
 

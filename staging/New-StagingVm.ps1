@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Procure + run the local staging VM (QEMU/KVM, Ubuntu cloud image, cloud-init).
-    The staging half of STAGING-PLAN.md, retargeted from "second VPS" to a local VM:
+    The staging half of the two-box model, on a local VM rather than a second VPS:
     full isolation from prod, no port forwarding (slirp user-net + hostfwd), disposable
     by design (overlay disk over a pristine base image - wipe = delete one file).
 .DESCRIPTION
@@ -27,7 +27,7 @@
     After -Fix, deploys reach it via the printed ssh alias (Host staging-vm), so every
     deploy script just gets Server=staging-vm / DEPLOY_REMOTE_HOST=staging-vm - no port
     plumbing anywhere. PREREQ before the FIRST deploy: the prod-only mirror-pull guard
-    (STAGING-PLAN.md phase 1) - without it a staging deploy auto-commits staging config
+    - without it a staging deploy auto-commits staging config
     into the prod mirror.
 .EXAMPLE
     ./New-StagingVm.ps1                  # report: prereq check + plan
