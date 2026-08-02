@@ -22,7 +22,7 @@ GameServices/
 ├── templates/                token-rendered inputs to the engine
 ├── remote/provision-tls.sh   STATIC bash that runs ON the box (no values baked in)
 ├── common/Deploy-Helpers.ps1 shared SHIP+RUN helpers
-└── CLAUDE.md  STAGING-PLAN.md  MAINTENANCE-PLAN.md  Scale-Ready/
+└── CLAUDE.md
 ```
 
 > The **Api** is served behind nginx but its actions land on **DayZ-Server** -

@@ -11,7 +11,7 @@ onto any box that lacks them. No config is hand-restored file by file.
 cp host.env.example host.env && $EDITOR host.env        # passwords + Steam account
 $EDITOR deployer.prod.env                                # point at the new host
 
-# -Env prod is REQUIRED here: bare runs default to the staging VM (STAGING-PLAN.md)
+# -Env prod is REQUIRED here: bare runs default to the staging VM
 ./Deploy-DayZServer.ps1 -Env prod        # report first - expect Missing everywhere
 ./Deploy-DayZServer.ps1 -Env prod -Fix   # ships code, seeds all config mirrors, downloads mods, starts
 ./Confirm-LiveConfigs.ps1 -Env prod      # prove it: zero-MISS, valid artifacts, unit active

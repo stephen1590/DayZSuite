@@ -29,7 +29,7 @@ Instead, it's a second local file — ONE PER ENVIRONMENT: `deployer.prod.env` (
 and `deployer.staging.env` (the local QEMU VM, `DEPLOY_REMOTE_HOST=staging-vm`), both
 copied from `deployer.env.example`, gitignored, and — like `host.env` — never rsynced
 to the server (all are explicitly excluded from the deploy payload). `-Env` picks the
-file: bare runs default to STAGING, `-Env prod` is explicit (../../STAGING-PLAN.md).
+file: bare runs default to STAGING, `-Env prod` is explicit.
 The mirror-pull tools (`Sync-*`, `Pull-*`) always read `deployer.prod.env` — the repo
 mirrors track prod only, staging is never pulled back. Bare `deployer.env` is still
 accepted as a legacy name for prod.

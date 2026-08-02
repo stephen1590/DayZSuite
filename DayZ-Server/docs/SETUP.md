@@ -93,7 +93,7 @@ server's: `cp deployer.env.example deployer.prod.env` (or `deployer.staging.env`
 the local staging VM) next to the script and set `DEPLOY_REMOTE_HOST` — see
 [CONFIGURATION.md](CONFIGURATION.md#deploy_remote_host--deploy_remote_user).
 Every deploy command below targets STAGING by default; add `-Env prod` to reach the
-VPS (../STAGING-PLAN.md).
+VPS.
 
 ```bash
 ./Deploy-DayZServer.ps1          # drift report — on a fresh box everything shows Missing

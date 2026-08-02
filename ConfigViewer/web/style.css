@@ -765,7 +765,7 @@
   /* list row kind glyph (matches the map: location ring / patrol hexagon / object diamond) */
   .mp-item .mf-ico { flex: none; }
 
-  /* Owned-file whole editor (own-editor.js — CONFIG-ARCHITECTURE.md Phase 1 two-copy model).
+  /* Owned-file whole editor (own-editor.js — the two-copy model: frozen default + live).
      CM6 ships a LIGHT default theme; every rule below re-homes it onto the app's always-dark
      code surface (--pre-bg/--pre-fg, same in both themes - matches the File view and log
      panes), with token colors inherited from the app's own t-* palette via class-mapped

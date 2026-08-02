@@ -56,6 +56,12 @@
 .DS_Store
 Thumbs.db
 
-# Local project plans - working docs, not repository code. Plans change; nothing
-# in the repo may cite them (Dev/CLAUDE.md: comments never reference internal docs).
+# Local project plans, trackers and changelogs - working docs, not repository code.
+# They change constantly and get deleted; nothing in the repo may cite them
+# (Dev/CLAUDE.md: comments never reference internal documentation).
 Scale-Ready/
+MAINTENANCE-PLAN.md
+STAGING-PLAN.md
+CLAUDE-CHANGELOG.md
+DayZ-Server/CLAUDE-CHANGELOG.md
+DayZ-Server/serverMods/FlyingDutchman/PLAN.md

@@ -33,7 +33,7 @@ Every change ships a terse PR-changelog notice - even a one-liner: **Why** (obje
 | `Api/` | Fastify/TypeScript on localhost:3100, public at `api.cytonicmushroom.ddns.net`. HMAC-signed requests → allowlisted DayZ actions via `sudo dayz-ctl` |
 | `ConfigViewer/` | DayZ web UI. No build step - native ES modules under `web/js/`, deploy = rsync |
 | `Monitoring/` | Prometheus + node_exporter + Grafana (public at `grafana.<BaseDomain>`, Grafana login guards it). Loopback stack, generic - scrape targets are config rows, dashboards are code |
-| `staging/` | local QEMU staging VM tooling (`New-StagingVm.ps1`, `staging.env`). Design: `STAGING-PLAN.md` |
+| `staging/` | local QEMU staging VM tooling (`New-StagingVm.ps1`, `staging.env`) |
 | `common/Deploy-Helpers.ps1` | shared SHIP+RUN (`New-SshArgs`, `Invoke-RemoteDeploy`) - the P1 extraction. Consumer: Monitoring; migrate the four older Deploy-*.ps1 one at a time |
 | `Load-DeployConfig.ps1` | merges `host.config.<env>.env` (flat) + per-service `deploy/deploy.config.json` (nested) with `${Key}` interpolation. Nested services find the host config two levels up; an out-of-repo service passes `-HostConfigDir` |
 | `Provision-Tls.ps1` | per-name HTTP-01 certs. `-Service` resolves against exactly two hardcoded places: `<root>/<Service>/deploy`, then `<root>/../<Service>/deploy` (a sibling repo under UbuntuHost). Prints which one it hit |
@@ -65,7 +65,7 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 - **Stage-and-ship** - server-bound content is real repo files, never here-string script vars.
 - **Config is data** - tunables live in config files (`host.config.<env>.env`, `deploy.config.json`, `host.env`), never script params. `Deploy-Site.ps1` and `Deploy-ConfigViewer.ps1` still take params - legacy violators awaiting the P1b migration, don't copy their pattern.
 - **Shared tools, not shared fates** - no generic deploy engine; each service ships itself.
-- **Staging by default (2026-07-21)** - every deploy script's `-Env` defaults to the local staging VM (`host.config.staging.env` → `staging-vm`, `BaseDomain=localhost`); `-Env prod` is the only way to reach the VPS, and prod `-Fix` demands clean main. Staging is http-only: `Provision-Tls` refuses it without `-SkipTls`. Mirror pulls + the backup auto-commit are prod-only. Any `if ($cfg.Env ...)` branch must map to a row in `STAGING-PLAN.md`'s deviation table.
+- **Staging by default (2026-07-21)** - every deploy script's `-Env` defaults to the local staging VM (`host.config.staging.env` → `staging-vm`, `BaseDomain=localhost`); `-Env prod` is the only way to reach the VPS, and prod `-Fix` demands clean main. Staging is http-only: `Provision-Tls` refuses it without `-SkipTls`. Mirror pulls + the backup auto-commit are prod-only. Any `if ($cfg.Env ...)` branch is a deliberate staging/prod deviation - justify it at the branch, and keep the list short.
 - **Fresh-box deploy order:** StaticishSite first (owns the nginx `default_server` catch-all), DayZ-Server before Api (dayz-ctl needs its target), Api before ConfigViewer.
 - **`SshPort` is only for boxes reached by real hostname.** An explicit `ssh -p` OVERRIDES a `~/.ssh/config` Host alias's `Port`, so setting `SshPort` for an alias-reached box (staging-vm = 127.0.0.1:2222) silently retargets the deploy at 127.0.0.1:22 - the dev machine's own sshd, which then prompts for a password. Every script omits `-p` entirely when `SshPort` is unset; leave it unset for alias-reached boxes. A password prompt from any deploy means you're not talking to the box you think you are - stop and check `ssh -G <target>`.
 
@@ -79,7 +79,15 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 - **No logic duplicated across tiers** - shared logic lives in one tier; the others call it.
 - **Test the seams** - isolated tier tests pass while integration breaks. Cover the cross-tier path.
 
-**Model (LIVE):** owned files keep two whole copies - a frozen `<stem>.defaults.<ext>` + the `live` file - and the diff is SHOWN by the UI, never applied by the box. `own-write` captures the default from the current bytes before its first replace, so state 0 always survives. **Ownership is not a flag anyone picks: it is whoever writes the file LAST** (deploy / web editor / prestart builder / game engine / frozen capture). The five scenarios and what each resolves to live in `Scale-Ready/CONFIG-ARCHITECTURE.md` - the single source of truth for the config model.
+**Model (LIVE):** owned files keep two whole copies - a frozen `<stem>.defaults.<ext>` + the `live` file - and the diff is SHOWN by the UI, never applied by the box. `own-write` captures the default from the current bytes before its first replace, so state 0 always survives. **Ownership is not a flag anyone picks: it is whoever writes the file LAST** (deploy / web editor / prestart builder / game engine / frozen capture). The five scenarios:
+
+| last writer | example | edit on the box survives? | resolves to |
+|---|---|---|---|
+| the deploy (`$items`) | `mods.conf`, `prestart.sh` | no - next deploy stamps it | `ro` |
+| the web editor | `db/types.xml`, `server-settings.json` | **yes** | `rw` - the owned case |
+| a prestart builder | `serverDZ.cfg`, `mpmissions/*/custom/*` | no - next restart rebuilds it | `ro`, generated |
+| the game engine | `storage_*`, logs, `profiles/users/` | n/a - not config | hidden |
+| capture, once | `*.defaults.*` | must not be edited | `ro` |
 
 **Target (WS-S):** the box owns EVERY config, drop-in-place, with no deploy step seeding config. The repo ships CODE; it keeps a config mirror as a BACKUP that is never copied onto a running box.
 
@@ -95,12 +103,15 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 - **Server FPS is PUSH, not pull.** Everything else in `/metrics` is pulled on scrape; `dayz_server_fps` is pushed by VPPAdminTools' server-status webhook into the API's VPP ingress (`routes/sources.ts` → `vpp-stats.ts` → `/metrics`). Dropped once stale (>180s); `dayz_server_status_age_seconds` reports freshness. Enable in VPP's in-game WebHooks menu, not via deploy.
 - **Favicon identity**: one shared "mushroom-monogram" mark across all domains - source SVG + rsvg/magick regen; wired into StaticishSite + ConfigViewer (Api/CryptPad offered, not wired).
 
-## Plans
+## Known debt (kept here because it constrains new code)
 
-`MAINTENANCE-PLAN.md` holds the P0-P4 state from the 2026-07-15 triple audit plus addenda. Before proposing a P-item, verify it isn't already done - file presence + git log, not memory. Known debt: P1b - migrate the four older `Deploy-*.ps1` onto `common/Deploy-Helpers.ps1`, migrate the two param scripts to config-only, lift the catch-all to a host-level template.
+- **P1b** - `Deploy-ConfigViewer.ps1` and `Deploy-Site.ps1` are not on `common/Deploy-Helpers.ps1` and still take params instead of config. Don't copy their pattern.
+- **The DayZ deploy never REMOVES.** `$items` copies files one at a time and nothing reconciles, so anything ever shipped stays on the box forever - deleting a script from the repo does NOT remove it from prod. ConfigViewer solves the same problem with one `rsync --delete` on its webroot; DayZ cannot do that naively (persistence, logs, mods and box-owned config share the server dir), so the fix is `--delete` scoped to deploy-owned directories.
+- **Game-update reconciliation is UNBUILT.** When a DayZ or mod update rewrites a vendor baseline there is no merge path between the new baseline and our owned edits - the admin's changes and the vendor's changes cannot both survive automatically. A 3-way merge tool existed but was never wired into anything, so deleting it (2026-08-01) changed no behaviour; the missing piece was always the wiring. `git log -- DayZ-Server/Reconcile-Defaults.ps1` has the implementation if it is rebuilt.
+- **The DayZ deploy does four jobs under one name** - ships code (correct), seeds config onto the box, pulls mirrors into the repo and auto-commits, and restarts. 792 lines against ConfigViewer's 182 for the same job. Deploy should ship code; restart picks up config; builders generate. Do not add anything else to it.
 
 ---
 
 ## Changelog
 
-History moved to [CLAUDE-CHANGELOG.md](CLAUDE-CHANGELOG.md). Do not add dated entries here - this file loads into every request. Log rule rationale in the sibling file instead.
+No dated entries here - this file loads into every request. Rule rationale goes in the local sibling changelog, which is deliberately untracked.
