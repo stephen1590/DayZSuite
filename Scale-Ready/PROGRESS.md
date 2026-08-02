@@ -1,11 +1,13 @@
 # Scale-Ready - Progress
 
-Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://claude.ai/code/artifact/c4278af0-a112-4e25-a305-979b22b0452f) mirrors this file - **update here first**, then reflect it in the artifact.
+**THE tracker. There is exactly one, and this is it.**
+
+There used to be three: this file, `tracker.html` (last touched 2026-07-24, referenced by nothing), and a Claude Artifact dashboard whose link lived in the header. The protocol said "update here first, then reflect it in the artifact" - a step no agent can perform, so drift was designed in rather than accidental. Owner, 2026-08-01, after being told three times that the tracker was updated: *"Nope. You still havent updated the tracker."* Both rivals are gone. If a rendered view is wanted, GENERATE it from this file; never hand-maintain a second copy.
 
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 21 / 44 done · **scripts 17 → 14 (U3); U4 = the capability gap that leaves** · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · last updated **2026-08-01 (sixth pass)**.
+**Rollup:** 21 / 44 done · **scripts 17 → 14 (U3); U4 = the capability gap that leaves** · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · **ONE tracker as of 2026-08-01** - `tracker.html` + the artifact dashboard deleted, both had drifted · last updated **2026-08-01 (eighth pass)**.
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -84,10 +86,12 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
 | WS-D | - | D | Api actions split at ~50 (deferred, not scheduled) | plan | - | Api | TODO — ~42 actions today |
 
 ## Update protocol
-1. Move a task's status here first (this file is canonical).
-2. On `DONE`, add a one-line note under the log below with date + what shipped + deploy done.
-3. Reflect the change in the Claude Artifact dashboard.
-4. Do NOT mark A3 `DONE` until every A2 file is migrated - it is the irreversible delete.
+1. Change the task's ROW first. A log entry is not a status update - the board is what gets read.
+2. Then add a one-line log note: date, what shipped, whether it deployed.
+3. Status is MEASURED, not recalled. "BUILT, not deployed" must be re-checked against the box
+   before it is left standing - that claim was stale on 8 rows for most of 2026-08-01.
+4. There is no step 4. Anything that asks you to update a second tracker is the bug this file
+   just removed.
 
 ## Log
 - 2026-07-24 - project created (plan, contract, tracker) from the 2026-07-24 audit. Nothing started.
@@ -158,6 +162,21 @@ Canonical status tracker (git-tracked). The [Claude Artifact dashboard](https://
   assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
   fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
   BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
+- 2026-08-01 (eighth pass) - **THREE TRACKERS FOUND. Consolidated to one.**
+  Owner, after being told three separate times that the tracker was updated: *"Nope. You still
+  havent updated the tracker."* They were right, and the reason is structural rather than
+  forgetfulness: `Scale-Ready/tracker.html` had not been touched since 2026-07-24 and was
+  referenced by nothing, and a Claude Artifact dashboard was linked from this file's header and
+  from README with the instruction *"update here first, then reflect it in the artifact"* - a
+  step no agent can perform. So every "tracker updated" was true of the file that says it is
+  canonical and false of the thing the owner opens. Drift was designed in.
+  Both rivals deleted. The update protocol lost its unfulfillable step and gained the rule the
+  day actually taught: **change the ROW first - a log entry is not a status update.** That is the
+  specific failure of passes two through seven, where log entries piled up while eight rows still
+  read "BUILT, not deployed" for work that had shipped hours earlier.
+  Same disease as everything else in this plan (§1a): three mechanisms for one concept, held in
+  sync by a written instruction instead of a mechanism, none retired when a replacement arrived.
+  If a rendered board is wanted, it gets GENERATED from this file - never hand-maintained.
 - 2026-08-01 (seventh pass) - **SCRIPT INVENTORY. 17 -> 14, and the tracker gets it this time.**
   Owner: *"Why do we have so many single-purpose powershell scripts? ... Either update the
   fucking tracker or delete the files you're not using."* Both, in that order.

@@ -13,7 +13,7 @@ Codebase remediation to make the DayZ **ConfigViewer** and config system scale. 
 
 ## Start here
 
-- **[Live tracker board](https://claude.ai/code/artifact/c4278af0-a112-4e25-a305-979b22b0452f)** - the visual dashboard (private artifact; mirrors PROGRESS.md).
+- **[PROGRESS.md](PROGRESS.md)** - THE tracker. One file, git-tracked. A rendered dashboard and a `tracker.html` both used to shadow it and both drifted; they are deleted (2026-08-01).
 - **[PLAN.md](PLAN.md)** - the full project plan: goals, workstreams, phased tasks, acceptance criteria, sequencing, risks.
 - **[UI-ABSTRACTION-CONTRACT.md](UI-ABSTRACTION-CONTRACT.md)** - the alignment spec for the UI render abstraction. **Read this first if you are building the editor-UI abstraction in a parallel effort.** It is the target both efforts must hit so we get ONE render primitive, not a 14th one-off.
 - **[PROGRESS.md](PROGRESS.md)** - the living status tracker. Update it as tasks move.
