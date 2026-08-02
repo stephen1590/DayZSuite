@@ -47,7 +47,7 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 
 ## Design contract (owner, 2026-07-31 - standing scope; plan + tasks: `Scale-Ready/PLAN.md`)
 
-- **One mechanism per concept, and a migration ENDS AT DELETION.** One write path (the generic registry-driven own-write; the bespoke verbs are being retired - NEVER add one), one editor family (json-editor-ui navigator for structured JSON, CM6 for XML/raw text), one propagation engine for generator inputs. A new parallel mechanism is a defect to surface, not a shortcut; mechanism counts only go down (gate-asserted as the assertions land).
+- **One mechanism per concept.** (Maintain-before-you-add, delete-dead-code-in-the-same-change and migrations-end-at-deletion are GLOBAL rules - `Dev/CLAUDE.md` § Maintain before you add. Not restated here.) One write path (the generic registry-driven own-write; the bespoke verbs are being retired - NEVER add one), one editor family (json-editor-ui navigator for structured JSON, CM6 for XML/raw text), one propagation engine for generator inputs. A new parallel mechanism is a defect to surface, not a shortcut; mechanism counts only go down (gate-asserted as the assertions land).
 - **Two-copy config model, no field-patch layer.** Every regular config has a `*.defaults.*` companion. A surface is either a direct replacement (edited whole, diffed vs the frozen default) or a generator input (common + per-map inputs propagate into the generated files - one shared engine, WS-G).
 - **A feature request is PLACED before it is built:** name its surface category (owned/computed/reference/input), its editor, and its write path against the whole design. If any answer is "a new one", that is a STOP-and-surface, not a build.
 - **A test outside the runner does not exist.** Tests are written first (change-notice rule) AND live where the shared runner + deploy gates re-run them (WS-T; until the runner lands, run the sibling `tests/` by hand and say which in the notice).
@@ -71,7 +71,7 @@ Code utilities (`Get-Stdout`, `Write-CsvLog`) live at `Dev/common/Utils.ps1`, tw
 
 ## Config architecture doctrine
 
-Direction agreed 2026-07-20 after a full reassessment. These principles hold now; the two-copy target below is agreed but **not built yet** - the box still runs the delta/override engine until files are migrated across.
+**The override/delta engine is DELETED (2026-08-01) and off both boxes.** Config is owned whole by the box; nothing patches a file at boot. `tests/override-engine-deleted.test.ps1` (32/0) is the ratchet - it fails if any piece returns.
 
 - **One contract, declared once** - every config surface lives in `DayZ-Server/config-registry.json`. Add a config = add a row, not knowledge scattered across tiers.
 - **A part ships only when the whole is consistent** - a new or changed config is wired across every tier before it ships; the pre-deploy gate fails closed and checks the whole *(intent: integration is proven, not hoped)*.
@@ -79,7 +79,9 @@ Direction agreed 2026-07-20 after a full reassessment. These principles hold now
 - **No logic duplicated across tiers** - shared logic lives in one tier; the others call it.
 - **Test the seams** - isolated tier tests pass while integration breaks. Cover the cross-tier path.
 
-**Target model** (migration ACTIVE - owner priority 2026-07-29): owned files keep two whole copies - `default` reference + `live` - and the diff is shown by the UI, never applied by the box. Per-phase status + worklist live in `CONFIG-ARCHITECTURE.md` - the single source of truth for the config model. Phase 0 (classification, registry `category` field) done; do not add NEW override-patch targets without checking the worklist first.
+**Model (LIVE):** owned files keep two whole copies - a frozen `<stem>.defaults.<ext>` + the `live` file - and the diff is SHOWN by the UI, never applied by the box. `own-write` captures the default from the current bytes before its first replace, so state 0 always survives. **Ownership is not a flag anyone picks: it is whoever writes the file LAST** (deploy / web editor / prestart builder / game engine / frozen capture). The five scenarios and what each resolves to live in `Scale-Ready/CONFIG-ARCHITECTURE.md` - the single source of truth for the config model.
+
+**Target (WS-S):** the box owns EVERY config, drop-in-place, with no deploy step seeding config. The repo ships CODE; it keeps a config mirror as a BACKUP that is never copied onto a running box.
 
 ## Service rules
 

@@ -4,7 +4,7 @@
 >
 > Rendered snapshots (presentation only, private Claude links): the *reassessment* and *two-copy-model* artifacts.
 
-**Status (2026-07-31): Phases 0-2 and 4 DONE; the Phase 3 "keep a patch niche" decision is OVERRULED by the owner - the engine dies fully.** Owner's words (PROGRESS.md log, 2026-07-31): "No Overrides. Just whole file ownership and modifying with a better UI/Syntax manager." The two-copy path is LIVE (generic own-read/own-write + CM6/navigator editor on prod); the A2 tail cutover took the override doc from 14,881 to **12 leaves**, all `server-settings.json` (a generator INPUT, not an owned file - it moves to the settings-write path, then the engine + doc + `override-*` verbs + `override-diff*.ts` are deleted). `Apply-ConfigOverrides` still runs at prestart until that delete. **One OPEN decision blocks it: `db/types.xml`** - see Open items. The Phase 3 text below is kept as historical record.
+**Status (2026-08-01): the override/delta engine is DELETED and off both boxes.** `tests/override-engine-deleted.test.ps1` 32/0 - applier, manifest, `Sync-ConfigOverrides`, the prestart call, 4 dayz-ctl verbs, 6 API actions, `override-diff*.ts`, the browser editor and 5 retired tests are all provably absent. Config is owned whole by the box; nothing patches a file at boot. `own-write` captures `<stem>.defaults.<ext>` from the current bytes before its first replace, so state 0 always survives, and a `.defaults` is served read-only and refused for write. **Everything below about phases, worklists and patch niches is HISTORY** - kept for the reasoning, not as direction. Current direction is § The box owns every config (WS-S).
 
 ---
 
@@ -20,30 +20,30 @@ Old docs drift on these. These are the truth, verified against code:
 
 ---
 
-## Current model — what the box runs today
+## Current model — what the box runs today (2026-08-01)
 
 Three tiers. The box owns the truth; the API is a signed relay; the browser is a client.
 
-- **Registry** — `DayZ-Server/config-registry.json`. One row per surface (21 today). Fields: `name`, `box`, `scope`, `seed`, `mirror`, `web`, `writable`, `check`. Four consumers read it: Api allowlist, Deploy seed-if-missing, Sync/Pull mirroring, Confirm-LiveConfigs parse-check.
-- **Defaults** — `DayZ-Server/config-defaults/` holds frozen `<stem>.defaults.<ext>` baselines, refreshed by hand via `Generate-ConfigDefaults.ps1`.
-- **Overrides** — `DayZ-Server/config-overrides.json` (**175 leaves after the 2026-07-29 Phase 2 sweep**; was 1.1 MB / 14,881 leaves at Phase 0, ~98 KB - was ~98 KB when this doc was written; the growth is 13 Loadout files + AirdropSettings expressed as patch lists) holds field-level deltas: dotted-path selectors for JSON, XPath for XML, layered common vs per-mission, plus a `wholeFiles` layer. Box-authoritative; the repo copy is a mirror. KNOWN ENGINE LIMIT (2026-07-29): `Apply-ConfigOverrides` uses `SelectSingleNode` - a multi-match XPath silently patches only the first node, so wildcard selectors are impossible.
-- **Apply + build at prestart** — `deploy/prestart.sh` runs these engines in order, fail-soft (`|| true`) so bad config can't block boot *(list corrected 2026-07-29 - the AI draft builders and Babaku were retired 07-23/07-24)*:
+- **Registry** — `DayZ-Server/config-registry.json`, 58 rows. WS-S is shrinking this to a deny list; see § The box owns every config.
+- **Defaults** — `<stem>.defaults.<ext>` sits BESIDE the live file on the box. `own-write` captures it from the current bytes before its first replace, so state 0 survives; it is never re-captured. Served read-only, refused for write. `DayZ-Server/config-defaults/` is the repo's pulled mirror of those.
+- **Prestart** — `deploy/prestart.sh`, fail-soft (`|| true`) so bad config can't block boot:
   1. `Apply-ServerCfg.ps1` — serverDZ.cfg from template + host.env + server-settings.json
-  2. `Apply-ConfigOverrides.ps1` — default + deltas → live file
-  3. `Apply-CustomCE.ps1`
-  4. `deploy/Build-TransferSpawns.ps1`
-  5. `Build-MapPoints.ps1` — derives the read-only map store FROM live AI settings
-- **Already on the target pattern** (whole-file, box-validated, snapshotted, `base=` optimistic concurrency): the CE types tuning pair via `types-write` (2026-07-23), `AIPatrolSettings.json` via `patrol-write` + the Sakhal manifest cutover (2026-07-24), and bans/whitelist via the older `set-file`. These three bespoke verbs are the prototypes the generic Phase 1 verb replaces.
-- **The API** — Fastify/TS, relays signed HTTP → `sudo dayz-ctl` (closed verb set, re-validated on the box). ~38 actions in `Api/app/src/actions.ts`. Config edits: `override-diff.ts` / `override-diff-xml.ts` compute a delta, the box stores and applies it.
-- **The web UI** — ConfigViewer, a dependency-free SPA. Hand-rolled editor (`editor.js`), `highlight.js`, `lossless-json.js`.
+  2. `Apply-CustomCE.ps1` — copies the CE types files into the mission, regenerates its `<ce>` block
+  3. `Build-TransferSpawns.ps1`
+  4. `Build-MapPoints.ps1` — derives the read-only map store FROM live AI settings
+  **Nothing patches a config file at boot.** There is no applier.
+- **The API** — Fastify/TS, relays signed HTTP → `sudo dayz-ctl` (closed verb set, re-validated on the box). Config writes go through the generic `own-write`; 4 bespoke verbs survive and are WS-U's target.
+- **The web UI** — ConfigViewer, dependency-free SPA. `own-editor.js` (CM6 + the json navigator) edits the whole file and diffs it against the frozen default.
 
-### The problem this causes
+### The problem that shaped all of this
 
-The override model is written three times — browser JS, API TS, box PowerShell — held in sync only by comments. Nothing proves the three agree, so they drift silently: a delta the API computes but the box applies differently falls back to whole-file or no-ops, with no error. That is the root cause of the "missed requirements and rewrites." Full diagnosis: the *reassessment* artifact.
+The override model used to be written three times — browser JS, API TS, box PowerShell — held in sync only by comments. Nothing proved the three agreed, so they drifted silently. That was the root cause of the "missed requirements and rewrites", and deleting the engine is what fixed it.
+
+**The same disease keeps recurring in other clothes**, and every instance has one shape: *a rule written in a comment or a doc instead of a mechanism.* Instances found and fixed on 2026-08-01 alone — three status trackers with a sync step no agent could perform; four scripts for the `.defaults` lifecycle, none retired when the mechanism moved; 8 dead files on prod because the deploy only ever adds. The standing answer is `Dev/CLAUDE.md` § Maintain before you add: dead code is deleted in the change that orphans it, and a migration ends at deletion.
 
 ---
 
-## Target model — agreed 2026-07-20, BUILT through Phase 2 (2026-07-29; Phases 3-4 pending)
+## Target model — agreed 2026-07-20, DELIVERED 2026-08-01 (historical record of the reasoning)
 
 Stop applying diffs. The diff becomes something the UI **shows**, never something the box **applies**. Every config is one of two kinds:
 
@@ -123,7 +123,7 @@ mapgroup* / mapcluster*   vendor geometry: 25 files, 52.8 MB, never edited
 
 Measured 2026-08-01: of 459 non-default json/xml under the server dir, those 25 geometry files hold 52.8 MB and the other 434 hold 8.0 MB. **WS-S cannot ship without the S6 gate** — a scan that fails closed on secret-shaped fields in anything not hidden. Opt-in-by-default makes this list a security boundary, and a boundary maintained by memory is not one.
 
-**Defaults location convention (name the split, don't paper it):** on the BOX the default lives alongside the live file (`<stem>.defaults.<ext>`, written by Apply-ConfigOverrides for patch targets and `Capture-OwnedDefaults.ps1` for owned files). In the REPO, frozen baselines live in the parallel `config-defaults/` tree. Two conventions for one concept - acceptable while documented HERE, but any new code follows the box convention and reads locations from the registry, never hardcodes either layout.
+**Defaults location convention (name the split, don't paper it):** on the BOX the default lives alongside the live file (`<stem>.defaults.<ext>`), written by **`own-write` alone** - captured from the current bytes before its first replace, never re-captured. *(Both former writers are gone: `Apply-ConfigOverrides` deleted with the engine, and `Capture-OwnedDefaults` deleted 2026-08-01 because capturing at prestart ran AFTER the edit and froze the edit as the baseline.)* In the REPO, frozen baselines live in the parallel `config-defaults/` tree. Two conventions for one concept - acceptable while documented HERE, but any new code follows the box convention and reads locations from the registry, never hardcodes either layout.
 
 **One honest catch:** deltas re-stamped your changes onto a vendor rewrite. But defaults are already refreshed by hand today, so that survival was already manual. The target keeps the same touch-point as a reviewed 3-way merge instead of a silent re-stamp.
 
@@ -187,7 +187,7 @@ construction, because a file absent from the manifest is never rebuilt.
       4/4, gate 24/0 - ships with the next DayZ deploy). Part 2 (retire override-diff*/Edit-file
       derive path) CLOSED AS SUPERSEDED - see decisions log; the path stays, bounded to the niche.
 
-- [x] **Phase 4 engine — BUILT 2026-07-29.** `DayZ-Server/Reconcile-Defaults.ps1`: 3-way
+- [x] **Phase 4 engine — BUILT 2026-07-29, DELETED 2026-08-01 (never invoked by anything; the gap is tracked as U4).** `DayZ-Server/Reconcile-Defaults.ps1`: 3-way
       merge (old-default vs new-default vs live) via `git merge-file` per the decisions log.
       Report-only default; -Fix writes only a CLEAN parse-validated merge + adopts the new
       baseline; a CONFLICT never touches live - marker-annotated copy to reconcile-conflicts/

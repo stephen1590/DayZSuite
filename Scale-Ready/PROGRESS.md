@@ -7,7 +7,7 @@ There used to be three: this file, `tracker.html` (last touched 2026-07-24, refe
 **Status legend:** `TODO` · `WIP` (in progress) · `BLOCKED` · `REVIEW` · `DONE`
 **Owners:** `plan` (this effort) · `ui-chat` (parallel editor-UI abstraction) · `joint`
 
-**Rollup:** 21 / 44 done · **scripts 17 → 14 (U3); U4 = the capability gap that leaves** · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · **ONE tracker as of 2026-08-01** - `tracker.html` + the artifact dashboard deleted, both had drifted · last updated **2026-08-01 (eighth pass)**.
+**Rollup:** 21 / 47 done · **WS-V opened: deploy does 4 jobs under one name (792 lines vs ConfigViewer's 182); V1-V3 shrink it by subtraction** · **scripts 17 → 14 (U3); U4 = the capability gap that leaves** · **Workstream A COMPLETE — A3 shipped, the delta engine is deleted and off both boxes (32/0 gate)** · every E-row (E1-E11) is now LIVE; E5/E7/E10 want your eye in a browser · **WS-S:** S1 + S2 done, S6 absorbed into S3, **S8 is the only blocker left** · **Workstream B still not started** — B1 unbuilt, and `editor.js` only shrank because A3 deleted code, not because it was split · **T4 UNPINNED** — its condition (the overrides migration) is met · **ONE tracker as of 2026-08-01** - `tracker.html` + the artifact dashboard deleted, both had drifted · last updated **2026-08-01 (ninth pass)**.
 
 > **2026-07-31 reconciliation.** This file sat untouched from 2026-07-24 while work continued
 > against `CONFIG-ARCHITECTURE.md` alone - so Workstream A progressed, B and C did not, and
@@ -28,6 +28,7 @@ There used to be three: this file, `tracker.html` (last touched 2026-07-24, refe
 ---
 
 ## Workstreams
+- **V** - deploy ships CODE, nothing else (owner 2026-08-01). Shrinks by subtraction; the one addition is a scoped `--delete`.
 - **S** - the box owns every config (owner 2026-08-01). Ownership is whoever writes the file LAST, not a flag we pick; the only declaration is the deny list.
 - **A** - retire the override delta engine (two-copy). Removes Wall 1 + the HIGH drift risk.
 - **B** - UI render abstraction + god-file split. Removes Wall 2. Aligns with the parallel editor-UI effort.
@@ -50,7 +51,7 @@ There used to be three: this file, `tracker.html` (last touched 2026-07-24, refe
 | B3 | 2 | B | Roll primitive across remaining views | joint | B1, A1 | ConfigViewer | TODO — blocked on B1 |
 | B4 | 2 | B | Split god-files (editor.js, map.js) | plan | B3 | ConfigViewer | **IMPROVED, not by B4** — `editor.js` **1314 → 604 lines** and innerHTML 23 → 10, as a side effect of A3 deleting the override editor. `map.js` unchanged at **2533**. The split B4 actually calls for has still not been done |
 | A3 | 3 | A | Delete the delta engine (point of no return) | plan | A2=100% | Api+ConfigViewer+DayZ | **DONE + LIVE 2026-08-01** — the delta engine is deleted in the repo and off both boxes. `tests/override-engine-deleted.test.ps1` **32/0**: applier, manifest, Sync script, prestart call, 4 dayz-ctl verbs, 6 API actions, `override-diff*.ts`, the browser editor and 5 retired tests all provably absent. Prod verified after restart: 0 override lines in prestart, all 12 formerly-forced settings KEPT |
-| A4 | 3 | A | Reconcile-on-update + conformance gate fail-closed | plan | A3, C4 | DayZ | WIP — `Reconcile-Defaults.ps1` built (7/7); gate asserts niche cap + mods.conf single-owner (Test-Configs **27/0 green**, re-run 2026-07-31 against the working tree) |
+| A4 | 3 | A | Reconcile-on-update + conformance gate fail-closed | plan | S3 | DayZ | **REGRESSED — see U4.** `Reconcile-Defaults.ps1` was DELETED 2026-08-01 because nothing ever invoked it, so no live behaviour changed; the gap it leaves is real and tracked as U4. Gate half stands: Test-Configs 25/0 |
 | B5 | 3 | B | Scale smoke test (new tab ~80 lines) | plan | B3, B4 | none | TODO |
 | E1 | 2 | B | **Deprecate the "Fields" view for OWNED surfaces; "Edit" is the default, XML included** | plan | - | ConfigViewer | **LIVE 2026-08-01** — deployed; Fields view unreachable, `edit` is the default for every owned row |
 | E2 | 2 | B | **Edit view: drop the full box border, keep a single left "thread" rule** | plan | - | ConfigViewer | **LIVE 2026-08-01** — deployed |
@@ -75,6 +76,9 @@ There used to be three: this file, `tracker.html` (last touched 2026-07-24, refe
 | P2 | 2 | P | Design decisions as named gate assertions (counts, parity, niche cap) | plan | U1, T3 | none | TODO — niche cap + mods.conf single-owner already exist as the pattern's proof |
 | U3 | 2 | U | **Script inventory: retire what the migrations replaced** | plan | - | none | **PARTLY DONE 2026-08-01** — audited all 17 DayZ-Server `.ps1` by CALLER, not by name. 3 deleted (`Sync-Loadouts` 0 refs, `Capture-OwnedDefaults` orphaned by capture-on-write, `Reconcile-Defaults` never invoked) + their 2 tests. **17 → 14.** Ratchet: `tests/no-dead-scripts.test.ps1` fails if any returns or a caller is re-added. REMAINING: the sync family (`_DZSync`, `Pull-Configs`, `Pull-DayZServer`, `Sync-ConfigDefaults`, `Sync-StagingFromProd`) is 5 scripts for one job — collapses to ~2 once S3/S5 remove seeding, so do it THERE, not as a separate cleanup |
 | U4 | 3 | U | **Game-update reconciliation is UNBUILT** (capability gap, opened by U3) | plan | S3 | DayZ | TODO — `Reconcile-Defaults.ps1` (3-way merge via `git merge-file`, TDD 7/7) was deleted because NOTHING ever called it, so no live behaviour changed. But the problem is real: a DayZ/mod update rewrites a vendor baseline and there is now no merge path between the new baseline and our owned edits. Recoverable from git (`git show HEAD~1:DayZ-Server/Reconcile-Defaults.ps1`) — the work is WIRING it into the update path, which is why rebuilding it blind would repeat the mistake |
+| V1 | 2 | V | **Scope `--delete` to deploy-owned dirs — deleting from the repo must remove from the box** | plan | - | DayZ | TODO — the live bug behind every corpse: `$items` copies one file at a time and nothing reconciles. **8 dead files on prod 2026-08-01**, incl. 3 builders retired 11 days earlier and one deleted from the repo the same hour. ConfigViewer already does this with one `rsync --delete`; DayZ can't apply it naively (persistence/logs/mods/box-owned config share the server dir), so scope it. **The only ADDITION in WS-V** |
+| V2 | 2 | V | Seeding leaves the deploy (~30 lines + the `seed` field) | plan | S3 | DayZ | TODO — same change as S3, do them together. Drop-in-place means nothing to seed |
+| V3 | 3 | V | Pulls + auto-commit leave the deploy (~120 lines) | plan | V2 | DayZ | TODO — mirroring is a BACKUP and already has its own entry point (`Pull-Configs.ps1`). A deploy that writes to git is doing version control. Target **792 → ~400 lines** |
 | S1 | 1 | S | Freeze today's effective access map (`access-baseline.csv`) | plan | - | none | **DONE 2026-08-01** — 907 files; model spot-checked against real `dayz-ctl` 44/44 then 30/30 after a correction (`writable` had measured only the own-write gate, understating 5 bespoke-verb files) |
 | S2 | 1 | S | Capture state 0 on the first write; `.defaults` readable, never writable | plan | - | Api | **DONE + LIVE 2026-08-01** (1616f48, Api deployed 23:17) — capture moved INTO own-write, before the replace. Prestart capture REMOVED (4bbee2b, not yet deployed) — it read post-edit content and froze the edit as the baseline, proven twice on prod. own-verbs 21→27 |
 | S3 | 2 | S | Config leaves `$items`; the box owns it; write the deny list | plan | S1, S2 | DayZ | TODO — 5 `custom-ce` config files are still deploy-stamped. **Absorbed S6** (owner 2026-08-01): a dynamic secret-scanner was the wrong shape - the secret-bearing paths are 4 known folders, so they go in the deny list with ONE assertion that they resolve `hidden`. No exposure exists today (a file with no row is already invisible); the risk starts when opt-in-by-default ships, so list + assertion land together |
@@ -162,6 +166,25 @@ There used to be three: this file, `tracker.html` (last touched 2026-07-24, refe
   assertion, not a memo. Also noted: the 2026-08-01 per-row `seed`/`mirror` wiring (29 rows) was the right
   fix for the OLD model and becomes boilerplate under this one - S5 deletes it. The `ConfigParse.ps1`
   BOM fix from the same day survives either way and matters MORE here (far more files flow through it).
+- 2026-08-01 (ninth pass) - **DOC SYNC + WS-V opened. Five of seven plan docs still described the
+  deleted engine as live**, including BOTH auto-loaded CLAUDE.md files - exactly the "stale
+  understanding in some markdown" the owner warned about. Corrected: `GameServices/CLAUDE.md`
+  ("the box still runs the delta/override engine" - false), `DayZ-Server/CLAUDE.md` (its whole
+  VOCABULARY table defined the dead engine as current, plus a page-long Phase-5 override cutover
+  procedure with no subject left), `CONFIG-ARCHITECTURE.md` (its "what the box runs today" section
+  listed `Apply-ConfigOverrides` as a prestart step).
+  **WS-V opened.** Owner: *"why is the deploy process so fucking eventful? It should just be
+  putting new code on the box."* Measured and confirmed: `Deploy-DayZServer.ps1` is **792 lines vs
+  ConfigViewer's 182** for the same job, because it does FOUR things - ship code (correct), seed
+  config (a push), pull mirrors + git auto-commit (version control, opposite direction), restart
+  (ops). V1-V3 shrink it to ~400 by SUBTRACTION; the only addition is a scoped `--delete`.
+  **Rules moved UP, not duplicated.** Maintain-before-you-add, delete-dead-code-in-the-same-change
+  and migrations-end-at-deletion are GLOBAL now (`Dev/CLAUDE.md` § Maintain before you add) rather
+  than GameServices-local; GameServices points at them instead of restating.
+  **Two corrections to my own earlier claims:** `lossless-json` is NOT dead - it is load-bearing in
+  3 call sites and is the Steam64-precision guard that protected today's BBP fix. And the five
+  "proactive steps" I proposed were NEW FEATURES; the owner rejected them, correctly - a recurring
+  failure is answered by applying a standard, not by building a mechanism to police it.
 - 2026-08-01 (eighth pass) - **THREE TRACKERS FOUND. Consolidated to one.**
   Owner, after being told three separate times that the tracker was updated: *"Nope. You still
   havent updated the tracker."* They were right, and the reason is structural rather than

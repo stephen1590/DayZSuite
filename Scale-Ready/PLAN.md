@@ -62,6 +62,7 @@ Seven days of work proved the walls are symptoms. The disease: **mechanisms get 
 - **WS-U - One write path** (added 2026-07-31). Migrate each bespoke write verb (`types-write`, `settings-write`, `file-write`, `spawn-write`, the patrol path) onto the generic registry-driven path, then DELETE the verb. Per-surface validation stays - it becomes the registry row's `check`, not a private verb.
 - **WS-G - One propagation mechanism** (added 2026-07-31). Generator inputs declared per registry row (`inputs:` - common + per-map); ONE engine renders them into the generated live files. The 5 builders become rows on that engine or thin wrappers over a shared library; each cutover deletes the bespoke logic it replaces.
 - **WS-T - Testing architecture** (added 2026-07-31). One runner (`Invoke-Tests.ps1`) that discovers `tests/*.test.*` repo-wide; every deploy gate runs it fail-closed; one shared harness convention (one pass/fail counter, not three); cross-map behavior-parity assertions so the 3 missions cannot silently diverge. Tests are written FIRST (the existing CLAUDE.md TDD rule) - WS-T is what makes them KEEP running.
+- **WS-V - Deploy ships CODE. Nothing else.** (added 2026-08-01, owner). `Deploy-DayZServer.ps1` is **792 lines against ConfigViewer's 182 for the same job**, because it does FOUR jobs under one name: ships code (correct), SEEDS config onto the box (a config push), PULLS mirrors into the repo and auto-commits (version control, and the opposite direction), and restarts (an ops action). Owner: *"it should just be putting new code on the box. Restarts pull in new config data, driven by scripts to pre-process and drop generated files."* This shrinks by **SUBTRACTION** - the only thing ADDED is a scoped `--delete`. Tasks V1-V3 below.
 - **WS-S - One surface declaration, opt-in by default** (added 2026-08-01, owner ruling). Stop declaring which files are surfaces; declare only the exceptions. Every `.json`/`.xml` under the server dir is `rw` (visible, editable, mirrored) unless a path declares `ro` or `hidden`; folders inherit to everything beneath. Mirroring is DERIVED from access, which is what collapses "what is tracked" and "what is exposed" into ONE list. Kills 27+ rows of boilerplate and removes the silent-omission failure mode that lost the vehicle lifetimes. Model + the measured numbers: [CONFIG-ARCHITECTURE.md](CONFIG-ARCHITECTURE.md) § Surface access model. **Cannot ship without S6** - opt-in-by-default makes the deny list a security boundary.
 - **WS-P - Design enforcement** (added 2026-07-31). The design contract goes into GameServices/CLAUDE.md (auto-loaded) and into gate assertions (fail-closed): mechanism counts (write verbs, editor mounts) may only go DOWN; a feature request names its surface category, editor, and write path before build. The niche leaf-cap assertion is the existence proof of this pattern.
 
@@ -271,6 +272,38 @@ Each task carries: **acceptance** (done = this is true), **deps**, **tier(s)**, 
 - Every design decision that CAN be asserted, IS: the U1 count freezes, the niche leaf-cap (exists - the pattern's proof), mods.conf single-owner (exists), T3 parity. New decisions add an assertion in the same named gate section, with the rationale in the failure message.
 - **Acceptance:** a named "design contract" section exists in Test-Configs; each assertion's failure text says WHY and points here.
 - **Deps:** U1, T3. **Deploy:** none. **Reversible:** yes.
+
+### Added 2026-08-01 - WS-V tasks (deploy = ship code; order V1 → V2 → V3)
+
+> Owner: *"why is the deploy process so fucking eventful? Like it should just be putting new code on the box. Restarts of the service pull in new config data, driven by scripts to pre-process and drop generated files. What the fuck else does 'deploy' do at this point?"*
+>
+> Measured answer, and the owner is right - four jobs share one name:
+>
+> | lines | job | belongs in a deploy? |
+> |---|---|---|
+> | ~89-643 | resolve host, guard players, check 3 PBOs, ship files, restart | **yes** |
+> | 643-675 | seed config content onto the box from the registry | no - a config PUSH, and WS-S deletes it |
+> | 675-699 | pull frozen defaults off the box into the repo | no - and it is the opposite direction |
+> | 699-792 | pull live config mirrors, then git auto-commit | no - that is version control |
+>
+> **Every task here REMOVES code.** Nothing is added except one scoped `--delete`.
+
+**V1 - Scope `--delete` to deploy-owned directories (the only addition in WS-V)**
+- The live bug: `$items` copies files one at a time and nothing ever reconciles, so anything ever shipped stays forever. Measured on prod 2026-08-01: **8 dead files**, including three builders retired 11 days earlier and a script deleted from the repo the same hour. **Deleting a script from the repo does NOT remove it from the box** - that is why every retirement leaves a corpse.
+- ConfigViewer already solves this in one line (`rsync -az --delete` on its webroot - it is why `override-status.js` vanished automatically). DayZ cannot use that naively: persistence, logs, mods and box-owned config share the server dir. So scope it to the directories the deploy owns.
+- **Acceptance:** a file removed from `$items` disappears from the box on the next deploy; persistence, logs, `host.env`, mods and every box-owned config are provably untouched (assert by listing them before/after).
+- **Deps:** none. **Deploy:** DayZ. **Reversible:** yes.
+
+**V2 - Seeding leaves the deploy**
+- Delete the registry `seed` step (~30 lines) and the `seed` field with it. Drop-in-place means config arrives from the game/mod install and the box owns it from first touch; there is nothing to seed.
+- **Acceptance:** a dry-run reports zero config placements; `$items` contains no `.json`/`.xml` config.
+- **Deps:** WS-S/S3 (same change - do them together, not twice). **Deploy:** DayZ.
+
+**V3 - Pulls leave the deploy**
+- Mirroring is a BACKUP operation and already has its own entry point (`Pull-Configs.ps1`). Remove both pull phases and the auto-commit from the deploy (~120 lines). A deploy that writes to git is doing version control.
+- Consequence to accept: the mirror stops refreshing automatically on deploy. That is correct - a backup runs when you ask for a backup, and the deploy stops being "eventful".
+- **Acceptance:** the deploy makes no git commit and pulls nothing; `Pull-Configs -Execute` still mirrors everything it does today.
+- **Deps:** V2. **Deploy:** DayZ. **Target: 792 → roughly 400 lines.**
 
 ### Added 2026-08-01 - WS-S tasks (REVISED twice on 2026-08-01; order S1 → S2 → S3 → S4 → S5 → S7, with S8 alongside)
 
