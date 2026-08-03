@@ -56,6 +56,16 @@ Assert "Deploy-Api's owned-surface mask includes category 'input'" `
     ($deployApi -match "category\s+-in\s+@\('owned',\s*'input'\)") `
     "own-write refuses paths outside OWNED_FILES, so without this the UI change below leaves server-settings.json with NO save path."
 
+# --- 3b. the registry's own _readme must not contradict the mask above ---------
+# It said an input is "deliberately NOT in OWNED_FILES" while Deploy-Api put it there and
+# assertion 3 enforced it. Whoever read the registry to decide something got the opposite
+# of the truth, and the registry is the file this repo calls the one contract. Found
+# 2026-08-02. Asserting on the text because the text is the thing that was wrong.
+$registryRaw = Get-Content -Raw (Join-Path $repo 'DayZ-Server/config-registry.json')
+Assert "the registry _readme does not claim an input is excluded from OWNED_FILES" `
+    ($registryRaw -notmatch 'deliberately NOT in OWNED_FILES') `
+    "Deploy-Api.ps1 filters `$_.category -in @('owned','input') and assertion 3 above enforces it. A contract that documents the reverse of what it enforces is worse than an undocumented one."
+
 # --- 4. UI side: the Fields view is gone for this row -------------------------
 Assert 'editor.js no longer forces the Fields view for server-settings' `
     ($editorJs -notmatch "isCycleRow\(row\)\s*\?\s*'fields'") `
