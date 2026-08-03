@@ -194,6 +194,13 @@ Check ($deploy -match '-Protected \$protectedPaths') `
     'the deploy passes -Protected to the reconcile'
 Check ($deploy -match '\$registryForGuard\.surfaces' -and $deploy -match '\$registryForGuard\.denyList') `
     'the protected set is DERIVED from the registry surfaces AND the denyList, not hand-listed'
+# BOOTSTRAP, found by a live report run on 2026-08-02: the guard first read the registry from
+# $ServerDir - the copy this deploy is about to REPLACE. So on the run that introduces a new
+# protection, the guard does not have it yet, and the report proposed deleting the two VPP
+# permission files using a registry that predated the denyList shipping in the same payload.
+# A guard derived from the OUTGOING truth protects everything except the change being made.
+Check ($deploy -match '(?s)foreach \(\$cand in \(Join-Path \$deployDir ''config-registry\.json''\), \(Join-Path \$ServerDir ''config-registry\.json''\)\)') `
+    'the guard reads the STAGED registry first, falling back to the server copy'
 Check ($deploy -match "(?m)^\s*\`$protectedPaths \+= 'custom-ce'") `
     'custom-ce is protected explicitly - it left $items but has no surface row of its own'
 

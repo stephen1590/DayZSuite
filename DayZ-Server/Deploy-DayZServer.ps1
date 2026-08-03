@@ -640,8 +640,18 @@ $placedNow = @($items | ForEach-Object { $_.Dst })
 # one that was retired - and on 2026-08-02 seven of them left at once. Without this the next
 # deploy would have deleted the live Expansion CE files and the admin list. Derived from the
 # registry, so handing a new file to the box protects it automatically.
-$registryForGuard = Get-Content -Raw (Join-Path $ServerDir 'config-registry.json') -ErrorAction SilentlyContinue |
-                    ConvertFrom-Json -ErrorAction SilentlyContinue
+# Read the STAGED registry, not the server's. The server's copy is the one this deploy is about
+# to replace, so on the run that introduces a protection it does not have it yet - which is
+# exactly what happened on 2026-08-02: the report proposed deleting the two VPP permission files
+# because the box's registry predated the denyList that same run was shipping. A guard derived
+# from the outgoing truth protects everything except the change you are making. Fall back to the
+# server copy only if the payload has none.
+$registryForGuard = $null
+foreach ($cand in (Join-Path $deployDir 'config-registry.json'), (Join-Path $ServerDir 'config-registry.json')) {
+    if (-not $registryForGuard -and (Test-Path $cand)) {
+        $registryForGuard = Get-Content -Raw $cand | ConvertFrom-Json -ErrorAction SilentlyContinue
+    }
+}
 $protectedPaths = @()
 if ($registryForGuard) {
     $protectedPaths += @($registryForGuard.surfaces | ForEach-Object { if ($_.box) { $_.box } elseif ($_.dir) { $_.dir } })
