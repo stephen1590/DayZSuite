@@ -31,7 +31,7 @@ vals = {
   '__CONFIG_DIRS__': '', '__IGNORE_EXT__': '', '__WRITE_MAP__': '',
   '__GENERATED__': 'profiles/AI_Shared/map-points.generated.json',
   '__DISABLED_TARGETS__': 'profiles/ExpansionMod/Settings/AISettings.json',
-  '__OWNED_FILES__': 'server-settings.json',
+  '__OWNED_FILES__': 'server-settings.json\nban.txt',
   '__OWNED_DIRS__': 'profiles/ExpansionMod/Loadouts\nprofiles/ExpansionMod/Settings',
   '__LOG_NOISE__': '', '__DOCS_ROOTS__': '', '__DOCS_EXT__': '', '__DOCS_NAMES__': '',
   '__DOCS_MAXDEPTH__': '3', '__LOG_SOURCES__': '',
@@ -179,6 +179,20 @@ out="$($CTL own-read profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json 2>&1
 # ...but only when its STEM is an owned surface. A companion of a reference file stays refused.
 $CTL own-read mpmissions/dayzOffline.sakhal/mapgroupproto.defaults.xml >/dev/null 2>&1; rc=$?
 [ $rc -ne 0 ] && ok "a .defaults whose stem is NOT owned is still refused" || bad "defaults of a non-owned file was served"
+
+# U5: own-write must NOT refuse on extension. Owner, said three times: "I don't want to have to
+# specify specific file types... just add a warning that we can't validate and save anyway."
+# The validation case already falls through for an unknown extension - the only thing blocking a
+# .txt save is a separate refusal in _own_check, which is an ACCESS gate wearing a validator's
+# clothes. An unrecognised type is a normal writable file that simply is not parse-checked.
+printf '%s' '76561198000000000\n' > "$SD/ban.txt"
+out="$(printf '76561198000000001\n' | $CTL own-write - ban.txt 2>&1)"; rc=$?
+[ $rc -eq 0 ] && ok "own-write accepts a .txt (no file-type list)" \
+  || bad "own-write still refuses an unknown extension (rc=$rc out=$out)"
+[ "$(cat "$SD/ban.txt")" = "76561198000000001" ] \
+  && ok "the .txt write actually landed" || bad ".txt content not written"
+printf '%s' "$out" | grep -qi "not validated\|unvalidated" \
+  && ok "an unvalidatable type WARNS rather than failing silently" || bad "no warning that the type was not validated"
 
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

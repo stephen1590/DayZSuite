@@ -138,7 +138,13 @@ _own_check() {
   _mode="${2:-write}"
   case "$_r" in ''|*..*|/*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
   case "$_r" in *[!A-Za-z0-9_./-]*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
-  case "$_r" in *.json|*.xml) ;; *) echo "dayz-ctl: own verbs take json/xml only: $_r" >&2; return 2 ;; esac
+  # NO FILE-TYPE LIST. Owner, 2026-08-02: "I don't want to have to specify specific file types...
+  # We can't expect to know all file type validators upfront - just add a warning that we can't
+  # validate and save anyway." This line used to refuse anything but .json/.xml, which made the
+  # extension an ACCESS decision when it is only ever a VALIDATION one. The write path below
+  # already dispatches a parser per extension and falls through for anything it does not know, so
+  # an unrecognised type is a normal writable file that simply is not parse-checked. Path safety
+  # is unchanged - the two guards above still reject traversal and odd characters.
   _maskpath="$_r"
   _stem="$(_defaults_stem "$_r")"
   if [ -n "$_stem" ]; then
@@ -941,6 +947,7 @@ for c in r:
         elif command -v xmllint >/dev/null 2>&1; then
           printf '%s' "$arg" | xmllint --noout - 2>/dev/null || die "own-write: input is not well-formed XML"
         else die "own-write: no XML validator (python3/xmllint) on the box"; fi ;;
+      *) echo "own-write: no validator for this file type - saved unvalidated: $rel" >&2 ;;
     esac
     _base='__none__'
     for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
