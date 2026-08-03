@@ -59,12 +59,31 @@ foreach ($sym in 'effectivePatches', 'layerMapRW', 'saveOverrides', 'overrideCon
 Assert 'no module posts to configs/set-overrides' `
     (-not (Get-ChildItem (Join-Path $root 'ConfigViewer/web/js') -Filter *.js |
            Where-Object { Select-String -Path $_.FullName -Pattern 'configs/set-overrides' -SimpleMatch -Quiet }))
+# changedFiles() diffs two overrides-doc snapshots - a document shape that no longer exists.
+# It shipped with E4 on 2026-08-01 and was orphaned by A3 the same day: exported, zero callers,
+# still carrying 5 tests. Found 2026-08-02. Its only helper, isComment, dies with it.
+Assert "dirty-files.js no longer exports 'changedFiles'" `
+    (-not (Grep 'ConfigViewer/web/js/dirty-files.js' 'export function changedFiles')) `
+    'Dead since A3 deleted the overrides document. The live path is editor.js dirtyNames() over typesDirtyNames() + ownDirtyNames().'
+# Matches the IMPORT, not the word: a comment recording why it was removed is the point.
+Assert "dirty-files.test.js no longer imports 'changedFiles'" `
+    (-not ((Get-Content -Raw (Join-Path $root 'ConfigViewer/tests/dirty-files.test.js')) -match '(?m)^import\s*\{[^}]*\bchangedFiles\b')) `
+    'A test for deleted code keeps it alive in the runner and reads as coverage.'
 
 # --- 5. the declaration is gone ----------------------------------------------
 $reg = Get-Content -Raw (Join-Path $root 'DayZ-Server/config-registry.json') | ConvertFrom-Json
 Assert "registry has no 'overrides' surface row" (-not ($reg.surfaces | Where-Object { $_.name -eq 'overrides' }))
 Assert "registry has no web:'patch' row"         (-not ($reg.surfaces | Where-Object { $_.web -eq 'patch' }))
 Assert 'every surface row declares a category'   (-not ($reg.surfaces | Where-Object { -not $_.category }))
+# The registry's _readme still described the engine as "retiring" and claimed nothing reads
+# `category` yet - Deploy-Api.ps1 has filtered on it since the owned-surface mask landed.
+$regRaw = Get-Content -Raw (Join-Path $root 'DayZ-Server/config-registry.json')
+Assert "the registry _readme no longer says category is unread" `
+    ($regRaw -notmatch 'No consumer reads category yet') `
+    "Deploy-Api.ps1 reads it to build OWNED_FILES. Documentation that says a field is inert invites someone to drop it."
+Assert "the registry _readme no longer describes the 'overrides' row as retiring" `
+    ($regRaw -notmatch "The 'overrides' row is deliberately untagged") `
+    'That row is gone (asserted above). Describing a deleted mechanism in the present tense is how it comes back.'
 
 # --- 6. the tests that only existed for the engine are gone ------------------
 foreach ($t in 'DayZ-Server/tests/apply-overrides-multimatch.test.ps1',

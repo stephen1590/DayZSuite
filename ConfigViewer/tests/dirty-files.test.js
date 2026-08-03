@@ -3,43 +3,14 @@
 //
 // Owner spec, verbatim: "saving should prompt for confirmation now.
 // The dialogue should tell you what files you edited and are currently saving."
-// The pure logic lives here: which files changed between two overrides-doc
-// snapshots, the pill text, and the confirm-dialog text. The DOM wiring in the
-// editors stays thin and untested-by-node.
+// The pure logic lives here: the pill text, the confirm-dialog text, and what
+// counts as an edit. The DOM wiring in the editors stays thin and untested-by-node.
+//
+// changedFiles() and its 5 tests were removed 2026-08-02: it diffed two overrides-doc
+// snapshots, a document A3 deleted, so it was dead the day it shipped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { changedFiles, formatUnsaved, confirmSaveText, confirmSave } from '../web/js/dirty-files.js';
-
-const doc = (files = {}, missions = {}) => ({ files, mpmissions: missions });
-
-test('identical docs -> no changed files', () => {
-  const a = doc({ 'messages.xml': { '/x': 1 } });
-  assert.deepEqual(changedFiles(a, JSON.parse(JSON.stringify(a))), []);
-});
-
-test('a changed mission-file value names file + mission', () => {
-  const before = doc({}, { 'dayzOffline.sakhal': { 'db/types.xml': { '/a': 3 } } });
-  const after  = doc({}, { 'dayzOffline.sakhal': { 'db/types.xml': { '/a': 3888000 } } });
-  assert.deepEqual(changedFiles(before, after), ['db/types.xml (dayzOffline.sakhal)']);
-});
-
-test('an added server-dir file is named plainly; a removed one too', () => {
-  const before = doc({ 'a.xml': { '/x': 1 } });
-  const after  = doc({ 'b.json': { '/y': 2 } });
-  assert.deepEqual(changedFiles(before, after).sort(), ['a.xml', 'b.json']);
-});
-
-test('the common layer is labelled (common)', () => {
-  const before = doc({}, { common: { 'expansion/settings/MapSettings.json': { '/m': 0 } } });
-  const after  = doc({}, { common: { 'expansion/settings/MapSettings.json': { '/m': 1 } } });
-  assert.deepEqual(changedFiles(before, after), ['expansion/settings/MapSettings.json (common)']);
-});
-
-test('underscore comment keys are ignored at every level', () => {
-  const before = doc({ _readme: 'was' }, { _note: 'x' });
-  const after  = doc({ _readme: 'changed' }, { _note: 'y', 'dayzOffline.sakhal': { _hint: 'z' } });
-  assert.deepEqual(changedFiles(before, after), []);
-});
+import { formatUnsaved, confirmSaveText, confirmSave } from '../web/js/dirty-files.js';
 
 test('formatUnsaved: empty, short list, truncated list', () => {
   assert.equal(formatUnsaved([]), '');
