@@ -120,6 +120,16 @@ test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
   const expr = JS.slice(i, JS.indexOf(';', i));
   assert.doesNotMatch(expr, /access\s*!==\s*'lock'/,
     "access is edit|view|lock - 'not locked' includes view, which has no edit path at all");
-  assert.match(expr, /ownFile|types/,
-    'rw must follow the thing that actually opens an editor');
+  assert.match(expr, /canWrite\(/,
+    'rw must come from the ONE predicate, not a second expression beside the badge');
+});
+
+// Two determination points is the bug itself. It shipped twice in one day: `access !== 'lock'`
+// badged reference rows rw, then `ownFile || types` missed access === 'own' and put a Save button
+// under an ro badge. Every write path belongs in canWrite, and nothing else may decide.
+test('E7: canWrite covers EVERY write path the editor offers', () => {
+  const fn = JS.slice(JS.indexOf('function canWrite('), JS.indexOf('function rowByKey('));
+  for (const path of ['ownFile', 'types', "access === 'own'"]) {
+    assert.ok(fn.includes(path), `canWrite must account for ${path} - a write path it misses is a wrong badge`);
+  }
 });

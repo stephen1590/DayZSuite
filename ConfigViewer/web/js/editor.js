@@ -164,6 +164,19 @@ function buildRows(items, writable, mission) {
   // on disk (reversible); re-enable the mod + redeploy the Api.
   return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
+// THE single answer to "can this row be written". The nav badge and the editor chrome both read
+// it, because them disagreeing twice in ONE DAY is what made this function exist:
+//   - it started as `access !== 'lock'`, so every 'view' row badged rw and then opened read-only
+//   - the fix `ownFile || types` missed `access === 'own'` (the file-list surface: ban/allowlist),
+//     so those showed a Save button under an ro badge - the same bug wearing the other mask
+// Three write paths, ONE predicate. A fourth is added HERE, never beside a badge.
+function canWrite(r) {
+  if (!r) return false;
+  return !!(r.ownFile             // owned whole-file editor (own-write)
+    || r.types                    // CE types editor (types-write)
+    || r.access === 'own');       // file-list writable surface - ban.txt / whitelist.txt
+}
+
 function rowByKey(k) { return rows.find((r) => r.key === k) || null; }
 function currentRow() { return selKey ? rowByKey(selKey) : null; }
 
@@ -202,7 +215,7 @@ function renderFilesNav() {
       // promised something the panel refused. `access` is edit|view|lock, not a boolean.
       // rw now means exactly what the panel will let you do: an owned whole-file editor, or the
       // types editor. Everything else is ro, which is the truth.
-      const writable = !!(r.ownFile || r.types);
+      const writable = canWrite(r);
       const badge = writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>';
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
         '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
