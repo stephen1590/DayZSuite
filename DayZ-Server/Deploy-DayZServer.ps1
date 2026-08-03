@@ -238,6 +238,9 @@ if (-not $Local) {
     # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-CustomCE.ps1',
                    'Apply-ServerCfg.ps1',
+                   # Dot-sourced by the -Local leg for the orphan reconcile. Staged only - it is
+                   # deploy machinery, so it never gets an $items row into the server dir.
+                   'DeployManifest.ps1',
                    'Build-MapPoints.ps1', 'config-registry.json', 'host.env.example',
                    'serverMods/CustomServerMods/.hemttout/build/addons/CustomServerMods_main.pbo',
                    'serverMods/TransferSpawn/.hemttout/build/addons/TransferSpawn_main.pbo',
@@ -281,6 +284,9 @@ $utils = "../../../common/Utils.ps1", "../common/Utils.ps1", "./common/Utils.ps1
     ForEach-Object { Join-Path $PSScriptRoot $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried ../../../common, ../common, ./common)" }
 . $utils
+# The orphan reconcile (see the $items copy loop). Staged beside this script, so $PSScriptRoot
+# finds it on the box and in the repo alike.
+. (Join-Path $PSScriptRoot 'DeployManifest.ps1')
 
 # --- Per-host values: built-in defaults (the VPS) <- host.env <- explicit -Deploy* params ---
 # DEPLOY_SERVER_PASSWORD/DEPLOY_ADMIN_PASSWORD/DEPLOY_STEAM_ACCOUNT have NO built-in default
@@ -611,6 +617,38 @@ foreach ($i in $items) {
         Timestamp = Get-Date -Format "s"; File = $i.Src; State = $state; Action = $action
     }
 }
+
+# --- RECONCILE: remove what this deploy placed before and no longer places -------------------
+# Until 2026-08-02 the loop above only ever ADDED. Deleting a script from the repo left it
+# running on the box forever - 8 corpses on prod on 2026-08-01, three of them builders retired
+# eleven days earlier. ConfigViewer fixes the same bug with `rsync --delete` because its webroot
+# is wholly deploy-owned; the server dir is not (persistence, logs, host.env, mpmissions/,
+# profiles/ and the game binaries share it), so the deploy records what it PLACED instead.
+# Logic and its guards: DeployManifest.ps1. It can only ever remove a path it wrote down.
+$manifestPath = Join-Path $ServerDir '.deploy-manifest.json'
+# The one-time sweep for corpses that predate the manifest lives in deploy/retired-paths.txt -
+# data, not code, because three gates assert that a retired script's NAME appears in no .ps1/.sh
+# and they are right to. That file carries the pruning rule.
+$retiredSweep = Read-RetiredPaths -Path (Join-Path $deployDir 'retired-paths.txt')
+$placedNow = @($items | ForEach-Object { $_.Dst })
+$orphans = @(Get-DeployOrphans -Previous (Read-DeployManifest -Path $manifestPath) `
+                               -Current $placedNow -ServerDir $ServerDir -Retired $retiredSweep |
+             Where-Object { Test-Path $_ })
+if ($orphans.Count) {
+    Write-Host ''
+    Write-Host "Orphans - placed by a previous deploy, not shipped any more ($($orphans.Count)):"
+    foreach ($o in $orphans) {
+        if ($Fix) { Remove-Item -LiteralPath $o -Force -ErrorAction Continue }
+        Write-Host ("{0,-8} {1,-9} {2}" -f 'Orphan', $(if ($Fix) { 'removed' } else { 'none' }), $o)
+        $results += [PSCustomObject]@{
+            Timestamp = Get-Date -Format "s"; File = $o; State = 'Orphan'
+            Action = $(if ($Fix) { 'removed' } else { 'none' })
+        }
+    }
+} else { Write-Host "`nOrphans: none" }
+# Only -Fix writes the record: a report run must leave the box exactly as it found it, and a
+# manifest written without the copies it describes would be a lie the next deploy acts on.
+if ($Fix) { Write-DeployManifest -Path $manifestPath -Placed $placedNow }
 
 # map.env is runtime state (which mission boots) — seeded ONLY when missing, like host.env.
 # It must exist BEFORE the first service start: systemd loads the unit's EnvironmentFile
