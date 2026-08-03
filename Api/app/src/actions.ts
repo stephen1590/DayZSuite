@@ -697,7 +697,7 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/writable': {
       destructive: false,
       readOnly: true,
-      describe: 'list the box-owned files an admin may replace whole via configs/set-file (ban/allow lists)',
+      describe: 'list the box-owned files an admin may replace whole via configs/set-own (ban/allow lists)',
       schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } } } } } } },
       async run() {
         const r = await dayz.ctl('file-list');
@@ -744,29 +744,8 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/set-file': {
-      destructive: false,
-      readOnly: false,
-      describe: 'replace one box-owned file whole (body: { "name": "Bans", "content": "..." }; snapshots first)',
-      schema: {
-        body: { type: 'object', required: ['name', 'content'], properties: {
-          name: { type: 'string', description: 'a name from the configs/writable list' },
-          content: { type: 'string', description: 'the complete new file contents' },
-        } },
-        response: { type: 'object', properties: { message: { type: 'string' }, name: { type: 'string' } } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw fail(400, 'invalid or missing "name"');
-        if (typeof params.content !== 'string') throw fail(400, '"content" must be a string (the whole file)');
-        if (params.content.length > 262144) throw fail(413, '"content" too large (max 256KB)');
-        const r = await dayz.ctl('file-write', name, params.content);
-        if (r.code === 2) throw fail(404, `'${name}' is not a writable file (see configs/writable)`);
-        if (r.code !== 0) throw fail(502, `file-write failed: ${(r.stderr || r.stdout).trim()}`);
-        return { message: `${name} replaced (previous version snapshotted on the box)`, name };
-      },
-    },
-
+    // 'configs/set-file' RETIRED 2026-08-02 (U2) - file-write existed only to work around
+    // own-write's extension refusal, which U5 deleted. Ban/allow lists post to configs/set-own.
     'configs/types': {
       destructive: false,
       readOnly: true,

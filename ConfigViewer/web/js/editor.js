@@ -587,7 +587,11 @@ async function saveOwnFile() {
   el.ownSave.disabled = true;
   setGlobalMsg('Saving…', false);
   try {
-    await apiPost('/dayz/configs/set-file', cred, { name: row.writableName, content: el.ownTa.value });
+    // U2 2026-08-02: was configs/set-file -> the bespoke file-write verb. That verb existed only
+    // because own-write refused any extension but .json/.xml (U5 deleted that refusal), so these
+    // .txt lists now go through the ONE generic write path like every other owned file.
+    // set-own takes the ServerDir-relative PATH; set-file took a short name from file-list.
+    await apiPost('/dayz/configs/set-own', cred, { path: row.relpath || row.writableName, content: el.ownTa.value });
     setGlobalMsg('Saved — previous version snapshotted on the box.', false, true);
     Object.keys(fileCache).forEach((k) => delete fileCache[k]);
   } catch (err) {

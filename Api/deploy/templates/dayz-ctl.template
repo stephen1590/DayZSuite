@@ -778,41 +778,8 @@ case "$verb" in
     [ -n "$WRITE_MAP" ] && printf '%s\n' "$WRITE_MAP"
     ;;
 
-  file-write)
-    # file-write <name> <content> — REPLACE one box-owned file (ban/allow lists) whole.
-    # The NAME must be in the rendered WRITE_MAP; the path comes from the map, NEVER the
-    # caller. Replace-only (the file must exist - a typo'd map entry can't create files),
-    # size-capped, previous version snapshotted to .owned-versions/ (keep 10 per file),
-    # then written ATOMICALLY with the server-dir owner restored.
-    content="${3:-}"
-    [ -n "$arg" ] || die "file-write needs a name"
-    case "$arg" in *[!A-Za-z0-9_.-]*) die "invalid file name" ;; esac
-    rel="$(printf '%s\n' "$WRITE_MAP" | awk -F'\t' -v n="$arg" '$1==n{print $2; exit}')"
-    [ -n "$rel" ] || { echo "dayz-ctl: not a writable file: $arg" >&2; exit 2; }
-    file="$SERVER_DIR/$rel"
-    [ -f "$file" ] || { echo "dayz-ctl: writable file not present: $rel" >&2; exit 2; }
-    # Defence in depth: the CURRENT file must resolve under the server dir (symlink guard).
-    base="$(realpath -- "$SERVER_DIR" 2>/dev/null || printf '%s' "$SERVER_DIR")"
-    real="$(realpath -- "$file" 2>/dev/null || printf '')"
-    case "$real" in "$base"/*) ;; *) die "writable file resolved outside the server dir" ;; esac
-    sz="$(printf '%s' "$content" | wc -c)"
-    [ "$sz" -le 262144 ] || die "file-write: too large ($sz bytes)"
-    # Snapshot the outgoing version (keep the 10 newest per file), owner restored.
-    OWNED_VERSIONS="$SERVER_DIR/.owned-versions"
-    mkdir -p "$OWNED_VERSIONS"
-    cp -p "$file" "$OWNED_VERSIONS/$arg.$(date -u +%Y%m%dT%H%M%S%NZ)"
-    find "$OWNED_VERSIONS" -maxdepth 1 -name "$arg.*" | sort -r | tail -n +11 \
-      | while IFS= read -r _old; do rm -f "$_old"; done
-    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
-    [ -n "$_own" ] && chown -R "$_own" "$OWNED_VERSIONS" 2>/dev/null || true
-    tmp="$(mktemp "$SERVER_DIR/.file-write.XXXXXX")"
-    printf '%s' "$content" > "$tmp"
-    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
-    chmod 644 "$tmp"
-    mv -f "$tmp" "$file"
-    echo ok
-    ;;
-
+  # file-write) RETIRED 2026-08-02 (U2). It existed only because own-write refused a .txt;
+  # U5 removed that refusal, so ban/allow lists use the generic own-write path like everything else.
   types-read)
     # types-read <name> — print ONE kind-'types' file: line 1 = its sha256 (the version the
     # editor passes back to types-write as base=), the rest = the RAW contents. Raw on purpose,
@@ -840,7 +807,7 @@ case "$verb" in
     # ARG ORDER: the document rides $2 like every stdin write verb (own-write/spawn-write) -
     # the API's ctlStdin always places '-' at $2 - so the NAME comes third. The name must be a
     # CONFIG_MAP row of kind 'types' (registry web:'types' - this verb is the ONLY writer for
-    # those rows; file-write/own-write can't reach them). The path comes from the map,
+    # those rows; own-write can't reach them). The path comes from the map,
     # NEVER the caller. Replace-only (the file is seeded by the deploy - a typo'd name can't
     # create files). '-' = read the document from stdin: the tuning file is ~73KB and grows per
     # a big document, and Linux caps one argv string at ~128KB (MAX_ARG_STRLEN). Same 2MB cap +
@@ -1123,6 +1090,6 @@ if uniq:
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled doc-list doc-read info spawn-write file-list file-write types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled doc-list doc-read info spawn-write file-list types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
     ;;
 esac
