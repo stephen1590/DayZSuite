@@ -1,0 +1,170 @@
+{
+  "__comment": "NewImageGallery dashboard - provisioned by Deploy-Monitoring.ps1 (dashboards are code; UI edits are NOT persisted across deploys). Series come from the gallery API's GET /metrics on 127.0.0.1:3200. NOTE ON BANDWIDTH: image bytes never cross the box - the API mints presigned URLs and browsers fetch straight from Backblaze - so the HTTP byte panels are uploads plus JSON only. B2 stored bytes are exact. There is NO egress panel because Backblaze's native API exposes no usage endpoint; the presigned-bytes series is an upper bound on demand, not a bill.",
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["gallery"],
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "title": "Image Gallery",
+  "uid": "gallery-api",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Scrape target",
+      "description": "0 = Prometheus cannot reach the gallery API. Either the service is down, or metrics were switched off (GALLERY_METRICS=0) - both are deliberate states, and both look like this.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Up", "color": "green", "index": 0 }, "0": { "text": "DOWN", "color": "red", "index": 1 } } }
+          ],
+          "noValue": "no data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "up{job=\"gallery-api\"}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "Requests / min",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqpm", "noValue": "0" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum(rate(gallery_http_requests_total[5m])) * 60", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "Error rate",
+      "description": "Share of requests answering 4xx or 5xx. 401s from an unsigned manage call are normal background noise; a step change is not.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 9, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.05 }, { "color": "red", "value": 0.2 }] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "sum(rate(gallery_http_errors_total[5m])) / clamp_min(sum(rate(gallery_http_requests_total[5m])), 0.0001)", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "B2 stored",
+      "description": "Exact, summed from contentLength across every object. Refreshed hourly by the API - a storage figure that moves slowly does not need scraping quickly, and B2 charges per list call.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "noValue": "no data" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum(gallery_b2_stored_bytes)", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "Images / in trash",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 0 },
+      "fieldConfig": { "defaults": { "noValue": "no data" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "gallery_images_total", "legendFormat": "images", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "gallery_images_trashed", "legendFormat": "trashed", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "API hits by route",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (route) (rate(gallery_http_requests_total[5m]))", "legendFormat": "{{route}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors by route and class",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (route, class) (rate(gallery_http_errors_total[5m]))", "legendFormat": "{{class}} {{route}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "API bandwidth",
+      "description": "Bytes through THIS BOX only. Image delivery is absent by design: presigned URLs send browsers straight to Backblaze, so the inbound line is essentially uploads and the outbound line is JSON.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(gallery_http_request_bytes_total[5m]))", "legendFormat": "in (uploads)", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "sum(rate(gallery_http_response_bytes_total[5m]))", "legendFormat": "out (JSON)", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request duration p50 / p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(gallery_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(gallery_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Backblaze operations",
+      "description": "outcome=retry is the early warning. On 2026-08-01 a single transient B2 500 with no retry silently cost a photograph; retries are now automatic, so a rising retry line means B2 is struggling BEFORE anything is lost.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (op, outcome) (rate(gallery_b2_operations_total[5m]))", "legendFormat": "{{op}} {{outcome}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "timeseries",
+      "title": "B2 stored bytes by prefix",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "gallery_b2_stored_bytes", "legendFormat": "{{prefix}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Image data handed out (NOT a bill)",
+      "description": "Bytes of ORIGINALS we issued presigned URLs for. Backblaze exposes no usage API, so real egress cannot be measured from this box. This is an UPPER BOUND on demand: a presigned URL is permission to download, not proof of one, and rendition sizes are not recorded so thumbnails and web copies contribute nothing here.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "rate(gallery_b2_presigned_bytes_total[5m])", "legendFormat": "authorised bytes/s", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Library health",
+      "description": "Rows whose original is missing from the bucket, and rows missing a thumbnail or web rendition. rendition_gaps is exactly what the overview page's repair button acts on - one predicate, so the graph and the UI can never disagree.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "gallery_rendition_gaps", "legendFormat": "rendition gaps", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "gallery_images_missing_file", "legendFormat": "no file in B2", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "C", "expr": "gallery_images_unassigned", "legendFormat": "in no gallery", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Collector health",
+      "description": "0 means that collector's series are ABSENT, not zero. The database collector reads SQL; the b2_storage collector walks the bucket hourly. A flatline at 0 here explains an empty panel elsewhere.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 36 },
+      "fieldConfig": { "defaults": { "max": 1, "min": 0, "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "gallery_collector_ok", "legendFormat": "{{collector}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    }
+  ]
+}

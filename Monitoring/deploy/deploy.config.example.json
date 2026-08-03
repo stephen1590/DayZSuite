@@ -42,7 +42,14 @@
   "ScrapeJobs": [
     // The API exports the DayZ series (unit footprint + players) at /metrics.
     // 30s: each scrape crosses the sudo bridge + RCon; the app caches for 10s.
-    { "Job": "dayz-api", "Target": "127.0.0.1:3100", "IntervalSec": 30 }
+    { "Job": "dayz-api", "Target": "127.0.0.1:3100", "IntervalSec": 30 },
+
+    // NewImageGallery. Loopback only: its vhost 404s /metrics and the app refuses any
+    // request carrying X-Forwarded-For, so this is unreachable from the internet.
+    // TOGGLE: drop this row and redeploy monitoring, or set GALLERY_METRICS=0 in the
+    // gallery unit and restart it. Either is enough; the target then reads DOWN, which is
+    // visible rather than silent.
+    { "Job": "gallery-api", "Target": "127.0.0.1:3200", "IntervalSec": 30 }
   ],
 
   // --- Grafana's public face (../../Provision-Tls.ps1 -Service Monitoring) ---
