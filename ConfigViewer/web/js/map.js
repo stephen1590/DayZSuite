@@ -86,7 +86,7 @@ let mapCalib = null;          // parsed sidecar (null until first load attempt)
 let mapCalibTried = false;
 let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
 let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
-let mapPatJson = false;       // patrol editor mode: false = bespoke Fields, true = json-editor navigator (opt-in toggle)
+// mapPatJson DELETED 2026-08-02 - there is no mode to pick, the navigator is the editor.
 let mapPatNav = null;         // the mounted navigator handle in JSON mode (getDoc() at save time)
 let mapPlaceMode = null;      // null | 'patrol' — armed by the Patrols group "+"; next map click places a new patrol there
 let mapNavFilter = '';        // quick-filter text for the nav list (sticky input; survives list re-renders)
@@ -672,14 +672,8 @@ function $id(id) { return document.getElementById(id); }
 const PATROL_CORE = ['Name', 'Faction', 'Loadout', 'NumberOfAI', 'NumberOfAIMax', 'Behaviour', 'Speed', 'Chance', 'Persist'];
 let peLbcKeys = [];           // LoadBalancingCategories keys from the open doc - the datalist for a patrol's LoadBalancingCategory
 // In-panel editor field density: 'inline' (label+input on one row, default) or 'stacked'.
-function peDensity() { try { return localStorage.getItem('pe_density') === 'stacked' ? 'stacked' : 'inline'; } catch { return 'inline'; } }
-function applyPeDensity(d) {
-  try { localStorage.setItem('pe_density', d); } catch (_e) { /* private mode */ }
-  el.mapDetail.querySelectorAll('.pe-fields').forEach((w) => { w.classList.toggle('inline', d === 'inline'); w.classList.toggle('stacked', d === 'stacked'); });
-  const bi = $id('peDenseIn'), bs = $id('peDenseSt');
-  if (bi) bi.classList.toggle('on', d === 'inline');
-  if (bs) bs.classList.toggle('on', d === 'stacked');
-}
+// peDensity DELETED 2026-08-02 - the navigator carries its own density.
+// applyPeDensity DELETED 2026-08-02 with the Fields grid it sized.
 // Load the mission's raw AIPatrolSettings.json and open the clicked patrol/object patrol in the
 // DETAIL PANEL (in place). The whole doc rides in mapPatEdit so a save is a per-field merge.
 async function startPatrolEdit(p) {
@@ -817,18 +811,7 @@ function applyPatrolDocToMap(doc, selectIdx) {
 }
 // One editable field. Object-valued fields (Units/LoadBalancingCategory/Waypoints) get a JSON
 // textarea; negative numbers are annotated "inherits". The label truncates - full name on hover.
-function meField(k, v) {
-  if (v !== null && typeof v === 'object') {
-    if (k === 'Waypoints') return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><span class="me-ro">' + (v.length) + ' point(s) - drag on the map</span></div>';
-    return '<div class="me-f me-wide"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><textarea class="me-in me-json" data-k="' + attr(k) + '" rows="2" spellcheck="false">' + escapeHtml(JSON.stringify(v)) + '</textarea></div>';
-  }
-  if (k === 'LoadBalancingCategory') {   // soft link to LoadBalancingCategories: a datalist (pick a defined category, or free-type)
-    return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + '</label><input class="me-in" data-k="' + attr(k) + '" list="pe-lbc-cats" value="' + attr(String(v == null ? '' : v)) + '"></div>';
-  }
-  const t = typeof v === 'number' ? 'number' : 'text';
-  const inh = (typeof v === 'number' && v < 0) ? ' <span class="me-inh">inherits</span>' : '';
-  return '<div class="me-f"><label class="me-k" title="' + attr(k) + '">' + escapeHtml(k) + inh + '</label><input class="me-in" data-k="' + attr(k) + '" type="' + t + '" value="' + attr(String(v)) + '"></div>';
-}
+// meField DELETED 2026-08-02 - the shared navigator plus `hints` renders these fields now.
 // Render the field editor into el.mapDetail (replaces the readout in place). Reached from the
 // detail readout's Edit button or the summary's Global settings; Cancel restores the readout.
 function renderPatrolEditor() {
@@ -837,50 +820,50 @@ function renderPatrolEditor() {
   const isG = !!e.isGlobal;
   const keys = Object.keys(ent).filter((k) => !(isG && k === 'Patrols'));
   const core = isG ? keys.filter((k) => typeof ent[k] !== 'object') : PATROL_CORE.filter((k) => k in ent);
-  const adv = keys.filter((k) => !core.includes(k) && k !== 'Waypoints' && !(isG && k === 'LoadBalancingCategories'));   // Waypoints + LBC get their own sections
   const hasWp = !isG && Array.isArray(ent.Waypoints);
   const hasLbc = isG && ent.LoadBalancingCategories && typeof ent.LoadBalancingCategories === 'object' && !Array.isArray(ent.LoadBalancingCategories);
   peLbcKeys = (e.doc && e.doc.LoadBalancingCategories && typeof e.doc.LoadBalancingCategories === 'object') ? Object.keys(e.doc.LoadBalancingCategories) : [];
-  const d = peDensity();
   const glyph = isG ? '' : spawnClassSvg(spawnClassDef(e.kind === 'object' ? 'object' : 'patrol'), 12);
   const title = isG ? 'Global AI settings' : (e.kind === 'object' ? 'Edit object patrol' : 'Edit patrol');
   const name = isG ? mapShort(e.mission) : (ent.Name || (e.kind === 'object' ? ent.ObjectClassName : '') || '#' + e.idx);
   el.mapDetail.classList.remove('hidden');
   el.mapDetail.classList.add('editing');
-  // Mode toggle: bespoke Fields (default) vs the json-editor navigator on this whole entry (opt-in).
-  const modeSeg = '<div class="me-density"><span>Mode</span><span class="me-seg">'
-    + '<button type="button" id="peModeFields" class="' + (mapPatJson ? '' : 'on') + '">Fields</button>'
-    + '<button type="button" id="peModeJson" class="' + (mapPatJson ? 'on' : '') + '">JSON editor</button></span></div>';
-  const fieldsBody =
-    '<div class="me-density"><span>Rows</span><span class="me-seg"><button type="button" id="peDenseIn" class="' + (d === 'inline' ? 'on' : '') + '">Inline</button><button type="button" id="peDenseSt" class="' + (d === 'stacked' ? 'on' : '') + '">Stacked</button></span></div>'
-    + '<div class="pe-fields ' + d + '">' + core.map((k) => meField(k, ent[k])).join('') + '</div>'
-    + (hasWp ? waypointsSectionHtml(ent.Waypoints) : '')
-    + (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '')
-    + (adv.length ? '<details class="me-adv"><summary>Advanced — ' + adv.length + ' more field' + (adv.length === 1 ? '' : 's') + '</summary><div class="pe-fields ' + d + '">' + adv.map((k) => meField(k, ent[k])).join('') + '</div></details>' : '')
-    + (!isG && peLbcKeys.length ? '<datalist id="pe-lbc-cats">' + peLbcKeys.map((k) => '<option value="' + attr(k) + '"></option>').join('') + '</datalist>' : '');
+  // ONE editor. The bespoke Fields grid is gone (2026-08-02): the shared navigator renders every
+  // scalar field, and the DayZ-specific niceties that used to justify a second editor now travel
+  // as `hints` - the extension point the UI contract always specified.
+  //   -1 means "inherit the global value"     -> badge
+  //   LoadBalancingCategory names             -> suggestions from THIS document
+  //   Waypoints / LoadBalancingCategories     -> summarised, edited by the widgets below
+  // Waypoints are dragged on the map and categories have rename + used-counts, so both keep their
+  // dedicated widget. Those are domain CONTROLS, not a second editor family - the contract's two
+  // families (navigator for structured JSON, CM6 for raw text) are unchanged, and the third one
+  // the owner objected to is what just went.
+  const peHints = {
+    badge: (k, v) => (typeof v === 'number' && v < 0 ? 'inherits' : null),
+    enums: (k) => (k === 'LoadBalancingCategory' ? peLbcKeys : null),
+    readOnly: ['Waypoints', 'LoadBalancingCategories'],
+    summary: (k, v) => {
+      if (k === 'Waypoints' && Array.isArray(v)) return v.length + ' point(s) - drag on the map';
+      if (k === 'LoadBalancingCategories' && v && typeof v === 'object') return Object.keys(v).length + ' categor' + (Object.keys(v).length === 1 ? 'y' : 'ies') + ' - edit below';
+      return null;
+    },
+    priority: core,
+  };
   el.mapDetail.innerHTML =
     '<div class="me-head">' + glyph + '<b>' + escapeHtml(title) + '</b> <span class="k2">' + escapeHtml(name) + '</span></div>' +
     '<div class="me-note">' + (isG
       ? 'Map-wide defaults; patrols inherit them (-1). The Patrols array is edited per-patrol on the map. Restart to apply.'
       : 'Only this ' + (e.kind === 'object' ? 'object patrol' : 'patrol') + ' changes; every other field is preserved. Restart to apply.') + '</div>' +
-    modeSeg +
-    (mapPatJson ? '<div id="peJsonHost" class="pe-jsonhost"></div>' : fieldsBody) +
+    '<div id="peJsonHost" class="pe-jsonhost"></div>' +
+    (hasWp ? waypointsSectionHtml(ent.Waypoints) : '') +
+    (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '') +
     '<div class="me-btns"><button type="button" class="btn-sm primary" id="peSave">Save</button><button type="button" class="btn-sm" id="peCancel">Cancel</button></div>';
-  const modeF = $id('peModeFields'); if (modeF) modeF.onclick = () => { if (mapPatJson) { mapPatJson = false; mapPatNav = null; renderPatrolEditor(); } };
-  const modeJ = $id('peModeJson'); if (modeJ) modeJ.onclick = () => { if (!mapPatJson) { mapPatJson = true; renderPatrolEditor(); } };
-  if (mapPatJson) {
-    // Navigate/edit the entry with the shared json-editor navigator. It edits `ent` (a reference
-    // into e.doc.Patrols[idx]) in place; save also syncs getDoc() back in case the root was replaced.
-    mapPatNav = null;
-    mountJsonEditor($id('peJsonHost'), { schema: inferSchema(ent), startval: ent, pathbar: false, density: 'stacked', collapseLargeOver: 400 }).then((h) => { if (mapPatEdit === e && mapPatJson) mapPatNav = h; else h.destroy(); });
-  } else {
-    el.mapDetail.querySelectorAll('.me-in').forEach((inp) => inp.addEventListener('change', () => applyPatrolField(inp)));
-    el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
-    el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });
-    wireLbc();
-    const bi = $id('peDenseIn'); if (bi) bi.onclick = () => applyPeDensity('inline');
-    const bs = $id('peDenseSt'); if (bs) bs.onclick = () => applyPeDensity('stacked');
-  }
+  mapPatNav = null;
+  mountJsonEditor($id('peJsonHost'), { schema: inferSchema(ent), startval: ent, pathbar: false, density: 'stacked', collapseLargeOver: 400, hints: peHints })
+    .then((h) => { if (mapPatEdit === e) mapPatNav = h; else h.destroy(); });
+  el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
+  el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });
+  wireLbc();
   const S = $id('peSave'); if (S) S.onclick = savePatrolEdit;
   const C = $id('peCancel'); if (C) C.onclick = cancelPatrolEdit;
 }
@@ -1010,27 +993,32 @@ function lbcRenameCat(oldName, rawNew) {
   if (doc && Array.isArray(doc.Patrols)) doc.Patrols.forEach((p) => { if (p && p.LoadBalancingCategory === oldName) p.LoadBalancingCategory = nn; });
   renderLbcSection();
 }
-function applyPatrolField(inp) {
-  const e = mapPatEdit; if (!e) return;
-  const k = inp.dataset.k, orig = e.entry[k];
-  let v;
-  if (inp.classList.contains('me-json')) {
-    try { v = JSON.parse(inp.value); inp.style.outline = ''; }
-    catch { inp.style.outline = '2px solid var(--danger)'; toast(k + ': not valid JSON', 'err'); return; }
-  } else if (typeof orig === 'number') {
-    v = Number(inp.value); if (!isFinite(v)) { toast(k + ': must be a number', 'err'); return; }
-  } else { v = inp.value; }
-  e.entry[k] = v;
-}
+// applyPatrolField DELETED 2026-08-02 - the navigator owns field edits; no bespoke inputs remain.
 async function savePatrolEdit() {
   const e = mapPatEdit; if (!e) return;
+  const ent = e.entry || {};
   const cred = loadCred(); if (!cred) return;
   // E4: name the file before writing (patrols ride the whole AIPatrolSettings doc).
   if (!confirmSave([`expansion/settings/AIPatrolSettings.json (${e.mission})`])) return;
   const S = $id('peSave'); if (S) S.disabled = true;
   try {
-    // JSON mode: fold the navigator's edited entry back into the whole doc (covers a root replace).
-    if (mapPatJson && mapPatNav) { const ed = mapPatNav.getValue(); if (e.isGlobal) e.doc = ed; else if (e.doc && Array.isArray(e.doc.Patrols)) e.doc.Patrols[e.idx] = ed; }
+    // Fold the navigator's edited entry back into the whole doc (covers a root replace).
+    //
+    // THE MERGE, and it is not optional. json-editor COPIES startval, so the navigator holds a
+    // snapshot taken at mount. The waypoint and category widgets below it mutate `ent` in place,
+    // live. Taking the navigator's value wholesale would therefore silently discard every waypoint
+    // drag and every category rename made after the editor opened. Those two keys are owned by
+    // their widgets, so they are restored from `ent` - which the navigator was told not to edit
+    // (readOnly + summary), so it has no competing changes to lose.
+    if (mapPatNav) {
+      const ed = mapPatNav.getValue();
+      if (ed && typeof ed === 'object' && ent && typeof ent === 'object') {
+        for (const k of ['Waypoints', 'LoadBalancingCategories']) {
+          if (Object.prototype.hasOwnProperty.call(ent, k)) ed[k] = ent[k];
+        }
+      }
+      if (e.isGlobal) e.doc = ed; else if (e.doc && Array.isArray(e.doc.Patrols)) e.doc.Patrols[e.idx] = ed;
+    }
     const content = JSON.stringify(e.doc, null, 2);
     const r = await apiPost('/dayz/configs/set-settings', cred, { key: 'patrols', mission: e.mission, content, baseVersion: e.version });
     toast(r.message || 'Saved - restart to apply', 'ok');
