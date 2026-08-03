@@ -885,6 +885,24 @@ for c in r:
         else die "own-write: no XML validator (python3/xmllint) on the box"; fi ;;
       *) echo "own-write: no validator for this file type - saved unvalidated: $rel" >&2 ;;
     esac
+    # STRUCTURAL check for a CE types surface, on top of well-formedness. Moved here from the
+    # retired types-write verb (U2, 2026-08-02): its one real guarantee was that a half-pasted
+    # document can never reach the CE, and a migration that dropped it would be a downgrade.
+    # Keyed off the row's KIND in CONFIG_MAP, not a hardcoded path - a new types row is covered
+    # the moment the registry declares it. No validator on the box = refuse, never write an
+    # unchecked CE file.
+    _kind="$(printf '%s\n' "$CONFIG_MAP" | awk -F'\t' -v r="$rel" '$2==r{print $6; exit}')"
+    if [ "$_kind" = "types" ]; then
+      if command -v python3 >/dev/null 2>&1; then
+        printf '%s' "$arg" | python3 -c '
+import sys, xml.etree.ElementTree as ET
+r = ET.fromstring(sys.stdin.read())
+assert r.tag == "types", "root element must be <types>"
+for c in r:
+    assert c.tag == "type" and c.get("name"), "every child must be <type name=...>"
+' 2>/dev/null || die "own-write: not a valid CE types document (root <types>, only <type name=...> children)"
+      else die "own-write: no python3 on the box to structurally check a CE types file"; fi
+    fi
     _base='__none__'
     for _f in "${@:4}"; do case "$_f" in base=*) _base="${_f#base=}" ;; esac; done
     if [ "$_base" != '__none__' ]; then

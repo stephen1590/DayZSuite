@@ -27,11 +27,11 @@ tpl, out, sd = sys.argv[1], sys.argv[2], sys.argv[3]
 t = open(tpl).read()
 vals = {
   '__UNIT__': 'fake.service', '__SERVER_DIR__': sd,
-  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch\tSets global economy parameters\thttps://low.ms/knowledgebase/dayz-server-configuration',
+  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch\tSets global economy parameters\thttps://low.ms/knowledgebase/dayz-server-configuration\nexpansionTypesTuning\tcustom-ce/expansion_types_tuning.xml\tCustom CE\tExpansion Types Tuning\t0\ttypes\tCE loot tuning\t',
   '__CONFIG_DIRS__': '', '__IGNORE_EXT__': '', '__WRITE_MAP__': '',
   '__GENERATED__': 'profiles/AI_Shared/map-points.generated.json',
   '__DISABLED_TARGETS__': 'profiles/ExpansionMod/Settings/AISettings.json',
-  '__OWNED_FILES__': 'server-settings.json\nban.txt',
+  '__OWNED_FILES__': 'server-settings.json\nban.txt\ncustom-ce/expansion_types_tuning.xml',
   '__OWNED_DIRS__': 'profiles/ExpansionMod/Loadouts\nprofiles/ExpansionMod/Settings',
   '__LOG_NOISE__': '', '__DOCS_ROOTS__': '', '__DOCS_EXT__': '', '__DOCS_NAMES__': '',
   '__DOCS_MAXDEPTH__': '3', '__LOG_SOURCES__': '',
@@ -193,6 +193,21 @@ out="$(printf '76561198000000001\n' | $CTL own-write - ban.txt 2>&1)"; rc=$?
   && ok "the .txt write actually landed" || bad ".txt content not written"
 printf '%s' "$out" | grep -qi "not validated\|unvalidated" \
   && ok "an unvalidatable type WARNS rather than failing silently" || bad "no warning that the type was not validated"
+
+# U2/types-write: own-write must apply the CE STRUCTURAL check to a types surface, not just
+# well-formedness. types-write is being retired onto the generic path, and its one real guarantee
+# is that a half-pasted document can never reach the CE - root must be <types>, every child a
+# <type name=...>. Losing that would make the migration a downgrade.
+mkdir -p "$SD/custom-ce"
+printf '%s' '<types><type name="Nail"><nominal>10</nominal></type></types>' > "$SD/custom-ce/expansion_types_tuning.xml"
+printf '%s' '<types><type name="Nail"><nominal>20</nominal></type></types>' | $CTL own-write - custom-ce/expansion_types_tuning.xml >/dev/null 2>&1
+[ $? -eq 0 ] && ok "own-write accepts a valid CE types document" || bad "a valid types doc was refused"
+# well-formed XML, but NOT a types document - this is what the structural check exists to stop
+out="$(printf '%s' '<config><thing/></config>' | $CTL own-write - custom-ce/expansion_types_tuning.xml 2>&1)"; rc=$?
+[ $rc -ne 0 ] && ok "own-write REFUSES well-formed XML that is not a CE types document" \
+  || bad "a non-types XML reached a types surface (rc=$rc out=$out)"
+grep -q 'name="Nail"><nominal>20' "$SD/custom-ce/expansion_types_tuning.xml" \
+  && ok "the refused write left the previous types document intact" || bad "refused write damaged the file"
 
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

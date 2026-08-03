@@ -235,6 +235,11 @@ if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled 
 # READS the file (the game vs a compiler), not in how it is written. Safe because the compiler's
 # allowlist is closed and enforced at RENDER time - an unlisted key is ignored with a warning no
 # matter who wrote it - so whole-file editing cannot widen what reaches serverDZ.cfg.
+# types rows are STILL EXCLUDED, deliberately. own-write now carries their structural CE check
+# (2026-08-02) but the types editor still saves via types-write, and it only knows a row NAME, not
+# the path set-own takes. Including them here before that is threaded through would give those two
+# files TWO live write paths at once - the dual-write defect. Flip this in the SAME change that
+# migrates types-editor.js and deletes the verb.
 # Exactly ONE input row exists today; tests/server-settings-surface.test.ps1 fails if a second
 # appears, so a new input is classified deliberately instead of silently becoming writable.
 $ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -in @('owned', 'input') -and $_.box -and $_.web -ne 'types' } |
