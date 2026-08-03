@@ -98,6 +98,12 @@ running box.
 | the game engine | `storage_*`, logs, `profiles/users/` | n/a - not config | hidden |
 | capture, once | `*.defaults.*` | must not be edited | `ro` |
 
+- **OWNED IS NOT EDITABLE.** Ownership is who writes the file LAST; editability is whether the UI
+  offers a write path. Ownership is the INPUT, editability falls out of it. Never flip a row to
+  `owned` to unlock a writer - that is using the ownership field as an access flag, which is how
+  `category` became one in the first place and why every file needs a hand-declared row today. If a
+  file is not editable and you want it to be, the question is "who writes it last", not "what flag
+  turns this on". Asserted by `DayZ-Server/tests/deny-list.test.ps1`.
 - **One contract, declared once** - every config surface lives in `DayZ-Server/config-registry.json`.
   Adding a config means adding a row, not knowledge scattered across tiers.
 - **A part ships only when the whole is consistent** - a new or changed config is wired across every
