@@ -477,14 +477,12 @@ $items = @(
     # The template ships UNRENDERED — the passwords stay {{...}} here and resolve on the box,
     # so no deploy-time temp file ever holds them.
     @{ Src = "serverDZ.cfg.template"; Dst = Join-Path $ServerDir "serverDZ.cfg.template"; Sudo = $false; Exec = $false }
-    @{ Src = "profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt"
-       Dst = Join-Path $ServerDir "profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt"
-       Sudo = $false; Exec = $false }
-    # VPP permission groups: full-file owned (we author it, nothing regenerates it) — NOT a
-    # config-overrides patch. Steam64IDs + per-group permission lists, copied verbatim.
-    @{ Src = "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
-       Dst = Join-Path $ServerDir "profiles/VPPAdminTools/Permissions/UserGroups/UserGroups.json"
-       Sudo = $false; Exec = $false }
+    # REMOVED 2026-08-02 (owner: "those files are all owned by the server. We should not touch
+    # them, but they should have a backup process"): the VPP permission pair, SuperAdmins.txt
+    # and UserGroups.json. They shipped DRIFT-OVERWRITE, so the deploy re-stamped the box copy
+    # on every run, not just a fresh one. The repo copies stay under deploy/ as the backup.
+    # Verified behaviour-neutral before removal, not assumed: the prod run that day reported
+    # both InSync, so freezing them froze them at exactly what the repo holds.
     # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, map-points.json, classification,
     # per-map StaticAIB, messages.xml, config-overrides.json, the Babaku per-map sources) is NO
     # LONGER listed here. It is declared once in config-registry.json and seeded-if-missing by the
@@ -524,8 +522,8 @@ $items = @(
     # are pulled from their doc folder at prestart. Apply-CustomCE copies them into the active
     # mission's custom/ folder and regenerates <ce folder="custom"> in its cfgeconomycore.xml
     # (never the vanilla types.xml). Add a modded types file = one line in custom-ce.json.
-    @{ Src = "custom-ce/custom-ce.json";     Dst = Join-Path $ServerDir "custom-ce/custom-ce.json";   Sudo = $false; Exec = $false }
-    @{ Src = "custom-ce/custom_types.xml";   Dst = Join-Path $ServerDir "custom-ce/custom_types.xml"; Sudo = $false; Exec = $false }
+    # REMOVED 2026-08-02 with the other three below - the box owns them (see the note at the
+    # Expansion CE block).
     # Expansion CE (from the DayZ-Expansion-Missions mission templates): none of our missions ever
     # registered these, so NO Expansion item spawned as world loot. The shared types file is the
     # Chernarus variant (usage-based, Tier1-4 - fits chernarusplus AND sakhal); Enoch defines no
@@ -533,9 +531,15 @@ $items = @(
     # per-map override). spawnabletypes is byte-identical across every template - truly shared.
     # expansion_events.xml is NOT shipped: map-specific AND inert without per-map cfgeventspawns
     # positions, which no mission has yet - separate task.
-    @{ Src = "custom-ce/expansion_types.xml";          Dst = Join-Path $ServerDir "custom-ce/expansion_types.xml";          Sudo = $false; Exec = $false }
-    @{ Src = "custom-ce/expansion_spawnabletypes.xml"; Dst = Join-Path $ServerDir "custom-ce/expansion_spawnabletypes.xml"; Sudo = $false; Exec = $false }
-    @{ Src = "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Dst = Join-Path $ServerDir "custom-ce/maps/dayzOffline.enoch/expansion_types.xml"; Sudo = $false; Exec = $false }
+    # REMOVED 2026-08-02, all five custom-ce files (owner: "those files are all owned by the
+    # server. We should not touch them, but they should have a backup process"). They shipped
+    # DRIFT-OVERWRITE, so the deploy re-stamped the box copy on every run - a config push under
+    # the name of a code ship. The box owns them now; the repo copies under deploy/custom-ce/
+    # are the backup, and Apply-CustomCE keeps reading them from the SERVER dir exactly as
+    # before. Verified behaviour-neutral before removal: the prod run that day reported all
+    # five InSync, so freezing them froze them at exactly what the repo holds.
+    # A REBUILT box needs them restored from deploy/custom-ce/ by hand - that is what a backup
+    # is, as opposed to a seed. Gated by tests/deploy-ships-code-only.test.ps1.
     # The loot-balance tuning pair (expansion_types_tuning.xml root + enoch) is NOT here any more
     # (2026-07-23): it became box-owned, WEB-EDITED content - the ConfigViewer types editor writes
     # it via dayz-ctl types-write, so shipping it on drift would clobber every web edit. Declared
@@ -631,8 +635,24 @@ $manifestPath = Join-Path $ServerDir '.deploy-manifest.json'
 # and they are right to. That file carries the pruning rule.
 $retiredSweep = Read-RetiredPaths -Path (Join-Path $deployDir 'retired-paths.txt')
 $placedNow = @($items | ForEach-Object { $_.Dst })
+# NEVER remove box-owned config or a deny-listed path, whatever the manifest says. A file that
+# LEAVES $items because the box now owns it is indistinguishable, by set difference alone, from
+# one that was retired - and on 2026-08-02 seven of them left at once. Without this the next
+# deploy would have deleted the live Expansion CE files and the admin list. Derived from the
+# registry, so handing a new file to the box protects it automatically.
+$registryForGuard = Get-Content -Raw (Join-Path $ServerDir 'config-registry.json') -ErrorAction SilentlyContinue |
+                    ConvertFrom-Json -ErrorAction SilentlyContinue
+$protectedPaths = @()
+if ($registryForGuard) {
+    $protectedPaths += @($registryForGuard.surfaces | ForEach-Object { if ($_.box) { $_.box } elseif ($_.dir) { $_.dir } })
+    $protectedPaths += @($registryForGuard.denyList | ForEach-Object { $_.path })
+}
+$protectedPaths = @($protectedPaths | Where-Object { $_ } | ForEach-Object { "$_".Trim() } | Sort-Object -Unique)
+# Also protect the repo-authored config that left $items on 2026-08-02 but has no surface row.
+$protectedPaths += 'custom-ce'
 $orphans = @(Get-DeployOrphans -Previous (Read-DeployManifest -Path $manifestPath) `
-                               -Current $placedNow -ServerDir $ServerDir -Retired $retiredSweep |
+                               -Current $placedNow -ServerDir $ServerDir -Retired $retiredSweep `
+                               -Protected $protectedPaths |
              Where-Object { Test-Path $_ })
 if ($orphans.Count) {
     Write-Host ''

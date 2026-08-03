@@ -76,13 +76,25 @@ function Write-DeployManifest {
   Shipping always wins over sweeping - a name here that is back in $items is kept. Prune an
   entry once every box has run one deploy with it; a permanent list is memory-maintained
   state, which is the disease this mechanism exists to cure.
+
+.PARAMETER Protected
+  ServerDir-relative paths or prefixes this must NEVER remove, whatever the manifest says.
+
+  The near miss that added it, 2026-08-02: seven config files left `$items` because the box
+  owns them now. The previous manifest still listed them as placed, so the next run would have
+  read them as orphans and deleted them - taking Expansion loot registration and the admin
+  list with it. **"We stopped shipping it" and "we retired it" are the same set difference.**
+  They cannot be told apart from the manifest alone, so the caller declares what is off
+  limits: every registry surface, and every deny-listed prefix. A deploy has no business
+  deleting either. Protection is by prefix, so a whole directory can be handed over at once.
 #>
 function Get-DeployOrphans {
     param(
-        [AllowEmptyCollection()][string[]]$Previous = @(),
-        [AllowEmptyCollection()][string[]]$Current  = @(),
+        [AllowEmptyCollection()][string[]]$Previous  = @(),
+        [AllowEmptyCollection()][string[]]$Current   = @(),
         [Parameter(Mandatory)][string]$ServerDir,
-        [AllowEmptyCollection()][string[]]$Retired  = @()
+        [AllowEmptyCollection()][string[]]$Retired   = @(),
+        [AllowEmptyCollection()][string[]]$Protected = @()
     )
     # Compare on normalised full paths so 'a/../b' and 'b' cannot disagree. GetFullPath is
     # pure string math - it does not touch the disk, so a path that no longer exists still
@@ -101,7 +113,21 @@ function Get-DeployOrphans {
     $candidates  = @($Previous | ForEach-Object { & $norm $_ } | Where-Object { $_ })
     $candidates += @($Retired  | Where-Object { $_ } | ForEach-Object { & $norm (Join-Path $rootFull $_) })
 
+    # Normalised protected prefixes. Blank entries are dropped: one would protect everything
+    # and silently turn the reconcile off, which fails safe but fails silently.
+    $protectedFull = @($Protected | Where-Object { $_ } |
+                       ForEach-Object { (& $norm (Join-Path $rootFull $_)).TrimEnd([IO.Path]::DirectorySeparatorChar, '/') } |
+                       Where-Object { $_ })
+    $isProtected = {
+        param($full)
+        foreach ($p in $protectedFull) {
+            if ($full -eq $p -or $full.StartsWith($p + [IO.Path]::DirectorySeparatorChar) -or $full.StartsWith($p + '/')) { return $true }
+        }
+        $false
+    }
+
     @($candidates | Sort-Object -Unique |
         Where-Object { & $inRoot $_ } |
-        Where-Object { $_ -notin $currentFull })
+        Where-Object { $_ -notin $currentFull } |
+        Where-Object { -not (& $isProtected $_) })
 }

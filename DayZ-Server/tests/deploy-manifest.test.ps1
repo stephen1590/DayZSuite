@@ -64,6 +64,29 @@ Check (SameSet (Get-DeployOrphans -Previous @() -Current @((& $P 'Build-AIBandit
                                   -Retired @('Build-AIBandits.ps1')) @()) `
     'a Retired path that is shipped again is kept - shipping always beats sweeping'
 
+# --- 5b. NEAR MISS, 2026-08-02: handing a file to the box must not delete it -----
+# The 7 config files left $items that day because the box owns them now. The manifest from the
+# previous deploy still listed them as placed, so the very next run would have classified them
+# as orphans and REMOVED them - taking Expansion loot registration and the admin list with it.
+# "Stopped shipping it" and "retired it" are indistinguishable to a set difference, so the
+# reconcile is told what it must never touch: anything the registry declares a surface, and
+# anything under a deny-listed prefix. Both are things a deploy has no business deleting.
+$protectedCases = @(
+    @{ what = 'a registry-declared surface'; protect = @('custom-ce/custom_types.xml'); path = 'custom-ce/custom_types.xml' }
+    @{ what = 'a deny-listed prefix';        protect = @('profiles/VPPAdminTools');     path = 'profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt' }
+    @{ what = 'a file BENEATH a protected dir'; protect = @('custom-ce');               path = 'custom-ce/maps/dayzOffline.enoch/expansion_types.xml' }
+)
+foreach ($c in $protectedCases) {
+    $full = & $P $c.path
+    Check (SameSet (Get-DeployOrphans -Previous @($full) -Current @() -ServerDir $SD -Protected $c.protect) @()) `
+        "protected - never an orphan: $($c.what)"
+}
+# ...and protection must not turn the reconcile off. An unprotected corpse still goes.
+Check (SameSet (Get-DeployOrphans -Previous @((& $P 'Old-Builder.ps1'), (& $P 'custom-ce/custom_types.xml')) `
+                                  -Current @() -ServerDir $SD -Protected @('custom-ce')) `
+               @((& $P 'Old-Builder.ps1'))) `
+    'protection is surgical - an unprotected retired script is still removed'
+
 # --- 6. THE BLAST-RADIUS GUARD: never anything outside the server dir -----------
 # $items ships 5 systemd units into /etc/systemd/system. Removing a unit is not a cleanup,
 # it is an outage, and it needs sudo. The reconcile is scoped to the server dir, full stop.
@@ -164,6 +187,15 @@ Check ($payloadBlock.Success -and $shippedList -contains 'DeployManifest.ps1') `
     'DeployManifest.ps1 is in the root-file payload list, so it reaches deploy-stage on the box'
 Check ($deploy -match '(?s)if \(\$Fix\) \{ Write-DeployManifest') `
     'the manifest is written ONLY under -Fix - a report run must leave the box exactly as it found it'
+
+# The guard is only real if the DEPLOY passes it. Asserted separately from the logic because
+# the near miss was never in the logic - it was in nobody calling it.
+Check ($deploy -match '-Protected \$protectedPaths') `
+    'the deploy passes -Protected to the reconcile'
+Check ($deploy -match '\$registryForGuard\.surfaces' -and $deploy -match '\$registryForGuard\.denyList') `
+    'the protected set is DERIVED from the registry surfaces AND the denyList, not hand-listed'
+Check ($deploy -match "(?m)^\s*\`$protectedPaths \+= 'custom-ce'") `
+    'custom-ce is protected explicitly - it left $items but has no surface row of its own'
 
 Write-Host "`ndeploy-manifest: $pass passed, $fail failed"
 if ($fail) { exit 1 } else { exit 0 }
