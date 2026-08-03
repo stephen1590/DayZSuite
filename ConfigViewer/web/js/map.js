@@ -526,33 +526,9 @@ function toggleMapEdit() {
 }
 
 // Save the WHOLE document (every map's points), box-authoritative — applies at next restart.
-async function saveSpawns() {
-  // Phase 4 lock (2026-07-23): the authored map-points store is frozen - the live AI settings are
-  // the source now, and the map renders the DERIVED store read-only. The write path stays code so
-  // it can be revived, but it is refused while deprecated.
-  if (MAP_POINTS_DEPRECATED) { toast('The authored map-points store is read-only (superseded by the live AI settings). Edit those instead.', 'err'); return; }
-  const cred = loadCred(); if (!cred) return;
-  flushMapEdits();
-  const seen = new Set();
-  for (const p of mapData.spawns.points) {
-    if (!p.name || !String(p.name).trim()) { toast('A point has an empty name', 'err'); return; }
-    if (seen.has(p.name)) { toast('Duplicate point name: ' + p.name, 'err'); return; }
-    seen.add(p.name);
-  }
-  const doc = { version: mapData.spawns.version || 1, defaultFaction: docDefaultFaction(), points: mapData.spawns.points };
-  try {
-    el.mapSaveBtn.disabled = true;
-    const r = await apiPost('/dayz/configs/set-spawns', cred, { document: doc });
-    mapSpawnDirty = false;
-    mapSpawnBaseline = JSON.stringify(mapData.spawns.points);
-    toast((r.points ?? doc.points.length) + ' spawn points saved — restart the server to apply', 'ok');
-    renderMap();
-  } catch (e) {
-    if (!handle(e)) toast('Save failed: ' + e.message, 'err');
-  } finally {
-    updateMapEditUi();
-  }
-}
+// saveSpawns DELETED 2026-08-02 (U2). The authored map-points store has been read-only since
+// the 07-23 map inversion - this function's first line was a MAP_POINTS_DEPRECATED bail, so no
+// click could reach the write. Its verb went with it.
 
 // Drop in-memory edits, restoring the last-saved points.
 function discardSpawns() {
@@ -2511,7 +2487,6 @@ export function initMap() {
     renderLiveFilter(); requestMapDraw(); updateMapBar();
   });
   el.mapEditSeg.addEventListener('click', () => toggleMapEdit());
-  el.mapSaveBtn.addEventListener('click', () => saveSpawns());
   el.mapDiscardBtn.addEventListener('click', () => discardSpawns());
   el.mapDetail.addEventListener('input', onMapEditInput);
   el.mapDetail.addEventListener('change', onMapEditInput);

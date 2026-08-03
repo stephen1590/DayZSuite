@@ -739,39 +739,8 @@ case "$verb" in
 
 
 
-  spawn-write)
-    # spawn-write <json> — replace the SHARED map-points store (profiles/AI_Shared/map-points.json)
-    # with the JSON document in $2 (the single spawn source for BOTH AIB and Expansion; the
-    # ConfigViewer Map editor computed it). PRIVILEGED write only. Validates it is JSON (jq or
-    # python3), snapshots the current file (keep 10), writes ATOMICALLY into the AI_Shared dir,
-    # restores the server-dir owner. Target is fixed — no caller path input. Takes effect at the
-    # next restart (prestart Build-AIBandits/AIPatrols recompose from it).
-    # '-' = read the document from stdin (argv is capped at ~128KB per string; 5000 spawn
-    # points clear that easily). Same pattern as own-write.
-    if [ "$arg" = "-" ]; then arg="$(head -c 2097153 -)"; fi
-    [ -n "$arg" ] || die "spawn-write needs the new document"
-    if command -v jq >/dev/null 2>&1; then
-      printf '%s' "$arg" | jq -e . >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
-    elif command -v python3 >/dev/null 2>&1; then
-      printf '%s' "$arg" | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 || die "spawn-write: input is not valid JSON"
-    else
-      die "spawn-write: no JSON validator (jq/python3) on the box"
-    fi
-    sz="$(printf '%s' "$arg" | wc -c)"
-    [ "$sz" -le 2097152 ] || die "spawn-write: too large ($sz bytes)"
-    _dir="$(dirname "$SPAWNS")"
-    [ -d "$_dir" ] || die "spawn-write: shared store dir not present ($_dir) — deploy the DayZ server first"
-    snapshot_spawns
-    _own="$(stat -c '%u:%g' "$SERVER_DIR" 2>/dev/null || echo '')"
-    tmp="$(mktemp "$_dir/.spawn-write.XXXXXX")"
-    printf '%s' "$arg" > "$tmp"
-    [ -n "$_own" ] && chown "$_own" "$tmp" 2>/dev/null || true
-    chmod 644 "$tmp"
-    mv -f "$tmp" "$SPAWNS"
-    echo ok
-    ;;
-
-
+  # spawn-write) DELETED 2026-08-02 (U2). Wrote the authored map-points store, which the map
+  # inversion froze on 07-23; its UI caller bailed on MAP_POINTS_DEPRECATED before ever calling it.
   file-list)
     # Enumerate the box-owned files an admin may REPLACE (the rendered WRITE_MAP), one
     # "name<TAB>relpath" line each. Pure enumeration - no caller input. Empty map = none.
@@ -1090,6 +1059,6 @@ if uniq:
     ;;
 
   *)
-    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled doc-list doc-read info spawn-write file-list types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
+    die "unknown verb: ${verb:-<none>} (allowed: restart start stop status players broadcast set-map log-list log-read bandit-log bandit-live config config-list config-generated config-owned config-disabled doc-list doc-read info file-list types-read types-write own-read own-write settings-read settings-write update-arm update-disarm update-status mission-list)"
     ;;
 esac

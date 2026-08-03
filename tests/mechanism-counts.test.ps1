@@ -37,7 +37,7 @@ $writeVerbs = @([regex]::Matches($tpl, '(?m)^\s*([a-z][a-z-]*-write)\)') | ForEa
 # 2026-08-02: 6 -> 5 (override-write left with the delta engine), then 5 -> 4 (file-write
 # retired by U2 once U5 removed own-write's extension refusal). Lowered in the SAME change as the
 # deletion - the step missed on 07-31, which is what let a stale pin stand for a day.
-$PINNED_WRITE_VERBS = @('own-write', 'settings-write', 'spawn-write', 'types-write') | Sort-Object
+$PINNED_WRITE_VERBS = @('own-write', 'settings-write', 'types-write') | Sort-Object
 $added   = @($writeVerbs | Where-Object { $_ -notin $PINNED_WRITE_VERBS })
 $removed = @($PINNED_WRITE_VERBS | Where-Object { $_ -notin $writeVerbs })
 Assert "dayz-ctl *-write verbs = the pinned set ($($writeVerbs.Count): $($writeVerbs -join ', '))" `
@@ -65,7 +65,7 @@ $writers = @($writers | Sort-Object)
 # 2026-08-02: set-map / update-arm / update-disarm were invisible to the name pin.
 $PINNED_WRITERS = @(
     'set-map'         # writes $SERVER_DIR/map.env
-    'spawn-write', 'types-write', 'own-write', 'settings-write'   # file-write retired 2026-08-02 (U2)
+    'types-write', 'own-write', 'settings-write'   # file-write + spawn-write retired 2026-08-02 (U2)
     'update-arm'      # writes $UPDATE_PENDING
     'update-disarm'   # removes $UPDATE_PENDING
 ) | Sort-Object
