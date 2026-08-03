@@ -805,6 +805,34 @@
       "mirrorGlob": "*.json"
     }
   ],
+  "_denyListReadme": [
+    "denyList - the paths that must NEVER become a web surface, whatever the default is.",
+    "",
+    "It changes nothing today: a file with no surface row is already invisible, and none of",
+    "these has one. It exists for the day the default INVERTS. Under opt-in-by-default every",
+    ".json/.xml under the server dir becomes visible unless something says otherwise, and this",
+    "list is then the only thing between the UI and player Steam64 IDs, admin permissions and a",
+    "STEAM_API_KEY field. Landing it before that switch, rather than with it, is deliberate.",
+    "",
+    "Static by decision, not by laziness. A content scanner was proposed and rejected - owner:",
+    "'secrets should be known/static to begin with. Just hide them from the UI.' The",
+    "secret-bearing paths are four known folders, not a discovery problem.",
+    "",
+    "What makes it real is tests/deny-list.test.ps1, not this text. It fails if an entry is",
+    "dropped, if an entry loses its reason, or if any surface or generated row ever resolves",
+    "underneath one of these prefixes. A boundary maintained by memory is not a boundary.",
+    "",
+    "Matching is by path PREFIX, relative to the server dir."
+  ],
+  "denyList": [
+    { "path": "profiles/users",         "why": "player profile data" },
+    { "path": "profiles/VPPAdminTools", "why": "STEAM_API_KEY field (empty today) + BanList player Steam64 IDs" },
+    { "path": "profiles/CodeLock",      "why": "player lock permissions" },
+    { "path": "profiles/LiveTracker",   "why": "20s runtime position snapshots - would churn git on every pull" },
+    { "path": "storage_",               "why": "persistence, not config - the 07-30 incident lived here" },
+    { "path": "mapgroup",               "why": "vendor map geometry: 25 files, 52.8 MB, never edited" },
+    { "path": "mapcluster",             "why": "vendor map geometry, same as mapgroup" }
+  ],
   "generated": [
     "serverDZ.cfg",
     "profiles/AI_Shared/map-points.generated.json",
