@@ -40,7 +40,11 @@ test('E6: the diff is display-only - the box never applies it', () => {
 });
 
 test('E7: EVERY nav row states its access - no silent fallback to no badge', () => {
-  const i = JS.indexOf('const writable = r.access !== ');
+  // Anchored on the ASSIGNMENT, not on one expression. The first version pinned the literal
+  // `r.access !== 'lock'`, so it passed while that expression was WRONG (access is edit|view|lock,
+  // so every 'view' row badged rw and then opened read-only) and failed the moment it was fixed.
+  // A test that pins an implementation blocks the correction and blesses the bug.
+  const i = JS.indexOf('const writable =');
   assert.notEqual(i, -1, 'access must be computed for every row');
   const block = JS.slice(i, i + 400);
   assert.match(block, /own-badge">rw/, 'writable rows say rw');
@@ -53,7 +57,7 @@ test('E7: EVERY nav row states its access - no silent fallback to no badge', () 
 // owner's actual complaint ("how come the RO/RW only applies to a few items? Be consistent") is
 // satisfied more strongly: exactly one badge per row, no second thing that can displace it.
 test('E7: the access badge is the ONLY badge - nothing can displace it again', () => {
-  const i = JS.indexOf('const writable = r.access !== ');
+  const i = JS.indexOf('const writable =');
   const block = JS.slice(i, i + 400);
   assert.doesNotMatch(block, /ovr-badge/, 'the override count is deleted, not merely reordered');
   const badges = block.match(/const badge = ([^;]*);/);
@@ -107,6 +111,15 @@ test('the hardcoded "still override-managed" claim is gone from the chrome', () 
   }
 });
 
-
-
-
+// The bug the badge actually had, 2026-08-02 (owner: "a significant number of RW files that have
+// no edit button and say read only at the top... why the contradiction?"). `access` is tri-valued,
+// so `!== 'lock'` called every reference surface writable. rw must mean the panel will really let
+// you write: an owned whole-file editor, or the types editor.
+test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
+  const i = JS.indexOf('const writable =');
+  const expr = JS.slice(i, JS.indexOf(';', i));
+  assert.doesNotMatch(expr, /access\s*!==\s*'lock'/,
+    "access is edit|view|lock - 'not locked' includes view, which has no edit path at all");
+  assert.match(expr, /ownFile|types/,
+    'rw must follow the thing that actually opens an editor');
+});

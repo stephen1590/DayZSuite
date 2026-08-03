@@ -672,7 +672,9 @@ function $id(id) { return document.getElementById(id); }
 const PATROL_CORE = ['Name', 'Faction', 'Loadout', 'NumberOfAI', 'NumberOfAIMax', 'Behaviour', 'Speed', 'Chance', 'Persist'];
 let peLbcKeys = [];           // LoadBalancingCategories keys from the open doc - the datalist for a patrol's LoadBalancingCategory
 // In-panel editor field density: 'inline' (label+input on one row, default) or 'stacked'.
-// peDensity DELETED 2026-08-02 - the navigator carries its own density.
+// peDensity DELETED 2026-08-02 - the navigator carries its own density. It mounts 'inline'
+// (label and input on ONE row), which is what the Fields grid defaulted to; the first migration
+// carried over 'stacked' from the old opt-in JSON mode and wasted a line per field.
 // applyPeDensity DELETED 2026-08-02 with the Fields grid it sized.
 // Load the mission's raw AIPatrolSettings.json and open the clicked patrol/object patrol in the
 // DETAIL PANEL (in place). The whole doc rides in mapPatEdit so a save is a per-field merge.
@@ -859,7 +861,7 @@ function renderPatrolEditor() {
     (hasLbc ? lbcSectionHtml(ent.LoadBalancingCategories) : '') +
     '<div class="me-btns"><button type="button" class="btn-sm primary" id="peSave">Save</button><button type="button" class="btn-sm" id="peCancel">Cancel</button></div>';
   mapPatNav = null;
-  mountJsonEditor($id('peJsonHost'), { schema: inferSchema(ent), startval: ent, pathbar: false, density: 'stacked', collapseLargeOver: 400, hints: peHints })
+  mountJsonEditor($id('peJsonHost'), { schema: inferSchema(ent), startval: ent, pathbar: false, density: 'inline', collapseLargeOver: 400, hints: peHints })
     .then((h) => { if (mapPatEdit === e) mapPatNav = h; else h.destroy(); });
   el.mapDetail.querySelectorAll('.me-wpin').forEach((inp) => inp.addEventListener('change', () => applyWaypointField(inp)));
   el.mapDetail.querySelectorAll('.me-wp-del').forEach((b) => { b.onclick = () => deletePatrolWaypoint(+b.dataset.wp); });

@@ -197,7 +197,12 @@ function renderFilesNav() {
       // Owner 2026-07-31: "how come the RO/RW only applies to a few items? Be consistent." Every
       // row states its access, always - no empty fallback. The override COUNT that used to ride
       // alongside (and sometimes replace) this badge is gone with the document it counted.
-      const writable = r.access !== 'lock';
+      // FIXED 2026-08-02: this read `r.access !== 'lock'`, so every 'view' row - a reference
+      // surface with no edit path at all - badged as rw and then opened read-only. The badge
+      // promised something the panel refused. `access` is edit|view|lock, not a boolean.
+      // rw now means exactly what the panel will let you do: an owned whole-file editor, or the
+      // types editor. Everything else is ro, which is the truth.
+      const writable = !!(r.ownFile || r.types);
       const badge = writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>';
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
         '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
