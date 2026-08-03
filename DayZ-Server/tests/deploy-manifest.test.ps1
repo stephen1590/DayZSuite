@@ -130,12 +130,21 @@ try {
 # being weakened.
 $dzRoot = Split-Path -Parent $here
 $retiredFile = Join-Path $dzRoot 'deploy/retired-paths.txt'
-$retired = Read-RetiredPaths -Path $retiredFile
-Check ($retired.Count -gt 0) "deploy/retired-paths.txt holds the sweep list ($($retired.Count) paths)"
-Check (-not ($retired | Where-Object { $_ -match '^#' -or $_ -match '\s#' })) `
-    'comments and blank lines are stripped, never returned as paths'
-Check (SameSet (Read-RetiredPaths -Path (Join-Path $dzRoot 'no-such-file.txt')) @()) `
+# PRUNED 2026-08-02, the same day it shipped, because it had done its job: prod's 4 corpses are
+# gone and the manifest covers everything from here. A sweep list that survives its sweep is a
+# standing hand-maintained list, which is precisely what the manifest replaced - so its ABSENCE
+# is the correct end state and this asserts it stays absent.
+Check (-not (Test-Path $retiredFile)) `
+    'deploy/retired-paths.txt is absent - the one-time sweep is spent and must not become standing state'
+Check (SameSet (Read-RetiredPaths -Path $retiredFile) @()) `
     'a missing sweep list reads as empty - manifest-only, never an error'
+# The parser still has to work: reviving the file for a future one-off must not need new code.
+$tmpSweep = Join-Path ([IO.Path]::GetTempPath()) ("sweep-" + [Guid]::NewGuid().ToString('N') + '.txt')
+try {
+    Set-Content -Path $tmpSweep -Value @('# a comment', '', 'Old-Thing.ps1   # trailing comment', '  Spaced.ps1  ')
+    Check (SameSet (Read-RetiredPaths -Path $tmpSweep) @('Old-Thing.ps1', 'Spaced.ps1')) `
+        'the parser still strips comments, blanks and surrounding space if the file is ever revived'
+} finally { Remove-Item $tmpSweep -Force -ErrorAction SilentlyContinue }
 # No "did a name leak back into a script" check here on purpose. I wrote one, and it failed on
 # prestart.sh / _DZSync / Test-Configs, all of which MENTION a retired builder in a comment
 # explaining that it is retired. tests/no-dead-scripts.test.ps1 already owns that question and
