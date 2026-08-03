@@ -42,6 +42,20 @@
 .je-mount .je-lifted{ margin-left:auto; display:inline-flex; gap:4px; align-items:center; }
 .je-mount .je-status{ color:var(--faint); font-size:10.5px; font-weight:400; margin-left:5px; }
 .je-mount .je-status.je-null{ font-style:italic; opacity:.85; }
+
+/* --- caller-supplied hints (json-editor-hints.js). Opt-in: absent unless a host passes hints. --- */
+/* A badge the CALLER computed, e.g. a negative number meaning "inherits the global value".
+   Distinct class from .je-status so the size badge and a hint never fight over one element. */
+.je-mount .je-hint{ color:var(--accent, #7aa2f7); font-size:10.5px; font-weight:500; margin-left:6px; }
+/* Replaces the control entirely: the value is shown, editing it is not offered, because
+   something else owns it (a map drag, a builder). */
+.je-mount .je-summary{ color:var(--faint); font-size:11px; font-style:italic; margin-left:6px; }
+/* Shown but not editable - the input stays visible so the value is readable. */
+.je-mount input.je-ro, .je-mount textarea.je-ro, .je-mount select.je-ro{ opacity:.6; cursor:not-allowed; }
+/* The few fields that matter, lifted above the rest. The host decides what to do with the
+   remainder; this only marks them. */
+.je-mount [data-schemapath].je-priority > .je-header > span:not([class]){ font-weight:600; }
+
 .je-mount button{ background:var(--panel2); border:1px solid var(--border); color:var(--muted); border-radius:6px; font-size:10.5px; font-weight:600; padding:2px 8px; cursor:pointer; margin:1px 2px 1px 0; }
 .je-mount button:hover{ color:var(--fg); border-color:var(--faint); }
 /* collapse caret (flips via data-state), no "collapse" text */

@@ -12,6 +12,8 @@
 // path calculator. DayZ/Expansion owns the model - unknown nodes must survive, so nothing here
 // assumes a closed schema.
 
+import { resolveHint } from './json-editor-hints.js';
+
 const LIB_SRC = 'vendor/jsoneditor-2.17.1.min.js';   // resolved against the document, not this module
 let libPromise = null;
 
@@ -141,7 +143,7 @@ function collapseTopLevel(ed) {
 }
 
 // Runs after each render (ready + change). `root` is the .je-mount element.
-function decorate(root, ed) {
+function decorate(root, ed, hints) {
   // 1) lift each array item's bottom control span (delete/move) up into its title row
   root.querySelectorAll('.json-editor-btntype-move[data-i], .json-editor-btntype-delete[data-i]').forEach((btn) => {
     const ctl = btn.parentElement; if (!ctl || ctl.classList.contains('je-lifted')) return;
@@ -185,6 +187,62 @@ function decorate(root, ed) {
   // 3) tooltips from the hidden label text; caret comes from json-editor's own collapsed flag
   root.querySelectorAll('button[class*="json-editor-btn"]').forEach((b) => { const t = (b.textContent || '').trim(); if (t && !b.getAttribute('title')) b.setAttribute('title', t); });
   syncCarets(ed);
+  if (hints) applyHints(root, ed, hints);
+}
+
+// Caller-supplied per-field affordances (see json-editor-hints.js). ENTIRELY OPT-IN: with no
+// hints this never runs, so the two existing consumers behave exactly as before. That gating is
+// deliberate - own-editor.js edits live config through this component, and a change that could
+// only be verified in a browser must not be able to reach it.
+function applyHints(root, ed, hints) {
+  root.querySelectorAll('[data-schemapath]').forEach((node) => {
+    const row = titleRow(node); const name = row && nameSpanOf(row); if (!name) return;
+    const path = node.getAttribute('data-schemapath');
+    const key = String(path).split('.').pop();
+    if (!key || key === 'root') return;
+    const ce = ed.getEditor(path);
+    // Value only for LEAVES. getValue() on a container serializes its whole subtree, which is the
+    // O(n^2) storm the badge code above documents; arrays carry .rows and objects .editors.
+    const isLeaf = ce && !ce.rows && !ce.editors;
+    let value;
+    if (isLeaf) { try { value = ce.getValue(); } catch (_) { value = undefined; } }
+    const h = resolveHint(key, value, hints);
+
+    // badge: distinct class from .je-status so the two never fight over one element
+    let hb = row.querySelector(':scope > .je-hint');
+    if (h.badge) {
+      if (!hb) { hb = document.createElement('span'); hb.className = 'je-hint'; name.after(hb); }
+      if (hb.textContent !== h.badge) hb.textContent = h.badge;
+    } else if (hb) { hb.remove(); }
+
+    node.classList.toggle('je-priority', !!h.priority);
+
+    // readOnly / summary: show the value, do not invite an edit something else will overwrite
+    const control = node.querySelector(':scope > .form-control, :scope > .je-header + *, :scope input, :scope textarea, :scope select');
+    if (h.readOnly && control) {
+      node.querySelectorAll('input, textarea, select').forEach((i) => { i.disabled = true; i.classList.add('je-ro'); });
+    }
+    if (h.summary) {
+      let sm = node.querySelector(':scope > .je-summary');
+      if (!sm) { sm = document.createElement('span'); sm.className = 'je-summary'; name.after(sm); }
+      if (sm.textContent !== h.summary) sm.textContent = h.summary;
+      node.querySelectorAll('input, textarea, select').forEach((i) => { i.style.display = 'none'; });
+    }
+
+    // suggestions: a datalist keeps the field FREE TEXT - an unknown value must stay typeable,
+    // because the document is drift-tolerant and a select would silently drop one.
+    if (h.suggestions) {
+      const input = node.querySelector(':scope input[type="text"], :scope input:not([type])');
+      if (input) {
+        const listId = 'je-dl-' + String(path).replace(/[^a-zA-Z0-9]/g, '-');
+        let dl = root.querySelector('#' + CSS.escape(listId));
+        if (!dl) { dl = document.createElement('datalist'); dl.id = listId; root.appendChild(dl); }
+        const want = h.suggestions.map((s) => '<option value="' + String(s).replace(/"/g, '&quot;') + '"></option>').join('');
+        if (dl.innerHTML !== want) dl.innerHTML = want;
+        if (input.getAttribute('list') !== listId) input.setAttribute('list', listId);
+      }
+    }
+  });
 }
 
 // Path calculator: the data-schemapath of the focused field as breadcrumbs + a depth count, plus
@@ -223,7 +281,7 @@ function buildPathbar(root) {
 export async function mountJsonEditor(host, opts = {}) {
   const {
     schema, startval, theme = 'html', pathbar = true, density = 'inline',
-    minimizeEmpty = true, collapseLargeOver = null, onChange, libSrc, editorOptions = {},
+    minimizeEmpty = true, collapseLargeOver = null, onChange, libSrc, editorOptions = {}, hints = null,
   } = opts;
   const JE = await ensureLib(libSrc);
   host.innerHTML = '';
@@ -243,7 +301,7 @@ export async function mountJsonEditor(host, opts = {}) {
   // only called when the caller wants it (guarded), so a caller that reads getValue() lazily
   // pays nothing per keystroke.
   let decoratePending = false;
-  const scheduleDecorate = () => { if (decoratePending) return; decoratePending = true; requestAnimationFrame(() => { decoratePending = false; decorate(mount, ed); }); };
+  const scheduleDecorate = () => { if (decoratePending) return; decoratePending = true; requestAnimationFrame(() => { decoratePending = false; decorate(mount, ed, hints); }); };
   ed.on('ready', () => {
     const big = collapseLargeOver && Object.keys(ed.editors || {}).length > collapseLargeOver;
     // On a big file the top-level collapse hides the bulk already - running minimizeEmpties would
@@ -251,7 +309,7 @@ export async function mountJsonEditor(host, opts = {}) {
     // So: big files get one cheap top-level collapse; only small files pay the per-empty tidy.
     if (big) collapseTopLevel(ed);
     else if (minimizeEmpty) minimizeEmpties(ed);
-    decorate(mount, ed); fire();
+    decorate(mount, ed, hints); fire();
   });
   ed.on('change', () => { scheduleDecorate(); fire(); });
   mount.addEventListener('click', (e) => { if (e.target.closest('.json-editor-btntype-toggle')) requestAnimationFrame(() => syncCarets(ed)); });
