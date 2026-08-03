@@ -199,8 +199,22 @@ Check ($deploy -match '\$registryForGuard\.surfaces' -and $deploy -match '\$regi
 # protection, the guard does not have it yet, and the report proposed deleting the two VPP
 # permission files using a registry that predated the denyList shipping in the same payload.
 # A guard derived from the OUTGOING truth protects everything except the change being made.
-Check ($deploy -match '(?s)foreach \(\$cand in \(Join-Path \$deployDir ''config-registry\.json''\), \(Join-Path \$ServerDir ''config-registry\.json''\)\)') `
-    'the guard reads the STAGED registry first, falling back to the server copy'
+# Asserted by RESOLVING the path, not by matching the source text. The first version of this
+# check matched the code shape and passed while the path was wrong - it pointed at $deployDir,
+# where the registry is not (it ships as '../config-registry.json' because $deployDir is the
+# deploy/ subfolder), so the lookup silently fell through to the box copy and reproduced the
+# very bug it was written to close. Asserting a mechanism's SHAPE is not asserting it works.
+$guardCandidate = [regex]::Match($deploy, "foreach \(\`$cand in \(Join-Path (\`$\w+) 'config-registry\.json'\)")
+Check $guardCandidate.Success 'the guard names a directory to read the outgoing registry from'
+$guardVar = $guardCandidate.Groups[1].Value
+Check ($guardVar -eq '$PSScriptRoot') `
+    "the guard reads the registry from `$PSScriptRoot (got '$guardVar') - `$deployDir is the deploy/ subfolder and does NOT hold it"
+# And the file really is there, in the repo layout AND therefore in deploy-stage on the box.
+$resolved = Join-Path $dzRoot 'config-registry.json'
+Check (Test-Path $resolved) "that path resolves to a real registry: $resolved"
+$guardReg = Get-Content -Raw $resolved | ConvertFrom-Json
+Check (@($guardReg.denyList | Where-Object { $_ }).Count -gt 0) `
+    'the registry it reads actually carries the denyList the guard depends on'
 Check ($deploy -match "(?m)^\s*\`$protectedPaths \+= 'custom-ce'") `
     'custom-ce is protected explicitly - it left $items but has no surface row of its own'
 

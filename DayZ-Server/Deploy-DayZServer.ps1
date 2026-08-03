@@ -646,12 +646,18 @@ $placedNow = @($items | ForEach-Object { $_.Dst })
 # because the box's registry predated the denyList that same run was shipping. A guard derived
 # from the outgoing truth protects everything except the change you are making. Fall back to the
 # server copy only if the payload has none.
+# The staged registry sits at $PSScriptRoot, NOT $deployDir - $items ships it as
+# '../config-registry.json' because $deployDir is the deploy/ subfolder. My first attempt at this
+# fix pointed at $deployDir, found nothing, silently fell through to the box copy and reproduced
+# the exact bug it was meant to close. On the box $PSScriptRoot is deploy-stage; in the repo it
+# is DayZ-Server. Both hold the outgoing registry.
 $registryForGuard = $null
-foreach ($cand in (Join-Path $deployDir 'config-registry.json'), (Join-Path $ServerDir 'config-registry.json')) {
+foreach ($cand in (Join-Path $PSScriptRoot 'config-registry.json'), (Join-Path $ServerDir 'config-registry.json')) {
     if (-not $registryForGuard -and (Test-Path $cand)) {
         $registryForGuard = Get-Content -Raw $cand | ConvertFrom-Json -ErrorAction SilentlyContinue
     }
 }
+if (-not $registryForGuard) { throw "reconcile guard: no config-registry.json at $PSScriptRoot or $ServerDir - refusing to reconcile without knowing what is protected." }
 $protectedPaths = @()
 if ($registryForGuard) {
     $protectedPaths += @($registryForGuard.surfaces | ForEach-Object { if ($_.box) { $_.box } elseif ($_.dir) { $_.dir } })
