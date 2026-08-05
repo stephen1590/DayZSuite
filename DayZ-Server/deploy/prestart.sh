@@ -113,8 +113,7 @@ fi
 # Capture belongs in the WRITE path, which is the only place that sees the bytes BEFORE they are
 # replaced: dayz-ctl own-write captures <stem>.defaults.<ext> when none exists. A server-made
 # file needs its original kept when a change is made; a generated file or one we authored never
-# needs one. Nothing is left uncovered - the surfaces still edited through the bespoke verbs
-# (types-write / file-write / spawn-write) are all files we author.
+# needs one.
 
 # The field-override applier must NOT run here, between the default capture and the
 # serverDZ.cfg render. Config files are owned whole and edited directly through the web

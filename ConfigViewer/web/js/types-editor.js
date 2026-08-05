@@ -2,11 +2,12 @@
 // tuning pair). The BASE file (upstream expansion_types.xml) is read-only truth; the TUNING file
 // is the box-owned override layer registered after it, so each <type> here fully replaces the
 // same-named upstream entry. This editor shows the MERGED view (tuning overlays base), stages
-// complete <type> override blocks, and saves the WHOLE tuning file via configs/set-types —
-// dayz-ctl validates the structure, snapshots the outgoing version and enforces optimistic
-// concurrency (base=<sha256>), so a half-staged document can never reach the CE.
+// complete <type> override blocks, and saves the WHOLE tuning file via configs/set-own —
+// own-write validates the CE structure for kind-'types' rows, snapshots the outgoing version
+// and enforces optimistic concurrency (base=<sha256>), so a half-staged document can never
+// reach the CE.
 //
-// Never writes the base file. Never touches config-overrides.json — this is its own save path.
+// Never writes the base file.
 import { escapeHtml, attr, setGlobalMsg, stripBom } from './ui.js';
 import { apiPost } from './api-client.js';
 import { loadCred, handle } from './auth.js';
@@ -188,7 +189,7 @@ async function loadState(row) {
   if (!cred) throw new Error('not signed in');
   const baseName = TYPES_BASE[row.name];
   const [tun, base] = await Promise.all([
-    apiPost('/dayz/configs/types?name=' + encodeURIComponent(row.name), cred),
+    apiPost('/dayz/configs/own?path=' + encodeURIComponent(row.relpath), cred),
     baseName
       ? apiPost('/dayz/configs/get?name=' + encodeURIComponent(baseName), cred).catch(() => ({ content: null }))
       : Promise.resolve({ content: null }),
@@ -198,7 +199,7 @@ async function loadState(row) {
   if (!doc) throw new Error('the tuning file on the box does not parse as a <types> document — see the File view');
   const baseDoc = parseTypes(base.content);
   const st = {
-    key: row.key, name: row.name, loaded: true,
+    key: row.key, name: row.name, relpath: row.relpath, loaded: true,
     doc, text, version: tun.version || null,
     baseDoc, baseMap: typeMap(baseDoc), tunMap: typeMap(doc),
     rootNodes: [...doc.documentElement.childNodes],
@@ -493,7 +494,7 @@ async function doSave(st, body, hooks) {
     const content = serialize(st);
     let r;
     try {
-      r = await apiPost('/dayz/configs/set-types', cred, { name: st.name, content, baseVersion: st.version });
+      r = await apiPost('/dayz/configs/set-own', cred, { path: st.relpath, content, baseVersion: st.version });
     } catch (err) {
       // Concurrent edit: another admin saved this file since we loaded it. Never clobber.
       if (err.status === 409) {

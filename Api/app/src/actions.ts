@@ -753,29 +753,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    'configs/types': {
-      destructive: false,
-      readOnly: true,
-      describe: 'one CE types surface (registry web:\'types\') raw, plus its version hash. Load a types file through this and pass the version back to configs/set-types as baseVersion — the box then rejects a save (409) when another admin changed the file since, instead of silently overwriting their edit.',
-      schema: {
-        query: { type: 'object', required: ['name'], properties: { name: { type: 'string', description: 'a kind-\'types\' name from configs/list (e.g. expansionTypesTuning)' } } },
-        response: { type: 'object', properties: { name: { type: 'string' }, version: { type: 'string' }, content: { type: 'string' } } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw fail(400, 'invalid or missing "name"');
-        const r = await dayz.ctl('types-read', name);
-        if (r.code === 2) throw fail(404, `'${name}' is not a types surface (or its file is not on the box yet)`);
-        if (r.code === 3) throw fail(413, `types file '${name}' is too large to retrieve`);
-        if (r.code !== 0) throw fail(502, `types-read failed: ${(r.stderr || r.stdout).trim()}`);
-        // dayz-ctl's contract: line 1 = sha256, the rest = the raw contents.
-        const nl = r.stdout.indexOf('\n');
-        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
-        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
-        return { name, version, content };
-      },
-    },
-
     'configs/settings': {
       destructive: false,
       readOnly: true,
@@ -834,38 +811,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
         if (r.code !== 0) throw fail(502, `settings-write failed: ${(r.stderr || r.stdout).trim()}`);
         const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
         return { message: `${label} for ${mission} saved (previous version snapshotted on the box); restart to apply`, version: lines.length > 1 ? lines[1] : '' };
-      },
-    },
-
-    'configs/set-types': {
-      destructive: false,
-      readOnly: false,
-      describe: 'replace one CE types surface (registry web:\'types\', e.g. the Expansion tuning file) with a new XML document (structure-validated + snapshotted on the box; restart to apply). Pass baseVersion (from configs/types) for optimistic concurrency.',
-      schema: {
-        body: { type: 'object', required: ['name', 'content'], properties: {
-          name: { type: 'string', description: 'a kind-\'types\' name from configs/list (e.g. expansionTypesTuning)' },
-          content: { type: 'string', description: 'the complete new XML document (root <types>, only <type name=...> children)' },
-          baseVersion: { type: 'string', description: 'the version hash from configs/types this edit was based on — the box rejects the write with 409 if the file changed since, so a concurrent admin edit is not silently overwritten. Omit to skip the check (last-write-wins).' },
-        } },
-        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
-      },
-      async run(params) {
-        const name = String(params.name ?? '');
-        if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw fail(400, 'invalid or missing "name"');
-        if (typeof params.content !== 'string' || !params.content.trim()) throw fail(400, '"content" must be the whole XML document');
-        if (params.content.length > 2097152) throw fail(413, '"content" too large (max 2MB)');
-        // Content travels over STDIN (ctlStdin puts '-' at $2), so the name rides third —
-        // types-write's arg order. base=<hash> is the same optimistic-concurrency contract
-        // as own-write (exit 5 -> 409 "reload").
-        const extra: string[] = [name];
-        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
-        const r = await dayz.ctlStdin('types-write', params.content, ...extra);
-        if (r.code === 2) throw fail(404, `'${name}' is not a types surface (or its file is not on the box yet)`);
-        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
-        if (r.code !== 0) throw fail(502, `types-write failed: ${(r.stderr || r.stdout).trim()}`);
-        // stdout = "ok\n<newVersion>" — hand the new version back so the caller can rebase.
-        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
-        return { message: `${name} saved (previous version snapshotted on the box); restart the server to apply`, version: lines.length > 1 ? lines[1] : '' };
       },
     },
 

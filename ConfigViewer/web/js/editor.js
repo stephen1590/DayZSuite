@@ -1,7 +1,7 @@
 // editor.js — the Server Files tab: the merged file tree, and the routing from a selected row
 // to its editor. Three destinations, no fourth:
 //   owned   -> own-editor.js   (whole file, live beside its frozen default, configs/set-own)
-//   types   -> types-editor.js (the CE types table, configs/set-types)
+//   types   -> types-editor.js (the CE types table, configs/set-own)
 //   the rest-> a read-only file view
 // Nothing in this module writes config-overrides.json - there is no such document.
 import { $, el } from './dom.js';
@@ -11,7 +11,7 @@ import { loadCred, handle } from './auth.js';
 import { detectLang, highlight } from './highlight.js';
 import { getActiveMission, setActiveMission } from './state.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
-// own module with its OWN save path (configs/set-types).
+// own VIEW over the shared save path (configs/set-own).
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
 import { renderOwnEditor, renderOwnCompare, ownAnyDirty, ownDirtyNames, ownSetPath } from './own-editor.js';
 // Named-dirty: the header pill and the unload guard say WHICH files are unsaved.
@@ -122,9 +122,9 @@ function buildRows(items, writable, mission) {
     row.access = (MAP_STORE_SURFACES.has(c.name) || c.readonly) ? 'lock'   // Map-store or view-only: RO here
       : w ? 'own' : (row.kind === 'other' ? 'lock' : 'edit');
     if (c.readonly) row.readonly = true;
-    // c.kind 'types' (registry web:'types') = a CE types file the types-table editor writes via
-    // its OWN save path (configs/set-types). access stays 'edit' but renderBody/typesChrome
-    // branch to the types view; the standard Save-deltas chrome never renders for these rows.
+    // c.kind 'types' (registry web:'types') = a CE types file the types-table editor writes
+    // via configs/set-own. access stays 'edit' but renderBody/typesChrome branch to the
+    // types view; the standard Save-deltas chrome never renders for these rows.
     if (c.kind === 'types' && !c.readonly) row.types = true;
     if (w) row.writableName = w.name;
     byRel.set(rel, row); list.push(row);
@@ -164,7 +164,7 @@ function buildRows(items, writable, mission) {
 function canWrite(r) {
   if (!r) return false;
   return !!(r.ownFile             // owned whole-file editor (own-write)
-    || r.types                    // CE types editor (types-write)
+    || r.types                    // CE types editor (own-write)
     || r.access === 'own');       // file-list writable surface - ban.txt / whitelist.txt
 }
 

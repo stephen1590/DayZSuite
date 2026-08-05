@@ -528,7 +528,7 @@ $items = @(
     # is, as opposed to a seed. Gated by tests/deploy-ships-code-only.test.ps1.
     # The loot-balance tuning pair (expansion_types_tuning.xml root + enoch) is NOT here: it is
     # box-owned, WEB-EDITED content - the ConfigViewer types editor writes it via dayz-ctl
-    # types-write, so shipping it on drift would clobber every web edit. Declared
+    # own-write, so shipping it on drift would clobber every web edit. Declared
     # in config-registry.json (web:'types', seed, mirror:'live') and seeded-if-missing below;
     # Pull-Configs pulls the box copy back into deploy/custom-ce/ (seed = latest mirror). It keeps the SAME per-map split as the file it patches:
     # 33 tuned types differ between the Chernarus and Enoch variants, so one shared file would

@@ -407,12 +407,12 @@ else {
 }
 
 # --- Web-edited CE types surfaces (registry web:'types') -------------------------------------
-# The Expansion tuning pair is BOX-OWNED, WEB-EDITED content: dayz-ctl types-write
+# The Expansion tuning pair is BOX-OWNED, WEB-EDITED content: dayz-ctl own-write
 # is the only writer, the deploy only seeds-if-missing, Pull-Configs mirrors the box copy back
 # into the seed path. Four seams can silently break that contract, so gate all four:
 #   1. the registry row shape - a types surface needs seed + mirror:'live' + check:'xml' (the
 #      pull refuses to mirror an unvalidated file, and a fresh box could not be seeded);
-#   2. the seed document itself - types-write enforces root <types> / <type name=...> children,
+#   2. the seed document itself - own-write enforces root <types> / <type name=...> children,
 #      so a seed failing the same shape could be seeded once but never saved again;
 #   3. the editor's hardcoded TYPES_BASE pairing (types-editor.js) - a types row the editor
 #      cannot pair with its base surface renders an empty merge view;
@@ -435,7 +435,7 @@ foreach ($row in $typesRows) {
         $tkids = @($tdoc.DocumentElement.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })
         $tbad  = @($tkids | Where-Object { $_.LocalName -ne 'type' -or -not $_.GetAttribute('name') })
         if ($tdoc.DocumentElement.LocalName -ne 'types' -or $tbad.Count) {
-            Show-Fail "types seed '$($row.seed)' is not a valid CE types doc (root <types>, only <type name=...> children) - types-write would refuse to ever save it"
+            Show-Fail "types seed '$($row.seed)' is not a valid CE types doc (root <types>, only <type name=...> children) - own-write would refuse to ever save it"
         } else { Show-Pass "types seed '$($row.seed)' parses as a CE types doc ($($tkids.Count) types)" }
     } catch { Show-Fail "types seed '$($row.seed)' does not parse as XML: $($_.Exception.Message)" }
 }

@@ -71,8 +71,8 @@ export interface DayzBridge {
 export function makeDayz(cfg: AppConfig): DayzBridge {
   // Read buffer for dayz-ctl replies. MUST comfortably exceed every payload a verb can emit,
   // or a doc the box happily STORES becomes one the API can never read back: dayz-ctl's write
-  // verbs accept up to 2MB (override-write/spawn-write/types-write) and override-read returns
-  // the whole document. 8MB = the 2MB write cap ×4 headroom; still a trivial allocation.
+  // verbs accept up to 2MB and the read verbs return the whole document. 8MB = the 2MB write
+  // cap ×4 headroom; still a trivial allocation.
   const CTL_MAX_BUFFER = 8 << 20;
   function ctl(verb: string, ...extra: string[]): Promise<CtlResult> {
     const args = ['-n', cfg.dayzCtl, verb, ...extra];

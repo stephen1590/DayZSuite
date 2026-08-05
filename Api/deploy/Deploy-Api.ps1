@@ -144,7 +144,7 @@ foreach ($c in $fileEntries) {
     if ("$($c.about)" -match "[`t`n]") { throw "Api Configs: about for '$($c.name)' must not contain tabs/newlines: '$($c.about)'." }
     if ("$($c.aboutUrl)" -match "[`t`n]") { throw "Api Configs: aboutUrl for '$($c.name)' must not contain tabs/newlines: '$($c.aboutUrl)'." }
     if ("$($c.aboutUrl)".Trim() -and "$($c.aboutUrl)".Trim() -notmatch '^https?://') { throw "Api Configs: aboutUrl for '$($c.name)' must start with http:// or https://: '$($c.aboutUrl)'." }
-    # kind rides the TAB-delimited CONFIG_MAP verbatim and dayz-ctl gates types-write on it -
+    # kind rides the TAB-delimited CONFIG_MAP verbatim and dayz-ctl gates own-write's CE check on it -
     # anything but a bare lowercase word is either a typo'd registry 'web' value or an injection.
     if ("$($c.kind)" -notmatch '^[a-z]+$') { throw "Api Configs: web kind for '$($c.name)' must be a lowercase word: '$($c.kind)'." }
 }
@@ -160,7 +160,7 @@ foreach ($c in $dirEntries) {
 # CONFIG_MAP: "name<TAB>relpath<TAB>group<TAB>label<TAB>ro<TAB>kind<TAB>about<TAB>aboutUrl".
 # name is the API key (stable); group + label are display-only (default 'General' / name);
 # ro='1' locks the row read-only in the editor (web:'view' surfaces); kind is the registry
-# 'web' value verbatim so dayz-ctl types-write can gate on kind 'types' and the editor can pick
+# 'web' value verbatim so own-write can gate its CE check on kind 'types' and the editor can pick
 # a surface-specific view; about + aboutUrl render as the "About this file" line
 # under the filename, with aboutUrl as its citation link. dayz-ctl parses all eight;
 # config/config-target still key off fields 1-2, so appending 3-8 is backward-safe, and a row
@@ -240,11 +240,10 @@ if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled 
 
 # Owned-surface masks -> OWNED_FILES / OWNED_DIRS (one ServerDir-relative path per line). The
 # registry's category:'owned' rows - the two-copy model's editable set
-# gate dayz-ctl's generic own-read/own-write - the Phase 1 whole-file mechanism the bespoke
-# types-/settings- verbs migrate onto. File rows contribute their box path; folder rows their dir
-# (files beneath are reachable, json/xml + replace-only enforced box-side by _own_check).
-# web:'types' rows are EXCLUDED even when owned: types-write is their ONLY writer (structural CE
-# validation own-write doesn't do). They join the generic verb when it gains per-kind validation.
+# gate dayz-ctl's generic own-read/own-write - the whole-file mechanism the bespoke verbs
+# migrate onto. File rows contribute their box path; folder rows their dir (files beneath are
+# reachable, json/xml + replace-only enforced box-side by _own_check). web:'types' rows are
+# included: own-write runs the structural CE check for kind-'types' paths.
 #
 # category:'input' joins them. An input is a GENERATOR DRIVER -
 # server-settings.json drives Apply-ServerCfg, which compiles serverDZ.cfg. It is still box-owned
@@ -252,14 +251,9 @@ if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled 
 # READS the file (the game vs a compiler), not in how it is written. Safe because the compiler's
 # allowlist is closed and enforced at RENDER time - an unlisted key is ignored with a warning no
 # matter who wrote it - so whole-file editing cannot widen what reaches serverDZ.cfg.
-# types rows are STILL EXCLUDED, deliberately. own-write carries their structural CE check, but
-# the types editor still saves via types-write, and it only knows a row NAME, not the path
-# set-own takes. Including them here before that is threaded through would give those two files
-# TWO live write paths at once - the dual-write defect. Flip this in the SAME change that
-# migrates types-editor.js and deletes the verb.
 # Exactly ONE input row exists today; tests/server-settings-surface.test.ps1 fails if a second
 # appears, so a new input is classified deliberately instead of silently becoming writable.
-$ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -in @('owned', 'input') -and $_.box -and $_.web -ne 'types' } |
+$ownedFiles = @($registry.surfaces | Where-Object { $_ -and $_.category -in @('owned', 'input') -and $_.box } |
     ForEach-Object { "$($_.box)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
 $ownedDirs  = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'owned' -and $_.dir -and -not $_.box } |
     ForEach-Object { "$($_.dir)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)

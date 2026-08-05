@@ -189,10 +189,9 @@ out="$(printf '76561198000000001\n' | $CTL own-write - ban.txt 2>&1)"; rc=$?
 printf '%s' "$out" | grep -qi "not validated\|unvalidated" \
   && ok "an unvalidatable type WARNS rather than failing silently" || bad "no warning that the type was not validated"
 
-# own-write must apply the CE STRUCTURAL check to a types surface, not just well-formedness.
-# types-write is being retired onto the generic path, and its one real guarantee is that a
-# half-pasted document can never reach the CE - root must be <types>, every child a
-# <type name=...>. Losing that would make the migration a downgrade.
+# own-write must apply the CE STRUCTURAL check to a types surface, not just well-formedness:
+# a half-pasted document can never reach the CE - root must be <types>, every child a
+# <type name=...>.
 mkdir -p "$SD/custom-ce"
 printf '%s' '<types><type name="Nail"><nominal>10</nominal></type></types>' > "$SD/custom-ce/expansion_types_tuning.xml"
 printf '%s' '<types><type name="Nail"><nominal>20</nominal></type></types>' | $CTL own-write - custom-ce/expansion_types_tuning.xml >/dev/null 2>&1
