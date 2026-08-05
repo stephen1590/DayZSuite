@@ -1,7 +1,7 @@
 // state.js — shared session state. The API key's scope gates every write: 'full' = operator
 // (can change server state), 'observe' = viewer (read-only), null = unknown (treat as read-only).
 // Set from /whoami (Maintenance) and cleared on logout; read via isOperator() by every tab with
-// write actions (Maintenance, Map, Editor). Extracted from index.html (P1 modular split).
+// write actions (Maintenance, Map, Editor).
 let apiScope = null;
 export function setScope(s) { apiScope = s || null; }
 export function getScope() { return apiScope; }

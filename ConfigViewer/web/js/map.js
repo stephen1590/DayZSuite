@@ -11,7 +11,7 @@ import { mountJsonEditor, inferSchema } from './json-editor-ui.js';   // opt-in 
 import { loadCred, handle } from './auth.js';
 import { getActiveMission, setActiveMission } from './state.js';
 import { IDENTITY, isIdentity, applyAffine, invertAffine, solveCalibration } from './map-calibrate.js';
-import { confirmSave } from './dirty-files.js';           // E4: name the files before saving
+import { confirmSave } from './dirty-files.js';           // name the files before saving
 
 let shellHooks = { syncHash: () => {}, syncHashSoon: () => {}, updateThemeToggle: () => {} };
 export function setMapShellHooks(h) { shellHooks = { ...shellHooks, ...h }; }
@@ -44,19 +44,19 @@ let mapSelPt = -1;       // selected point index into mapPts
 let mapCatFilter = new Set();  // active class/type keys ('(base)' = uncategorized); a point shows only if its key is in here
 let mapEdit = false;           // edit mode: drag markers to move, click empty to add, panel to edit fields
 
-// --- Deprecations (AI map/location settings rework, 2026-07-23) ------------------------------
-// Phase 1: the authored map-points store is being replaced by points DERIVED from the live
+// --- Deprecations (AI map/location settings rework) ------------------------------
+// The authored map-points store is being replaced by points DERIVED from the live
 // Expansion AIPatrol/AILocation settings. Its on-map layer is turned OFF here (render + new-point
-// creation) while that inversion is built - Phase 3 re-renders the derived points read-only. One
-// switch, reversible: set false to restore the old editable layer.
+// creation); the derived points render read-only in its place. One switch, reversible: set false
+// to restore the old editable layer.
 const MAP_POINTS_DEPRECATED = true;
 // BanditAI is retired (its mods are already disabled in mods.conf). Stop drawing its live-position
 // layer too. Reversible.
 const BANDIT_RENDER_DEPRECATED = true;
-// Phase 3 (2026-07-23): mapData.derived = the map-points.generated.json store - points DERIVED
-// from the live Expansion AI settings by Build-MapPoints at prestart. When it exists and its
-// mission matches the viewed map, IT feeds mapPts (read-only: edit mode hidden, no creation).
-// The authored-store path below stays as the dormant fallback until Phase 4 retires it.
+// mapData.derived = the map-points.generated.json store - points DERIVED from the live Expansion
+// AI settings by Build-MapPoints at prestart. When it exists and its mission matches the viewed
+// map, IT feeds mapPts (read-only: edit mode hidden, no creation). The authored-store path below
+// stays as the dormant fallback until that store is retired.
 function mapDerivedActive() { return !!(mapData && mapData.derived && mapData.derived.mission === mapMission); }
 let mapSpawnDirty = false;     // unsaved spawn-point edits held in memory (mapData.spawns)
 let mapSpawnBaseline = null;   // JSON of the last-saved points, for Discard
@@ -86,7 +86,6 @@ let mapCalib = null;          // parsed sidecar (null until first load attempt)
 let mapCalibTried = false;
 let mapCal = null;            // active Calibrate session (null = off) - see the calibrate block
 let mapPatEdit = null;        // active patrol-edit session (null = off): { mission, idx, doc, version, entry }
-// mapPatJson DELETED 2026-08-02 - there is no mode to pick, the navigator is the editor.
 let mapPatNav = null;         // the mounted navigator handle in JSON mode (getDoc() at save time)
 let mapPlaceMode = null;      // null | 'patrol' — armed by the Patrols group "+"; next map click places a new patrol there
 let mapNavFilter = '';        // quick-filter text for the nav list (sticky input; survives list re-renders)
@@ -127,9 +126,9 @@ export async function loadMapTab(force) {
         apiPost('/dayz/configs/get?name=Map-points', cred),
         apiPost('/dayz/configs/get?name=AI-Classes', cred),
         apiPost('/dayz/terrain/heightmaps', cred).catch(() => ({ maps: [] })),  // older API -> no deltas, map still plots
-        // The DERIVED store (Phase 3). Fail-soft on 404: the Api hasn't been redeployed with the
-        // Map-points-generated registry row yet, or the box hasn't restarted since Phase 2 - the
-        // summary line says which is more likely; the map itself still works.
+        // The DERIVED store. Fail-soft on 404: the Api hasn't been redeployed with the
+        // Map-points-generated registry row yet, or the box hasn't restarted since the store
+        // was added - the summary line says which is more likely; the map itself still works.
         apiPost('/dayz/configs/get?name=Map-points-generated', cred).catch(() => null),
       ]);
       if (seq !== mapLoadSeq) return;
@@ -435,7 +434,7 @@ async function loadMapAssets(short) {
   requestMapDraw();
 }
 
-// Bilinear terrain Y from the local grid (docs/FORMAT.md sampler). Null when
+// Bilinear terrain Y sampled from the local height grid. Null when
 // the grid isn't loaded or the point is off-map.
 function mapLocalY(x, z) {
   if (!mapHgt || x < 0 || z < 0 || x > mapWs || z > mapWs) return null;
@@ -491,7 +490,7 @@ function renderMap() {
   if (mapCal) { renderCalibrate(); updateMapEditUi(); return; }
   renderMapList();
   renderMapSummary();
-  if (!mapPatEdit) renderMapDetail();   // Phase 5: while editing, the detail panel IS the editor - don't wipe in-progress input on a redraw
+  if (!mapPatEdit) renderMapDetail();   // while editing, the detail panel IS the editor - don't wipe in-progress input on a redraw
   updateMapEditUi();
 }
 
@@ -500,7 +499,7 @@ function updateMapEditUi() {
   if (el.mapCalBtn) el.mapCalBtn.classList.toggle('active', !!mapCal);
   if (mapCal && el.mapEditSeg) el.mapEditSeg.classList.add('hidden');
   if (!el.mapEditSeg) return;
-  // Derived points are READ-ONLY (Phase 3): the truth lives in the AI settings files, edited
+  // Derived points are READ-ONLY: the truth lives in the AI settings files, edited
   // via the Files tab. No Edit toggle at all until the write-back phase.
   if (mapDerivedActive() || MAP_POINTS_DEPRECATED) {
     mapEdit = false;
@@ -524,11 +523,6 @@ function toggleMapEdit() {
   if (!mapEdit) { mapHover = -1; el.mapTip.style.display = 'none'; }
   renderMap();
 }
-
-// Save the WHOLE document (every map's points), box-authoritative — applies at next restart.
-// saveSpawns DELETED 2026-08-02 (U2). The authored map-points store has been read-only since
-// the 07-23 map inversion - this function's first line was a MAP_POINTS_DEPRECATED bail, so no
-// click could reach the write. Its verb went with it.
 
 // Drop in-memory edits, restoring the last-saved points.
 function discardSpawns() {
@@ -637,7 +631,7 @@ function renderCalibrate() {
 }
 function $id(id) { return document.getElementById(id); }
 
-// ===================== Phase 5: per-patrol field editor =====================
+// ===================== Per-patrol field editor =====================
 // The map OWNS patrols. Click a patrol -> Edit fields -> this loads the mission's raw
 // AIPatrolSettings.json (configs/settings key=patrols), locates the entry by its stable idx, edits its
 // fields directly. Core fields up front, the other ~35 under Advanced (each showing its value;
@@ -647,11 +641,6 @@ function $id(id) { return document.getElementById(id); }
 // entry mutated in place.
 const PATROL_CORE = ['Name', 'Faction', 'Loadout', 'NumberOfAI', 'NumberOfAIMax', 'Behaviour', 'Speed', 'Chance', 'Persist'];
 let peLbcKeys = [];           // LoadBalancingCategories keys from the open doc - the datalist for a patrol's LoadBalancingCategory
-// In-panel editor field density: 'inline' (label+input on one row, default) or 'stacked'.
-// peDensity DELETED 2026-08-02 - the navigator carries its own density. It mounts 'inline'
-// (label and input on ONE row), which is what the Fields grid defaulted to; the first migration
-// carried over 'stacked' from the old opt-in JSON mode and wasted a line per field.
-// applyPeDensity DELETED 2026-08-02 with the Fields grid it sized.
 // Load the mission's raw AIPatrolSettings.json and open the clicked patrol/object patrol in the
 // DETAIL PANEL (in place). The whole doc rides in mapPatEdit so a save is a per-field merge.
 async function startPatrolEdit(p) {
@@ -787,9 +776,6 @@ function applyPatrolDocToMap(doc, selectIdx) {
   mapPts.forEach((p) => mapCatFilter.add(mapCatKey(p)));   // keep everything (incl. the new one) visible
   renderMapList(); renderMapSummary(); renderMap();
 }
-// One editable field. Object-valued fields (Units/LoadBalancingCategory/Waypoints) get a JSON
-// textarea; negative numbers are annotated "inherits". The label truncates - full name on hover.
-// meField DELETED 2026-08-02 - the shared navigator plus `hints` renders these fields now.
 // Render the field editor into el.mapDetail (replaces the readout in place). Reached from the
 // detail readout's Edit button or the summary's Global settings; Cancel restores the readout.
 function renderPatrolEditor() {
@@ -806,16 +792,14 @@ function renderPatrolEditor() {
   const name = isG ? mapShort(e.mission) : (ent.Name || (e.kind === 'object' ? ent.ObjectClassName : '') || '#' + e.idx);
   el.mapDetail.classList.remove('hidden');
   el.mapDetail.classList.add('editing');
-  // ONE editor. The bespoke Fields grid is gone (2026-08-02): the shared navigator renders every
-  // scalar field, and the DayZ-specific niceties that used to justify a second editor now travel
-  // as `hints` - the extension point the UI contract always specified.
+  // ONE editor: the shared navigator renders every scalar field; DayZ-specific niceties travel as
+  // `hints`, the extension point the UI contract specifies.
   //   -1 means "inherit the global value"     -> badge
   //   LoadBalancingCategory names             -> suggestions from THIS document
   //   Waypoints / LoadBalancingCategories     -> summarised, edited by the widgets below
   // Waypoints are dragged on the map and categories have rename + used-counts, so both keep their
-  // dedicated widget. Those are domain CONTROLS, not a second editor family - the contract's two
-  // families (navigator for structured JSON, CM6 for raw text) are unchanged, and the third one
-  // the owner objected to is what just went.
+  // dedicated widget - domain CONTROLS, not a second editor family. The only two editor families
+  // are the navigator (structured JSON) and CM6 (raw text).
   const peHints = {
     badge: (k, v) => (typeof v === 'number' && v < 0 ? 'inherits' : null),
     enums: (k) => (k === 'LoadBalancingCategory' ? peLbcKeys : null),
@@ -971,12 +955,11 @@ function lbcRenameCat(oldName, rawNew) {
   if (doc && Array.isArray(doc.Patrols)) doc.Patrols.forEach((p) => { if (p && p.LoadBalancingCategory === oldName) p.LoadBalancingCategory = nn; });
   renderLbcSection();
 }
-// applyPatrolField DELETED 2026-08-02 - the navigator owns field edits; no bespoke inputs remain.
 async function savePatrolEdit() {
   const e = mapPatEdit; if (!e) return;
   const ent = e.entry || {};
   const cred = loadCred(); if (!cred) return;
-  // E4: name the file before writing (patrols ride the whole AIPatrolSettings doc).
+  // Name the file before writing (patrols ride the whole AIPatrolSettings doc).
   if (!confirmSave([`expansion/settings/AIPatrolSettings.json (${e.mission})`])) return;
   const S = $id('peSave'); if (S) S.disabled = true;
   try {
@@ -1500,7 +1483,7 @@ const SPAWN_CLASS = {
   Hermit: { shape: 'circle',   color: '#cbd5e1' },
   Sniper: { shape: 'star',     color: '#f8fafc' },
 };
-// Derived-store kinds (Phase 3). Distinct from every authored class so the two eras can
+// Derived-store kinds. Distinct from every authored class so the two eras can
 // never be confused on screen: location = hollow ring in the tile-accent cyan, patrol =
 // filled hexagon in signal red. 'object' is list-only and needs a glyph only for its chip.
 SPAWN_CLASS.location = { shape: 'ring',    color: '#4cc9e0' };
@@ -1571,8 +1554,8 @@ function drawSelectedWaypoints(ctx) {
   ctx.restore();
 }
 function drawMapMarkers(ctx) {
-  // Phase 1 turned the AUTHORED layer off; Phase 3 renders the DERIVED store through the same
-  // path. The flag still governs the authored fallback only.
+  // MAP_POINTS_DEPRECATED gates only the authored-layer fallback; the derived store renders
+  // through this same path regardless.
   if (MAP_POINTS_DEPRECATED && !mapDerivedActive()) return;
   if (!mapPts.length) return;
   drawSelectedWaypoints(ctx);
@@ -1686,7 +1669,7 @@ async function loadPlayers() {
 // not live tracking. Spawns = red diamonds, kills = faded rings. The -serverMod route is the
 // precise-live upgrade; this is the no-mod activity view.
 function drawMapBandits(ctx) {
-  if (BANDIT_RENDER_DEPRECATED) return;   // BanditAI retired 2026-07-23
+  if (BANDIT_RENDER_DEPRECATED) return;   // BanditAI retired
   if (!mapView || !mapLiveSel.has('NPCs')) return;
   // Live NPC coordinates only mean anything on the mission the server is actually running —
   // on any other selected map they'd plot at arbitrary spots, so they're hidden entirely
@@ -2045,7 +2028,7 @@ function renderMapSummary() {
 }
 
 function renderMapDetail() {
-  if (mapPatEdit) { renderPatrolEditor(); return; }   // Phase 5: patrol/object/global editor lives in this panel, in place
+  if (mapPatEdit) { renderPatrolEditor(); return; }   // patrol/object/global editor lives in this panel, in place
   const p = mapPts[mapSelPt];
   el.mapDetail.classList.toggle('hidden', !p);
   el.mapDetail.classList.toggle('editing', !!p && mapEdit);
@@ -2084,8 +2067,8 @@ function renderMapDetail() {
               kv('Position', '<span class="k2">none — spawns at every instance of the class</span>');
     }
     if (p.delta !== undefined) rows += kv('Δ', '<span class="mp-badge ' + mapBand(p) + '">' + fmtDelta(p.delta) + '</span>');
-    // Phase 5: patrols/object patrols are editable field-by-field (the map owns them). Locations
-    // stay read-only here for now (they need their own write verb).
+    // Patrols/object patrols are editable field-by-field (the map owns them). Locations
+    // stay read-only here (they need their own write verb).
     if (mapDerivedActive() && (p.kind === 'patrol' || p.kind === 'object')) rows += '<span><button class="btn-sm" id="mpEditPatrol">Edit fields</button></span>';
     el.mapDetail.innerHTML = rows;
     const eb = $id('mpEditPatrol'); if (eb) eb.onclick = () => startPatrolEdit(p);
@@ -2160,7 +2143,7 @@ function markSpawnDirty() { mapSpawnDirty = true; updateMapEditUi(); }
 
 // Add a new point at a world position (edit mode, click on empty map). Auto-named unique.
 function addSpawnAt(wx, wz) {
-  if (MAP_POINTS_DEPRECATED) return;   // Phase 1: no new points on the deprecated authored layer
+  if (MAP_POINTS_DEPRECATED) return;   // no new points on the deprecated authored layer
   const letter = mapLettersFor(mapMission)[0] || 'S';
   const taken = new Set(mapPts.map((p) => p.name).concat((mapData.spawns.points || []).map((p) => p.name)));
   let i = 1, name; do { name = letter + '_New' + i++; } while (taken.has(name));
@@ -2268,8 +2251,8 @@ function moveMapTip(e) {
   el.mapTip.style.top = Math.min(e.clientY + 14, window.innerHeight - h - 8) + 'px';
 }
 
-// The #map hash fragment for the CURRENT camera. The shell calls this only while the map
-// tab is active, so the old currentTab guard is gone (mapView null = no camera yet).
+// The #map hash fragment for the CURRENT camera. Called only while the map tab is active;
+// mapView null means no camera yet.
 export function mapHashFrag() {
   if (!mapView) return 'map';
   return 'map/' + encodeURIComponent(mapShort(mapMission)) + '/' +

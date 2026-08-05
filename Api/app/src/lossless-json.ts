@@ -1,8 +1,7 @@
-// Lossless big-integer JSON (2026-07-17). JavaScript numbers are IEEE-754 doubles: every
+// Lossless big-integer JSON. JavaScript numbers are IEEE-754 doubles: every
 // integer above 2^53 (9007199254740991, 16 digits) silently snaps to the nearest
-// representable double — a Steam64 ID typed as 76561198065425750 became 76561198065425740
-// on every web save (proven; see the DayZ Config UI incident). This module makes the whole
-// pipeline preserve integer literals EXACTLY:
+// representable double — a Steam64 ID typed as 76561198065425750 becomes 76561198065425740
+// on every web save. This module makes the whole pipeline preserve integer literals EXACTLY:
 //
 //   parse:      big integer literals in the JSON TEXT are wrapped as sentinel strings
 //               ("<digits>") BEFORE JSON.parse ever sees them, so no double is created

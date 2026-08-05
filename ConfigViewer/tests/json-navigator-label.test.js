@@ -1,7 +1,3 @@
-// Bug report (owner, 2026-07-31): "Clicking on any JSON node shows `root[ ] (null)` even if
-// it's on an object or property BELOW the root. It looks like it should be the property name
-// and array size if it is an array."
-//
 // CAUSE: the navigator mounts a FRESH editor per focus, rooted at the focused subtree, with
 // `schema: inferSchema(sub)`. inferSchema never emits a `title`, so json-editor falls back to
 // its default root label - "root" - no matter how deep you clicked. And the size badge was read
@@ -10,7 +6,6 @@
 //
 // FIX: two pure helpers the navigator uses - titleForPath (what to call the focused node) and
 // sizeBadge (what to show next to it, derived from the DATA, not the widget's internals).
-// Written BEFORE they exist: first run must fail on the missing exports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { titleForPath, sizeBadge, schemaForFocus } from '../web/js/json-editor-ui.js';
@@ -63,15 +58,14 @@ test('schemaForFocus: root keeps the plain "root" title (no regression at depth 
 });
 
 // ---------------------------------------------------------------------------
-// Owner follow-up (2026-07-31): array items under a focused array still read
-// "root [x/6]  [+]  [ ] (null)". Two further defects, both distinct from the first fix:
+// Array items under a focused array can read "root [x/6]  [+]  [ ] (null)" from two defects:
 //
 //  a) The item title takes its parent's name from the schemapath. When the focused node IS
 //     the array, the mounted editor's parent path is the literal "root", so every item read
 //     "root [x/N]" instead of "LandSpawnPositions [x/N]".
 //  b) The badge tested `if (ed.rows)`. An EMPTY ARRAY IS TRUTHY in JS, so any editor exposing
-//     rows: [] - including object rows - fell into the array branch and printed "[ ] (null)".
-//     That is the stray bracket and the bogus null the owner is seeing on sub-OBJECTS.
+//     rows: [] - including object rows - fell into the array branch and printed "[ ] (null)"
+//     on sub-OBJECTS.
 import { parentKeyOf, badgeForNode } from '../web/js/json-editor-ui.js';
 
 test('parentKeyOf: at the mount root, the focused node name is used, not "root"', () => {

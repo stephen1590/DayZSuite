@@ -1,6 +1,5 @@
 // Root-level HOST endpoints — about the whole box, not any one service, so they sit
-// OUTSIDE the namespace tree. Today: POST /sysload (cpu/memory/disk/uptime + the
-// dayz-server unit's footprint).
+// OUTSIDE the namespace tree. Today: POST /sysload (cpu/memory/disk/uptime).
 //
 // Authenticated but namespace-free: it needs a valid signature (wizard or any derived
 // key), because host internals shouldn't be fully public like /server-info — but it is
@@ -11,7 +10,7 @@ import type { AppConfig } from '../config.js';
 import type { DayzBridge } from '../dayz.js';
 import type { Audit } from '../audit.js';
 import type { KeyStore } from '../keys.js';
-import { collectSystemLoad } from '../sysload.js';
+import { collectSysload } from '../sysload.js';
 import { makeMetrics } from '../metrics.js';
 import { PlayerLedger } from '../player-ledger.js';
 import { authenticateRequest } from '../auth-request.js';
@@ -52,7 +51,7 @@ export function registerHost(app: FastifyInstance, deps: Deps): void {
       return reply.code(401).send({ ok: false, error: 'bad_signature' });
     }
     try {
-      const load = await collectSystemLoad(dayz);
+      const load = await collectSysload();
       audit('ok', 'sysload', ctx);
       return reply.send({ ok: true, action: 'sysload', ...load });
     } catch (e) {

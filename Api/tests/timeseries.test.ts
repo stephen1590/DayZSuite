@@ -1,5 +1,4 @@
-// TDD for the Prometheus timeseries ALLOWLIST. Written BEFORE app/src/timeseries.ts exists,
-// so the first run must fail with ERR_MODULE_NOT_FOUND.
+// Prometheus timeseries ALLOWLIST test.
 //
 // THE SECURITY BOUNDARY: the browser sends a KEY from a fixed table and never PromQL. The
 // server holds the query string. There is no free-form query path to escape from, so what
@@ -54,7 +53,10 @@ test('server_fps is PINNED; players_online is on by default', () => {
 test('every row carries the label + unit the UI renders (one table, no browser-side twin)', () => {
   for (const m of METRICS) {
     assert.match(m.key, /^[a-z][a-z0-9_]*$/, `${m.key} must be a bare snake_case key`);
-    assert.match(m.series, /^[a-z][a-z0-9_]*$/, `${m.series} must be a bare metric name`);
+    // Prometheus metric names are [a-zA-Z_:][a-zA-Z0-9_:]* - node_memory_MemAvailable_bytes is
+    // camelCase for real. What matters is that no name can carry a regex metacharacter into
+    // nameSelector, so the grammar is pinned rather than assumed lowercase.
+    assert.match(m.series, /^[a-zA-Z_][a-zA-Z0-9_]*$/, `${m.series} must be a bare metric name`);
     assert.ok(m.label && m.label.trim().length, `${m.key} needs a label`);
     assert.ok(['bytes', 'fps', ''].includes(m.unit), `${m.key} has an unknown unit '${m.unit}'`);
   }
@@ -76,7 +78,9 @@ test('an unknown key is a 400 that NAMES the offending key', () => {
   const e = err(() => resolveMetrics(['server_fps', 'cpu_temp']));
   assert.equal(e.statusCode, 400);
   assert.match(e.message, /cpu_temp/, 'the caller must be told which key was refused');
-  assert.doesNotMatch(e.message, /dayz_/, 'the refusal must not leak the PromQL side of the table');
+  // NOT asserting the series names stay hidden: the POC prints them beside each checkbox and
+  // `available` serves the whole table, so they are public by design. The secret here is not
+  // the metric name, it is that no caller can compose a query out of one.
 });
 
 test('anything resembling PromQL is refused as a key - there is no query path', () => {
@@ -126,7 +130,7 @@ test('nameSelector is fully anchored and built only from allowlisted series name
   const known = new Set(METRICS.map((m) => m.series));
   for (const a of alts) {
     assert.ok(known.has(a), `${a} is not an allowlisted series`);
-    assert.match(a, /^[a-z][a-z0-9_]*$/, 'a series name cannot carry regex metacharacters');
+    assert.match(a, /^[a-zA-Z_][a-zA-Z0-9_]*$/, 'a series name cannot carry regex metacharacters');
   }
 });
 
@@ -164,6 +168,25 @@ test('every allowlisted series exists in a real Prometheus (set PROM_URL to run)
   const live = new Set(body.data);
   const missing = METRICS.filter((m) => !live.has(m.series)).map((m) => `${m.key} -> ${m.series}`);
   assert.deepEqual(missing, [], 'these charts would draw nothing');
+});
+
+// --- 4b. the Prometheus port has ONE owner ---------------------------------------------------
+// Cross-system invariant, asserted rather than left to a doc: Monitoring owns where Prometheus
+// listens, and the Api must derive it rather than hold a second copy.
+test('Deploy-Api derives the Prometheus URL from the Monitoring stack, not a duplicate setting', () => {
+  const deploy = readFileSync(new URL('../deploy/Deploy-Api.ps1', import.meta.url), 'utf8');
+  assert.match(deploy, /Monitoring\/deploy\/deploy\.config\.json/, 'it must read the owning config');
+  assert.match(deploy, /PrometheusListen/, 'and take the port from the key that declares it');
+  assert.match(deploy, /prometheusUrl\s*=/, 'and render it into the app config');
+  const apiCfg = readFileSync(new URL('../deploy/deploy.config.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(apiCfg, /9090/, 'the Api deploy config must not restate the port');
+});
+
+test('the app source hardcodes the Prometheus port exactly once - as the documented fallback', () => {
+  const cfg = readFileSync(new URL('../app/src/config.ts', import.meta.url), 'utf8');
+  const ts = readFileSync(new URL('../app/src/timeseries.ts', import.meta.url), 'utf8');
+  assert.equal((cfg.match(/9090/g) || []).length, 1, 'one fallback in config.ts, documented in place');
+  assert.doesNotMatch(ts, /9090/, 'the query module takes the URL from config; it must not know a port');
 });
 
 // --- 5. the query: one range fetch per metric + ONE instant fetch for "now" -----------------

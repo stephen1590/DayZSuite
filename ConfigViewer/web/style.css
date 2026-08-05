@@ -100,8 +100,8 @@
   .mnt-viewer-note.hidden { display: none; }
   .mnt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
   .mnt-card { background: var(--card); border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; }
-  .mnt-card.mnt-ops { grid-column: span 2; }
-  @media (max-width: 720px) { .mnt-card.mnt-ops { grid-column: auto; } .mnt { padding: 16px; } }
+  .mnt-card.mnt-ops, .mnt-card.span2 { grid-column: span 2; }
+  @media (max-width: 720px) { .mnt-card.mnt-ops, .mnt-card.span2 { grid-column: auto; } .mnt { padding: 16px; } }
   .mnt-card h3 { margin: 0 0 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .mnt-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .mnt-dot.up { background: var(--ok); } .mnt-dot.down { background: var(--danger); }
@@ -123,6 +123,30 @@
   .mnt-btn.danger { background: var(--danger); color: #fff; border-color: transparent; }
   .mnt-btn.ghost { background: transparent; }
   .mnt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* --- Charts: Prometheus history via POST /dayz/timeseries -----------------------------
+     js/charts.js emits colours as style="stroke:var(--x)" rather than as presentation
+     attributes, because fill="var(--x)" does not resolve. That also means a theme switch
+     needs no redraw - the variables below re-resolve under :root[data-theme="dark"] on
+     their own. .gap is the band drawn over a span Prometheus never collected; it is
+     deliberately --danger, because a missing measurement is not a quiet condition. */
+  .spark { display: block; width: 100%; height: 30px; margin-top: 3px; }
+  .spark .gap, .chart .gap { fill: var(--danger); }
+  .picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 14px; margin: 4px 0 2px; }
+  .picker label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; cursor: pointer; }
+  .picker label.pinned { color: var(--muted); cursor: default; }
+  .picker .pin { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; margin-left: auto; }
+  .picker .sname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; color: var(--faint); margin-left: auto; }
+  .chartrow { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 12px; }
+  .chartrow .hd { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+  .chartrow .hd .now { margin-left: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .chart { display: block; width: 100%; height: 132px; }
+  .chart .grid { stroke: var(--border-soft); stroke-width: 1; }
+  .chart .axis { fill: var(--faint); font-size: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .chart .gaplbl { fill: var(--danger); font-size: 9.5px; font-weight: 600; }
+  .rangebtns { display: flex; gap: 6px; margin-left: auto; }
+  .rangebtns button { font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border); background: var(--panel2); color: var(--muted); }
+  .rangebtns button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
   /* align-items: flex-start (not center) so a wrapping label keeps the checkbox on the FIRST
      line instead of floating to the vertical middle of the two-line block; gap owns the spacing,
      flex:none keeps the box from shrinking, and the 2px nudge lines it up with the text. */
@@ -188,11 +212,14 @@
   /* badges: green N = captured overrides; rw = box-owned whole-file; ro = locked (not patchable) */
   .ovr-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; min-width: 18px; text-align: center; color: var(--delta); background: var(--delta-weak); border-radius: 999px; padding: 1px 6px; }
   .own-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-weak); border-radius: 999px; padding: 1px 6px; }
+  /* "edited here" - the box captured a frozen baseline for this file, so it has been saved through
+     the editor at least once. Beside the NAME, never in the badge slot - a second thing there
+     would displace the access badge. Muted, because it is context and not a warning. */
+  .side-item .edited-mark { color: var(--accent); font-size: 11px; margin-left: 5px; opacity: .85; cursor: help; }
+  .side-item.active .edited-mark { opacity: 1; }
   .ro-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--faint); background: var(--panel2); border: 1px solid var(--border-soft); border-radius: 999px; padding: 0 6px; }
   .own-ta { display: block; width: 100%; min-height: 55vh; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.6; background: var(--pre-bg); color: var(--pre-fg); border: none; border-radius: 0; padding: 16px 22px; resize: vertical; }
   .own-ta:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .ovr-add { display: flex; align-items: center; gap: 8px; margin: 10px 8px 0; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 7px; color: var(--muted); font-size: 12px; cursor: pointer; }
-  .ovr-add:hover { color: var(--fg); border-color: var(--accent); }
 
   /* ---------- workspace (content) ---------- */
   #workspace { overflow-y: auto; min-height: 0; }
@@ -701,8 +728,8 @@
   .cal-btns { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-top: 1px solid var(--border-soft); margin-top: 6px; }
   .cal-btns .ghost.active { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
 
-  /* Phase 5: per-patrol field editor (map left nav) */
-  /* Phase 5 patrol / object / global editor - rendered IN .map-detail, in place (was the sidebar) */
+  /* Per-patrol field editor (map left nav): patrol / object / global editor, rendered IN
+     .map-detail, in place. */
   .map-detail.editing { gap: 8px; }
   .map-detail .me-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; }
   .map-detail .me-head .k2 { color: var(--faint); font-weight: 400; }
@@ -795,16 +822,74 @@
   .own-cm .cm-deletedChunk del, .own-cm .cm-deletedText { background: rgba(239,91,82,0.22); text-decoration: none; }
   .own-cm .cm-changeGutter { width: 4px; }
 
-/* E6: default beside live in the file view. Two independent scroll panes, one per copy; they
-   stack on a narrow viewport rather than squeezing both into unreadable columns. */
-.fv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
-@media (max-width: 900px) { .fv-split { grid-template-columns: 1fr; } }
+  /* ---------- two panes over ONE document (own-editor.js) ----------
+     Structured on the left, raw text on the right, and the side that HOLDS the document wears the
+     gold box - the app's own brass accent, so "this is the live thing" reads the same here as
+     everywhere else. The other side is a projection: dimmed, inert, and a click on it is the
+     request for the document. Two editors side by side need width, so they stack rather than
+     squeeze into two unreadable columns. */
+  .tp-split { display: flex; gap: 12px; align-items: stretch; margin: 8px 22px 16px; flex-wrap: wrap; }
+  .tp-pane { flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+    border: 2px solid transparent; border-radius: 10px; padding: 6px 8px 8px; background: var(--card); }
+  .tp-pane.tp-own { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+  .tp-pane.tp-proj { cursor: pointer; opacity: .88; }
+  .tp-pane.tp-proj:hover { opacity: 1; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* Belt to the `inert` property set in JS: a browser that ignores inert must still not let the
+     projection be typed into. The click passes through to the pane, which is what asks for the
+     document. CodeMirror keeps its pointer events so the projected text stays selectable. */
+  .tp-proj .wf-json { pointer-events: none; }
+  .tp-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+  .tp-head .tp-name { font-weight: 700; color: var(--fg); }
+  .tp-head .tp-role { text-transform: uppercase; letter-spacing: .06em; font-size: 9.5px; font-weight: 700;
+    border-radius: 999px; padding: 1px 7px; color: var(--muted); border: 1px solid var(--border); }
+  .tp-own .tp-head .tp-role { color: var(--accent); border-color: var(--accent); background: var(--accent-weak); }
+  .tp-head .tp-hint { color: var(--faint); font-size: 11px; }
+  /* "out of date" is a normal state here, not an error - the projection is committed, not followed.
+     It reads as a live warning colour only while it is behind, and the button next to it is the fix. */
+  .tp-head .tp-role.tp-stale { color: var(--drift); border-color: var(--drift); background: transparent; }
+  .tp-head .tp-commit { padding: 3px 9px; font-size: 11px; }
+  .tp-head .tp-commit:disabled { opacity: .45; }
+  /* both editors drop their page margins in here - the pane owns the spacing now */
+  .tp-pane .own-cm { margin: 0; flex: 1; }
+  .tp-pane .own-cm .cm-editor { height: min(62vh, 780px); }
+  .tp-pane .wf-json { flex: 1; max-height: min(62vh, 780px); }
+  .tp-pane .jn-wrap { --jn-pane-h: 44vh; }
+  /* Parse failure: what broke, WHERE, and the promise that the text is untouched. Never a stale
+     tree beside text that no longer produces it. */
+  .tp-fail { padding: 12px 14px; }
+  .tp-fail > b { color: var(--danger); font-size: 13px; }
+  .tp-fail .tp-where { margin: 8px 0; font-size: 12.5px; color: var(--fg); display: flex; align-items: center; gap: 10px; }
+  .tp-fail .tp-src { margin: 8px 0; padding: 8px 10px; background: var(--pre-bg); color: var(--pre-fg);
+    border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; white-space: pre; overflow: auto; tab-size: 8; }
+  .tp-fail .tp-msg { font-size: 11.5px; color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-word; }
+  .tp-note { padding: 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  @media (max-width: 1100px) { .tp-split { flex-direction: column; } }
+
+/* The Compare view: live file beside its frozen default, per file, reached from the segment
+   switcher (own-editor.js renderOwnCompare). CodeMirror MergeView owns the panes and the
+   alignment; this only frames it and gives it a height to scroll in. */
+.cmp-head { display: flex; align-items: center; gap: 10px; padding: 10px 22px 6px; flex-wrap: wrap; }
+.cmp-split { margin: 8px 22px 16px; border-left: 2px solid var(--border); background: var(--pre-bg); overflow: hidden; }
+.cmp-split .cm-mergeView, .cmp-split .cm-mergeViewEditors { height: min(70vh, 900px); }
+.cmp-split .cm-editor { height: 100%; font-size: 12.5px; background: var(--pre-bg); color: var(--pre-fg); }
+.cmp-split .cm-scroller { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.cmp-split .cm-gutters { background: var(--pre-bg); color: var(--faint); border-right: 1px solid rgba(255,255,255,0.08); }
+/* the two copies differ: green = only in the live file, red = only in the frozen default */
+.cmp-split .cm-changedLine { background: rgba(70,194,102,0.10); }
+.cmp-split .cm-changedText { background: rgba(70,194,102,0.24); }
+.cmp-split .cm-deletedChunk { background: rgba(239,91,82,0.12); }
+.cmp-split .cm-deletedChunk del, .cmp-split .cm-deletedText { background: rgba(239,91,82,0.24); text-decoration: none; }
+/* collapsed identical stretches - the thing that makes a badly diverged file readable at all */
+.cmp-split .cm-collapsedLines { background: var(--panel2); color: var(--muted); font-size: 11.5px; padding: 3px 10px; cursor: pointer; }
+.cmp-split .cm-collapsedLines:hover { color: var(--fg); }
 .fv-pane { min-width: 0; }
 .fv-pane .fv-cap { font-size: 11px; font-weight: 700; letter-spacing: .3px; color: var(--muted); padding: 0 0 4px 2px; }
 .fv-pane .fv-cap .meta { font-weight: 400; opacity: .75; }
 .fv-pane pre { margin: 0; max-height: 60vh; overflow: auto; }
 
-/* E9: which values the old override system still controls. Listed, not counted. */
+/* Which values an override layer controls for a row. Listed, not counted. */
 .oc { border: 1px solid var(--border); border-left: 3px solid var(--delta, #c2570b); border-radius: 6px; background: var(--panel2); padding: 8px 10px; margin: 0 0 10px; }
 .oc .oc-head { font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-bottom: 6px; }
 .oc .oc-row { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; border-top: 1px solid var(--border-soft); font-size: 11px; }

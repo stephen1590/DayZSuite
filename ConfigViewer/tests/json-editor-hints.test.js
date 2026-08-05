@@ -1,12 +1,7 @@
-// TDD for the `hints` extension point - written BEFORE resolveHint exists, so the first run
-// must fail on a missing export.
-//
-// WHY IT EXISTS. json-editor-ui is the shared structured editor and it has two consumers, but it
-// could never REPLACE a hand-built editor, because it had no way to be told anything
-// domain-specific. So map.js kept its own 550-line editor beside it and the mechanism count went
-// UP, not down. The UI contract specified this descriptor on day one - "any DayZ-specific nicety
-// is an optional, generic `hints` descriptor passed by ConfigViewer, never code inside the
-// package" - and nobody built it. This is that descriptor.
+// WHY IT EXISTS: json-editor-ui is the shared structured editor with two consumers, but it can
+// only replace a hand-built editor if it can be told domain-specific behavior. Any DayZ-specific
+// nicety is an optional, generic `hints` descriptor passed by ConfigViewer, never code inside the
+// package.
 //
 // THE BINDING CONSTRAINT: nothing in here may know what DayZ is. No field names, no -1 semantics,
 // no waypoints. The caller supplies all of it. These tests use DayZ-shaped examples deliberately -
@@ -104,9 +99,7 @@ test('a hint for one key never leaks onto another', () => {
   assert.deepEqual(resolveHint('D', 1, hints), {});
 });
 
-// --- partitionByPriority -------------------------------------------------------
-// NOTE: written AFTER the function, unlike everything above. Recorded rather than hidden -
-// these are regression guards, not TDD, and one of them found a real bug on first run.
+// --- partitionByPriority: regression guards for the head/tail ordering contract ---
 test('priority keys come out FIRST, in the caller order, not the document order', () => {
   const [head, tail] = partitionByPriority(['Z', 'Chance', 'A', 'Name'], { priority: ['Name', 'Chance'] });
   assert.deepEqual(head, ['Name', 'Chance'], 'the caller decided Name leads, though the doc lists it last');

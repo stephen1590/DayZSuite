@@ -1,12 +1,13 @@
-// Host load overview — the host stats are gathered UNPRIVILEGED, straight from
-// /proc, statfs, and the os module (never the sudo bridge; least privilege cuts
-// both ways). This is a ROOT-level endpoint (POST /sysload), not a dayz action:
-// it is about the whole box, not the game server. It does carry an optional `dayz`
-// block — the one part that crosses the bridge for the unit's own footprint — which
-// degrades to null rather than failing the host overview.
+// Host load overview — gathered UNPRIVILEGED, straight from /proc, statfs and the os
+// module. Never the sudo bridge; least privilege cuts both ways. This is a ROOT-level
+// endpoint (POST /sysload), not a dayz action: it is about the whole box, not the game
+// server.
+//
+// The unit footprint lives on `status` alone (one concept, one owner): a `dayz` block here
+// would be a second privileged snapshot of numbers `status` already has, costing the
+// Maintenance tab a second root pwsh spawn per cycle for the same figures.
 import { readFile, statfs } from 'node:fs/promises';
 import { loadavg, cpus, uptime } from 'node:os';
-import type { DayzBridge } from './dayz.js';
 
 interface CpuTimes {
   busy: number;
@@ -61,31 +62,3 @@ export async function collectSysload(): Promise<Record<string, unknown>> {
   };
 }
 
-/**
- * Host overview PLUS the dayz-server unit's own footprint. The dayz block is the one
- * part that crosses the sudo bridge (unit memory/cpu via dayz-ctl info; profiles/ +
- * persistence sizes are unreadable to the service user — game home is 0750). It
- * degrades to `dayz: null` (with `dayzError`) rather than failing the host overview.
- */
-export async function collectSystemLoad(dayz: DayzBridge): Promise<Record<string, unknown>> {
-  const host = await collectSysload();
-  try {
-    const i = await dayz.info();
-    const mb = (bytes: number): number => Math.round((bytes / 2 ** 20) * 10) / 10;
-    return {
-      ...host,
-      dayz: {
-        state: i.state,
-        mainPid: i.pid || null,
-        memoryMb: mb(i.memBytes),
-        tasks: i.tasks,
-        cpuTimeSec: Math.round(i.cpuNsec / 1e9),
-        unitRestarts: i.restarts,
-        logDirMb: mb(i.logDirBytes),
-        persistenceMb: mb(i.storageBytes),
-      },
-    };
-  } catch (e) {
-    return { ...host, dayz: null, dayzError: e instanceof Error ? e.message : String(e) };
-  }
-}

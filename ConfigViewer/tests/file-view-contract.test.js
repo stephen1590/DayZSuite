@@ -1,10 +1,5 @@
-// Owner UI pass, 2026-07-31. Source-level guards for three fixes that live in DOM-string builders
-// (no browser in the test runner, so these assert the CONTRACT, not the pixels).
-//
-//  E6  "AND I SAID WE NEED TO BE ABLE TO SEE THE DEFAULT SIDE BY SIDE WITH OUR OWNED VERSION.
-//       There's still a separate button that changes the view."
-//  E7  "how come the RO/RW only applies to a few items? Be consistent."
-//  E10 "why do I see this? `Whole-file view unavailable — not readable on the box.`"
+// Source-level guards for fixes that live in DOM-string builders (no browser in the test
+// runner, so these assert the CONTRACT, not the pixels).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,14 +11,18 @@ const JS = readFileSync(join(root, 'web/js/editor.js'), 'utf8');
 const OWN = readFileSync(join(root, 'web/js/own-editor.js'), 'utf8');
 const CSS = readFileSync(join(root, 'web/style.css'), 'utf8');
 
-// The owner's requirement outlived the mechanism that first carried it. The override editor's
-// side-by-side file view is deleted; the SAME guarantee now has to hold in the owned editor,
-// which is the only place an editable file is shown at all.
-test('E6: an owned file is shown against its frozen default, with no toggle to choose one', () => {
-  assert.match(OWN, /unifiedMergeView\(\{ original: st\.defText/,
-    'the frozen default must be rendered against the live document, not behind a switch');
+// The guarantee: when you compare, you see BOTH copies at once, side by side, and nothing makes
+// you flip between them. An inline diff that re-diffs the whole document per keystroke is
+// unreadable once a file has diverged, so this lives in its own view - but where it lives is not
+// the promise being tested, only that both copies are visible together.
+test('E6: the frozen default is shown SIDE BY SIDE with the live copy, never one-or-the-other', () => {
+  assert.match(OWN, /new CM\.MergeView\(/, 'both copies must be rendered together');
+  assert.match(OWN, /a: \{ doc: live/, 'left: the live document, unsaved edits included');
+  assert.match(OWN, /let def = st\.defText/, 'the right-hand copy IS the frozen default...');
+  assert.match(OWN, /b: \{ doc: def/, '...and it is what the right pane renders');
   assert.match(OWN, /defaultsPathOf/, 'the default must be FETCHED alongside the live copy');
-  assert.doesNotMatch(OWN, /wfShowDefault|showDefault/, 'no view-switcher state may come back');
+  assert.doesNotMatch(OWN, /wfShowDefault|showDefault/, 'no live-or-default swap may come back');
+  assert.match(OWN, /collapseUnchanged/, 'identical stretches collapse, or a diverged file is a wall of red');
 });
 
 test('E6: the Live/Default toggle and its state are GONE, not just hidden', () => {
@@ -34,16 +33,15 @@ test('E6: the Live/Default toggle and its state are GONE, not just hidden', () =
   assert.equal(decl, null, 'wfShowDefault must not be declared anywhere');
 });
 
-test('E6: the diff is display-only - the box never applies it', () => {
-  assert.match(OWN, /mergeControls: false/,
-    'accept/reject controls would make the diff a write path; the two-copy model forbids that');
+test('E6: the compare view is display-only - the box never applies it', () => {
+  assert.match(OWN, /revertControls: false/,
+    'a revert arrow between chunks would make this view a write path; the two-copy model forbids that');
+  assert.match(OWN, /readOnly\.of\(true\)/, 'and both copies are read-only');
 });
 
 test('E7: EVERY nav row states its access - no silent fallback to no badge', () => {
-  // Anchored on the ASSIGNMENT, not on one expression. The first version pinned the literal
-  // `r.access !== 'lock'`, so it passed while that expression was WRONG (access is edit|view|lock,
-  // so every 'view' row badged rw and then opened read-only) and failed the moment it was fixed.
-  // A test that pins an implementation blocks the correction and blesses the bug.
+  // Anchored on the ASSIGNMENT, not one implementation expression, so a correct fix cannot be
+  // blocked by a test pinned to the wrong expression.
   const i = JS.indexOf('const writable =');
   assert.notEqual(i, -1, 'access must be computed for every row');
   const block = JS.slice(i, i + 400);
@@ -52,10 +50,7 @@ test('E7: EVERY nav row states its access - no silent fallback to no badge', () 
   assert.doesNotMatch(block, /:\s*''\s*;/, 'no empty-string fallback - that is what left most rows unlabelled');
 });
 
-// The original form of this asserted that the override count rode ALONGSIDE the access badge
-// instead of replacing it. There is no count now - the document it counted is deleted - so the
-// owner's actual complaint ("how come the RO/RW only applies to a few items? Be consistent") is
-// satisfied more strongly: exactly one badge per row, no second thing that can displace it.
+// Exactly one badge per row - nothing else may ride alongside or displace the access badge.
 test('E7: the access badge is the ONLY badge - nothing can displace it again', () => {
   const i = JS.indexOf('const writable =');
   const block = JS.slice(i, i + 400);
@@ -65,15 +60,33 @@ test('E7: the access badge is the ONLY badge - nothing can displace it again', (
   assert.match(badges[1], /^\s*writable \? /, 'one ternary, one badge - no concatenated second badge to fight it');
 });
 
+// Meaning: the box captured a .defaults baseline for this file, i.e. it has been saved through
+// the editor at least once. The marker rides beside the FILENAME, never in the badge slot - a
+// second thing in that slot would displace the access badge.
+test('the tree marks files that have been edited here, without touching the access badge', () => {
+  const i = JS.indexOf('const writable = canWrite(r)');
+  const block = JS.slice(i, i + 1400);   // the row builder, comments included
+  assert.match(block, /edited-mark/, 'the row must carry an edited marker');
+  assert.match(block, /const badge = writable \?/, 'the access badge stays ONE ternary, undisplaced');
+  assert.match(block, /'<\/span>' \+ edited \+ badge/,
+    'the marker sits with the filename, ahead of the badge - it may never take the badge slot');
+  assert.match(JS, /editedFiles/, 'and it comes from the box, not from a guess in the browser');
+});
+
+test('the edited marker states what it means, and does not overclaim', () => {
+  // It says "edited here", NOT "differs from the default" - the box reports a captured baseline,
+  // and a file saved back to identical content still has one.
+  assert.match(JS, /title="[^"]*edited/i, 'the marker needs a tooltip saying what it means');
+  assert.doesNotMatch(JS, /title="[^"]*differs from/i, 'it must not claim a content comparison it never made');
+});
+
 test('E10: an absent file says so, instead of claiming it is unreadable', () => {
   assert.match(JS, /404 \? 'ABSENT'/, '404 must be classified as absent, not unreadable');
   assert.match(JS, /function fileMissingNote/, 'one shared wording for a file the box did not return');
   assert.match(JS, /not on the box yet/, 'the note must say the file does not exist rather than implying a permission fault');
 });
 
-// Owner 2026-07-31: "you got rid of the day/night cycle editor view.... THAT WAS USEFUL VISUALLY.
-// Keep it. That had no bearing on the 'form input' method." Retiring the Fields VIEW was never a
-// reason to lose a purpose-built visualisation. It is back, INTERACTIVE, and now drives the same
+// The day/night cycle editor is a purpose-built visualisation, INTERACTIVE, and drives the same
 // document the editor holds rather than writing override rows.
 test('the day/night cycle editor is interactive, not a read-only readout', () => {
   assert.match(JS, /class="cyc-in"/, 'the sliders must exist');
@@ -88,15 +101,12 @@ test('the cycle editor shows on BOTH edit paths, not just the owned one', () => 
 test('the sliders write through the editor document, never override rows', () => {
   const i = JS.indexOf('function wireCycle');
   const body = JS.slice(i, i + 1800);
-  assert.match(body, /setValue\(\[sel\], n\)/, 'must drive the open document');
+  // A handle hands back ONE pane, and under two-pane editing that pane may be the projection, so
+  // writing through it would edit a copy. ownSetPath edits whichever side is actually holding
+  // the document.
+  assert.match(body, /ownSetPath\(row\.key, \[sel\], n\)/, 'must drive the open document');
   assert.doesNotMatch(body, /layerMapRW/, 'must NOT write an override delta - that mechanism is being deleted');
 });
-
-// Owner bug 2026-07-31: "This literally says the file doesn't exist yet, but 2 overrides are
-// present? Make it make sense!" The count and the file's existence were rendered by two
-// unrelated pieces of code, so they contradicted each other. Both now go through
-// override-status.js. These guard the wiring; the wording itself is unit-tested there.
-
 
 test('the hardcoded "still override-managed" claim is gone from the chrome', () => {
   assert.doesNotMatch(JS, /still override-managed/,
@@ -111,10 +121,8 @@ test('the hardcoded "still override-managed" claim is gone from the chrome', () 
   }
 });
 
-// The bug the badge actually had, 2026-08-02 (owner: "a significant number of RW files that have
-// no edit button and say read only at the top... why the contradiction?"). `access` is tri-valued,
-// so `!== 'lock'` called every reference surface writable. rw must mean the panel will really let
-// you write: an owned whole-file editor, or the types editor.
+// `access` is tri-valued, so `!== 'lock'` would call every reference surface writable. rw must
+// mean the panel will really let you write: an owned whole-file editor, or the types editor.
 test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
   const i = JS.indexOf('const writable =');
   const expr = JS.slice(i, JS.indexOf(';', i));
@@ -124,9 +132,9 @@ test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
     'rw must come from the ONE predicate, not a second expression beside the badge');
 });
 
-// Two determination points is the bug itself. It shipped twice in one day: `access !== 'lock'`
-// badged reference rows rw, then `ownFile || types` missed access === 'own' and put a Save button
-// under an ro badge. Every write path belongs in canWrite, and nothing else may decide.
+// Two determination points is the bug itself: `access !== 'lock'` alone would badge reference
+// rows rw, or `ownFile || types` alone would miss `access === 'own'` and put a Save button under
+// an ro badge. Every write path belongs in canWrite, and nothing else may decide.
 test('E7: canWrite covers EVERY write path the editor offers', () => {
   const fn = JS.slice(JS.indexOf('function canWrite('), JS.indexOf('function rowByKey('));
   for (const path of ['ownFile', 'types', "access === 'own'"]) {

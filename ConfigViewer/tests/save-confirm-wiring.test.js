@@ -1,4 +1,4 @@
-// E4 wiring assertion (the P2 pattern: a design decision that CAN be asserted, IS).
+// Wiring assertion: a design decision that CAN be asserted, IS.
 // The pure logic has its own suite (dirty-files.test.js); this one guards the WIRING -
 // every save path must name its files before writing. A new save path that skips the
 // confirm fails here instead of shipping silently.
@@ -11,9 +11,8 @@ import { dirname, join } from 'node:path';
 const JS = join(dirname(fileURLToPath(import.meta.url)), '../web/js');
 const read = (f) => readFileSync(join(JS, f), 'utf8');
 
-// file -> the save function that must confirm first
-// 2026-07-31: editor.js:saveOverrides was the fourth entry. It is DELETED with the override
-// engine - editor.js holds no save path at all now, it only routes a row to one of these.
+// file -> the save function that must confirm first. editor.js holds no save path of its own
+// beyond saveOwnFile - it only routes a row to one of these.
 const SAVE_PATHS = [
   ['own-editor.js', 'doSave'],          // whole owned file
   ['types-editor.js', 'doSave'],        // types tuning
@@ -50,10 +49,9 @@ test('the dirty pill markup is rendered from ONE helper, not copied per chrome',
   assert.equal(inlineCopies, 1, 'ovr-unsaved markup must exist once (dirtyPillHtml) - a copy per chrome is the god-file pattern this removed');
 });
 
-// The point of deleting the override engine: editor.js ROUTES, it does not write. If a save
-// path reappears here, the god-file is growing back.
-// editor.js keeps exactly ONE write - the bans/whitelist text files. Everything that was
-// override machinery is gone; if any of these strings comes back, the god-file is regrowing.
+// editor.js ROUTES; it does not write beyond its one text-file save path (bans/whitelist). If a
+// save path reappears here, or any override-machinery string comes back, the god-file is
+// growing back.
 test('the override write paths are gone from editor.js', () => {
   const src = read('editor.js');
   // Match the CALL, not the word: a comment explaining what was removed is documentation and

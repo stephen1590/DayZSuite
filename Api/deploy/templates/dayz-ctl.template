@@ -98,10 +98,8 @@ _is_generated() {
 }
 # --- Owned-file guard (the generic own-read/own-write allowlist) ----------------------------
 # <name>.<ext> -> <name>.defaults.<ext>; extensionless -> <name>.defaults. The frozen state-0
-# companion of an owned file. Re-added 2026-08-01: the A3 override delete removed this helper
-# along with the override machinery that used to be its only caller, but the two-copy model
-# needs it MORE than the override engine did - it is how capture-on-write finds where to put
-# the baseline, and how own-read serves it back for the side-by-side diff.
+# companion of an owned file: how capture-on-write finds where to put the baseline, and how
+# own-read serves it back for the side-by-side diff.
 _defaults_path() {
   case "$1" in
     *.*) printf '%s.defaults.%s' "${1%.*}" "${1##*.}" ;;
@@ -126,25 +124,22 @@ _defaults_stem() {
 # and the realpath jail. Return 0 = allowed, 2 = refused with the reason on stderr.
 # `|| true` guards on the greps: a no-match grep in a plain statement would trip set -e.
 # $2 = 'read' | 'write' (default write). A <stem>.defaults.<ext> companion is READABLE when
-# its STEM is an owned surface, and never writable. Two live defects this closes (measured on
-# prod 2026-08-01):
-#   - OWNED_FILES is matched with grep -qxF (exact), so a companion beside a FILE row was
-#     refused outright: served=0 of 33. That is why "view default side by side" was impossible.
-#   - OWNED_DIRS is a PREFIX match, so 21 companions under the four Expansion folders were
-#     fully WRITABLE - an admin could overwrite a frozen baseline through the API.
+# its STEM is an owned surface, and never writable. This closes two defects in the naive mask
+# checks:
+#   - OWNED_FILES is matched with grep -qxF (exact), so a companion beside a FILE row would be
+#     refused outright - "view default side by side" would be impossible.
+#   - OWNED_DIRS is a PREFIX match, so a companion under an owned dir would be fully WRITABLE -
+#     an admin could overwrite a frozen baseline through the API.
 # Same rule fixes both: resolve the mask against the stem, allow read, refuse write.
 _own_check() {
   _r="$1"
   _mode="${2:-write}"
   case "$_r" in ''|*..*|/*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
   case "$_r" in *[!A-Za-z0-9_./-]*) echo "dayz-ctl: invalid owned path: $_r" >&2; return 2 ;; esac
-  # NO FILE-TYPE LIST. Owner, 2026-08-02: "I don't want to have to specify specific file types...
-  # We can't expect to know all file type validators upfront - just add a warning that we can't
-  # validate and save anyway." This line used to refuse anything but .json/.xml, which made the
-  # extension an ACCESS decision when it is only ever a VALIDATION one. The write path below
-  # already dispatches a parser per extension and falls through for anything it does not know, so
-  # an unrecognised type is a normal writable file that simply is not parse-checked. Path safety
-  # is unchanged - the two guards above still reject traversal and odd characters.
+  # NO FILE-TYPE LIST: the extension is a VALIDATION concern, never an ACCESS one. The write path
+  # below already dispatches a parser per extension and falls through for anything it does not
+  # know, so an unrecognised type is a normal writable file that simply is not parse-checked.
+  # Path safety is unchanged - the two guards above still reject traversal and odd characters.
   _maskpath="$_r"
   _stem="$(_defaults_stem "$_r")"
   if [ -n "$_stem" ]; then
@@ -585,6 +580,25 @@ case "$verb" in
     # the whole-file editor. Pure enumeration of the rendered masks - no caller input.
     if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES" | while IFS= read -r _l; do [ -n "$_l" ] && printf 'F\t%s\n' "$_l"; done; fi
     if [ -n "$OWNED_DIRS" ];  then printf '%s\n' "$OWNED_DIRS"  | while IFS= read -r _l; do [ -n "$_l" ] && printf 'D\t%s\n' "$_l"; done; fi
+    # 'E<TAB><relpath>' per owned file that HAS a captured baseline beside it. own-write freezes a
+    # .defaults companion before its FIRST replace, so the companion existing means this file has
+    # been saved through the editor at least once - which is what the tree marks as edited.
+    # A directory scan, no reads and no hashing: it says "was edited here", never
+    # "differs right now", and the wording in the UI has to match that.
+    {
+      if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES"; fi
+      if [ -n "$OWNED_DIRS" ]; then
+        printf '%s\n' "$OWNED_DIRS" | while IFS= read -r _d; do
+          [ -n "$_d" ] && [ -d "$SERVER_DIR/$_d" ] || continue
+          find "$SERVER_DIR/$_d" -maxdepth 1 -type f \( -name '*.json' -o -name '*.xml' \) 2>/dev/null |
+            while IFS= read -r _f; do printf '%s\n' "${_f#"$SERVER_DIR"/}"; done
+        done
+      fi
+    } | LC_ALL=C sort -u | while IFS= read -r _r; do
+      [ -n "$_r" ] || continue
+      case "${_r##*/}" in *.defaults.*) continue ;; esac      # a companion is never a row itself
+      [ -f "$SERVER_DIR/$(_defaults_path "$_r")" ] && printf 'E\t%s\n' "$_r"
+    done
     ;;
 
   config-disabled)
@@ -737,18 +751,12 @@ case "$verb" in
     fi
     ;;
 
-
-
-  # spawn-write) DELETED 2026-08-02 (U2). Wrote the authored map-points store, which the map
-  # inversion froze on 07-23; its UI caller bailed on MAP_POINTS_DEPRECATED before ever calling it.
   file-list)
     # Enumerate the box-owned files an admin may REPLACE (the rendered WRITE_MAP), one
     # "name<TAB>relpath" line each. Pure enumeration - no caller input. Empty map = none.
     [ -n "$WRITE_MAP" ] && printf '%s\n' "$WRITE_MAP"
     ;;
 
-  # file-write) RETIRED 2026-08-02 (U2). It existed only because own-write refused a .txt;
-  # U5 removed that refusal, so ban/allow lists use the generic own-write path like everything else.
   types-read)
     # types-read <name> — print ONE kind-'types' file: line 1 = its sha256 (the version the
     # editor passes back to types-write as base=), the rest = the RAW contents. Raw on purpose,
@@ -885,9 +893,8 @@ for c in r:
         else die "own-write: no XML validator (python3/xmllint) on the box"; fi ;;
       *) echo "own-write: no validator for this file type - saved unvalidated: $rel" >&2 ;;
     esac
-    # STRUCTURAL check for a CE types surface, on top of well-formedness. Moved here from the
-    # retired types-write verb (U2, 2026-08-02): its one real guarantee was that a half-pasted
-    # document can never reach the CE, and a migration that dropped it would be a downgrade.
+    # STRUCTURAL check for a CE types surface, on top of well-formedness: the one real guarantee
+    # that a half-pasted document can never reach the CE, and dropping it would be a downgrade.
     # Keyed off the row's KIND in CONFIG_MAP, not a hardcoded path - a new types row is covered
     # the moment the registry declares it. No validator on the box = refuse, never write an
     # unchecked CE file.
@@ -909,13 +916,11 @@ for c in r:
       _cur="$(sha256sum "$file" | awk '{print $1}')"
       [ "$_base" = "$_cur" ] || { echo "dayz-ctl: conflict: $rel changed since you loaded it — reload and re-apply" >&2; exit 5; }
     fi
-    # CAPTURE-ON-WRITE (owner 2026-08-01). Keep the ORIGINAL bytes of a server/mod-made config
-    # the first time we modify it, so there is always a state 0 to roll back to.
+    # CAPTURE-ON-WRITE. Keep the ORIGINAL bytes of a server/mod-made config the first time we
+    # modify it, so there is always a state 0 to roll back to.
     #
-    # It MUST happen here, before the replace. The old path captured at prestart, which runs
-    # AFTER the edit and therefore froze the edit as the baseline - proven on prod, where
-    # expansion_types_tuning.xml and its .defaults are byte-identical with the same mtime, so
-    # they diff to nothing.
+    # It MUST happen here, before the replace: capturing at prestart instead runs AFTER the
+    # edit and freezes the edit itself as the baseline.
     #
     # No origin classification is needed: own-write is replace-only (_own_check requires the
     # file to exist), so every target pre-existed. Capture if missing, never re-capture -

@@ -13,17 +13,15 @@ const MIN_BIG_DIGITS = 16;
 
 // Do two JSON texts hold the same document? Byte equality is the wrong question for a STRUCTURED
 // editor: it re-serialises what it loaded, so its output is never byte-identical to the file on
-// the box even with zero edits. Comparing bytes made every owned JSON surface open already-dirty
-// (owner, 2026-08-01: "Going to server settings automatically detects a change - why?").
+// the box even with zero edits.
 //
-// Whitespace alone was not the whole story. REGRESSION found 2026-08-01 on the real
-// profiles/BaseBuildingPlus/BBP_Settings.json: the structured navigator's draft is the source
-// PARSED to real JS numbers and re-stringified, and JS's number formatting does not reproduce the
-// source spelling - a trailing ".0" on a whole-number float is dropped (0.0 -> 0) and an
-// exponent's case/zero-padding is normalised (-9.999999974752427E-07 -> -9.999999974752427e-7).
-// Same value, different text; comparing text alone read that as an edit. canon() now reformats
-// each number token the same way JSON.stringify would, so two spellings of the same value collapse
-// to the same canonical text - while leaving whitespace and everything else exactly as before.
+// Whitespace alone is not the whole story: the structured navigator's draft is the source PARSED
+// to real JS numbers and re-stringified, and JS's number formatting does not reproduce the source
+// spelling - a trailing ".0" on a whole-number float is dropped (0.0 -> 0) and an exponent's
+// case/zero-padding is normalised (-9.999999974752427E-07 -> -9.999999974752427e-7). Same value,
+// different text; comparing text alone would read that as an edit. canon() reformats each number
+// token the same way JSON.stringify would, so two spellings of the same value collapse to the
+// same canonical text, while whitespace and everything else stays exactly as it was.
 //
 // Key ORDER counts as a change on purpose - reordering a config is a real edit to the file, and
 // folding it away would silently drop it. Unparseable input counts as CHANGED, never as clean:
@@ -96,12 +94,11 @@ export function formatUnsaved(files) {
   return 'Unsaved: ' + shown + (more > 0 ? ` +${more} more` : '');
 }
 
-// The confirmation dialog body - the owner's ask, verbatim: tell me what files
-// I edited and am currently saving, BEFORE the write happens.
-// An EMPTY list is not a dialog. Owner, 2026-07-31: "when I go to save ... AND NOTHING IS
-// LISTED!" - Save is always enabled, so clicking it with a clean doc asked for confirmation
-// of a write that could not be named. A prompt that lists nothing trains you to click through
-// the one that matters.
+// The confirmation dialog body: tell the admin what files they edited and are currently saving,
+// BEFORE the write happens.
+// An EMPTY list is not a dialog - Save is always enabled, so clicking it with a clean doc would
+// ask for confirmation of a write that could not be named. A prompt that lists nothing trains
+// you to click through the one that matters.
 export function confirmSaveText(files) {
   if (!files || !files.length) return 'Nothing to save - no unsaved changes in this tab.';
   return 'Save these changes?\n\nYou edited and are saving:\n' +

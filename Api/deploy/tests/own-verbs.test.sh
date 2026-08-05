@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# own-verbs.test.sh - offline TDD harness for dayz-ctl's generic owned-file verbs
+# own-verbs.test.sh - offline harness for dayz-ctl's generic owned-file verbs
 # (own-read / own-write), the generic whole-file mechanism for owned config.
 # Renders dayz-ctl.template with fixture values into a temp dir and exercises the verbs
-# against a fake ServerDir. No box, no sudo, no network. Written BEFORE the implementation
-# (TDD): first run must FAIL with "unknown verb".
+# against a fake ServerDir. No box, no sudo, no network.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TPL="$HERE/../templates/dayz-ctl.template"
@@ -117,8 +116,8 @@ printf '<a><b>'     | $CTL own-write - profiles/ExpansionMod/Loadouts/probe.xml 
 [ $rc -ne 0 ] && ok "own-write refuses malformed XML" || bad "malformed XML accepted"
 
 echo
-# 17-19. config-list carries about + aboutUrl as fields 7-8 (2026-07-30). The editor renders
-# these UNDER the filename, so a dropped column silently blanks the About block for every file.
+# 17-19. config-list carries about + aboutUrl as fields 7-8. The editor renders these UNDER
+# the filename, so a dropped column silently blanks the About block for every file.
 out="$($CTL config-list 2>/dev/null | grep '^General	Server-settings	')"
 n="$(printf '%s' "$out" | awk -F'\t' '{print NF}')"
 [ "$n" = "8" ] && ok "config-list emits 8 TAB fields (about/aboutUrl appended)" \
@@ -129,13 +128,11 @@ n="$(printf '%s' "$out" | awk -F'\t' '{print NF}')"
   && ok "config-list field 8 = aboutUrl" || bad "config-list field 8 (aboutUrl) wrong: $(printf '%s' "$out" | cut -f8)"
 
 echo
-# 20-24. CAPTURE-ON-WRITE (owner 2026-08-01). A server/mod-made config must keep its ORIGINAL
-# bytes the first time we modify it, so there is always a state-0 to roll back to.
+# 20-24. CAPTURE-ON-WRITE. A server/mod-made config must keep its ORIGINAL bytes the first
+# time we modify it, so there is always a state-0 to roll back to.
 #
-# It has to happen IN THE WRITE VERB, before the replace. Capturing at prestart (the old
-# Capture-OwnedDefaults path) runs AFTER the edit and therefore freezes the EDIT as the
-# baseline - proven on prod: expansion_types_tuning.xml and its .defaults are byte-identical
-# with the same mtime, so their diff shows nothing.
+# It has to happen IN THE WRITE VERB, before the replace: capturing at prestart instead would
+# run AFTER the edit and freeze the EDIT itself as the baseline.
 #
 # own-write is replace-only (_own_check requires the file to exist), so every target
 # pre-existed. That means no origin classification is needed: capture if missing, always.
@@ -166,10 +163,9 @@ printf '{broken' | $CTL own-write - profiles/ExpansionMod/Loadouts/BadWrite.json
 [ ! -f "$SD/profiles/ExpansionMod/Loadouts/BadWrite.defaults.json" ] \
   && ok "a rejected write captures nothing" || bad "invalid write still created a .defaults"
 
-# 25-27. own-read SERVES a .defaults companion (owner: "we should be seeing default XMLs and
-# JSONs adjacent to our owned files"). Measured on prod before this change: served=0 of 33,
-# because OWNED_FILES is matched with grep -qxF and a companion is not itself a row. That is
-# the whole reason the side-by-side default view was impossible for file rows.
+# 25-27. own-read SERVES a .defaults companion. Because OWNED_FILES is matched with grep -qxF
+# and a companion is not itself a row, serving it needs an explicit fallback - that is the whole
+# reason the side-by-side default view was impossible for file rows without one.
 out="$($CTL own-read profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json 2>&1)"; rc=$?
 [ $rc -eq 0 ] && ok "own-read SERVES a .defaults companion (the side-by-side fix)" \
   || bad "own-read still refuses a .defaults (rc=$rc out=$out)"
@@ -180,11 +176,10 @@ out="$($CTL own-read profiles/ExpansionMod/Loadouts/CaptureMe.defaults.json 2>&1
 $CTL own-read mpmissions/dayzOffline.sakhal/mapgroupproto.defaults.xml >/dev/null 2>&1; rc=$?
 [ $rc -ne 0 ] && ok "a .defaults whose stem is NOT owned is still refused" || bad "defaults of a non-owned file was served"
 
-# U5: own-write must NOT refuse on extension. Owner, said three times: "I don't want to have to
-# specify specific file types... just add a warning that we can't validate and save anyway."
-# The validation case already falls through for an unknown extension - the only thing blocking a
-# .txt save is a separate refusal in _own_check, which is an ACCESS gate wearing a validator's
-# clothes. An unrecognised type is a normal writable file that simply is not parse-checked.
+# own-write must NOT refuse on extension. The validation case already falls through for an
+# unknown extension - the only thing blocking a .txt save is a separate refusal in _own_check,
+# which is an ACCESS gate wearing a validator's clothes. An unrecognised type is a normal
+# writable file that simply is not parse-checked.
 printf '%s' '76561198000000000\n' > "$SD/ban.txt"
 out="$(printf '76561198000000001\n' | $CTL own-write - ban.txt 2>&1)"; rc=$?
 [ $rc -eq 0 ] && ok "own-write accepts a .txt (no file-type list)" \
@@ -194,9 +189,9 @@ out="$(printf '76561198000000001\n' | $CTL own-write - ban.txt 2>&1)"; rc=$?
 printf '%s' "$out" | grep -qi "not validated\|unvalidated" \
   && ok "an unvalidatable type WARNS rather than failing silently" || bad "no warning that the type was not validated"
 
-# U2/types-write: own-write must apply the CE STRUCTURAL check to a types surface, not just
-# well-formedness. types-write is being retired onto the generic path, and its one real guarantee
-# is that a half-pasted document can never reach the CE - root must be <types>, every child a
+# own-write must apply the CE STRUCTURAL check to a types surface, not just well-formedness.
+# types-write is being retired onto the generic path, and its one real guarantee is that a
+# half-pasted document can never reach the CE - root must be <types>, every child a
 # <type name=...>. Losing that would make the migration a downgrade.
 mkdir -p "$SD/custom-ce"
 printf '%s' '<types><type name="Nail"><nominal>10</nominal></type></types>' > "$SD/custom-ce/expansion_types_tuning.xml"
@@ -208,6 +203,29 @@ out="$(printf '%s' '<config><thing/></config>' | $CTL own-write - custom-ce/expa
   || bad "a non-types XML reached a types surface (rc=$rc out=$out)"
 grep -q 'name="Nail"><nominal>20' "$SD/custom-ce/expansion_types_tuning.xml" \
   && ok "the refused write left the previous types document intact" || bad "refused write damaged the file"
+
+# --- config-owned reports which owned files have a CAPTURED BASELINE -------------------------
+# An "edited" marker per file in the browsing view means "has been saved through the editor at
+# least once", and the box already records exactly that - own-write captures a .defaults companion
+# before its FIRST replace, so the companion existing IS the signal. No new verb: config-owned
+# grows an 'E' line beside its F/D masks.
+printf '%s' '{"a":1}' > "$SD/profiles/ExpansionMod/Loadouts/EditedOnce.json"
+printf '%s' '{"a":0}' > "$SD/profiles/ExpansionMod/Loadouts/EditedOnce.defaults.json"
+out="$($CTL config-owned 2>&1)"
+printf '%s' "$out" | grep -qxF "$(printf 'E\tprofiles/ExpansionMod/Loadouts/EditedOnce.json')" \
+  && ok "config-owned marks a file that has a captured baseline" || bad "no E line for an edited file (out=$out)"
+# a witness nothing in this harness writes - TownLoadout.json is own-written by an earlier case,
+# so the box captures a baseline for it and marking it edited is CORRECT, not a bug
+printf '%s' '{"never":1}' > "$SD/profiles/ExpansionMod/Loadouts/NeverEdited.json"
+out="$($CTL config-owned 2>&1)"
+printf '%s' "$out" | grep -qxF "$(printf 'E\tprofiles/ExpansionMod/Loadouts/NeverEdited.json')" \
+  && bad "an unedited file was marked as edited" || ok "a file with no baseline is NOT marked"
+# the marker names the LIVE file, never the companion - the tree has no row for a .defaults
+printf '%s' "$out" | grep -q "EditedOnce.defaults.json" \
+  && bad "the .defaults companion leaked into the masks" || ok "the companion itself is never listed"
+# and the existing masks still come through untouched
+printf '%s' "$out" | grep -qxF "$(printf 'F\tserver-settings.json')" && ok "config-owned still emits its F masks" || bad "F masks regressed"
+printf '%s' "$out" | grep -qxF "$(printf 'D\tprofiles/ExpansionMod/Loadouts')" && ok "config-owned still emits its D masks" || bad "D masks regressed"
 
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

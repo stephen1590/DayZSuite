@@ -1,9 +1,4 @@
-// TDD (written BEFORE the chat-format.js changes): pins the Expansion chat-line format from REAL box
-// lines + the requested "day divider + IRC" render.
-//
-// Lived beside its module in web/js/ until 2026-08-02. That directory is rsynced wholesale to the
-// public webroot, so the test was being served to visitors; it moved here, where every other
-// ConfigViewer test already lives and the shared runner finds it just the same.
+// Pins the Expansion chat-line format from REAL box lines, plus the day-divider + IRC render.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseChatLine, chatDateFromLogName, renderChatLine, renderChatDay } from '../web/js/chat-format.js';

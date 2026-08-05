@@ -1,6 +1,6 @@
 // auth.js — credential cookie. The Key ID + derived secret the user pastes live in a
 // cookie so a reload stays signed in; cleared the moment the API rejects them (401).
-// Extracted from index.html (P1 modular split). Native ES module, no build step.
+// Native ES module, no build step.
 const COOKIE = 'cfgview';
 
 export function saveCred(c) { document.cookie = `${COOKIE}=${encodeURIComponent(JSON.stringify(c))};Path=/;Secure;SameSite=Strict;Max-Age=2592000`; }

@@ -1,6 +1,6 @@
 // Format Expansion chat lines from the ExpansionMod log for the Logs tab's Chat view. The line
-// carries only a time; the DATE comes from the log filename (ExpLog_YYYY-MM-DD_...). Pure functions,
-// unit-tested test-first in chat-format.test.js. Real line shape:
+// carries only a time; the DATE comes from the log filename (ExpLog_YYYY-MM-DD_...). Real line
+// shape:
 //   HH:MM:SS.mmm [Chat - <Channel>]("<Name>"(id=<hash>)): <message>
 const CHAT_RE = /^(\d{2}:\d{2}:\d{2})\.\d+ \[Chat - ([^\]]+)\]\("([^"]*)"\(id=([^)]*)\)\): (.*)$/;
 
@@ -9,7 +9,7 @@ export function parseChatLine(line) {
   return m ? { time: m[1], channel: m[2], name: m[3], id: m[4], msg: m[5] } : null;
 }
 
-// The date for a chat line comes from its log file's name, e.g. ExpLog_2026-07-29_00-59-52.log.
+// The date for a chat line comes from its log file's name, e.g. ExpLog_YYYY-MM-DD_HH-MM-SS.log.
 export function chatDateFromLogName(name) {
   const m = typeof name === 'string' ? name.match(/ExpLog_(\d{4}-\d{2}-\d{2})_/) : null;
   return m ? m[1] : null;

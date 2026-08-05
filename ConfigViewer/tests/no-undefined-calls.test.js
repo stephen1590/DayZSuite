@@ -1,13 +1,10 @@
 // Every function a shipped module CALLS must be defined or imported in that module.
 //
-// Why this exists (2026-07-31): deleting the override engine removed `ownLayerCount`, but two
-// call sites survived - one in the tree-routing pass, one in the nav row renderer. Both run on
-// every render, so the file tree threw immediately and the sidebar sat on "Loading…" forever.
-// The owner found it in the browser. Nothing in the suite could have:
+// A deleted function whose call sites survive produces a ReferenceError only at runtime, in the
+// browser, on the exact code path that still calls it:
 //   - module-parse.test.js parses each file. A call to a missing function is VALID SYNTAX.
-//   - no test renders a DOM, so no test executes buildRows/renderFilesNav at all.
-// A ReferenceError is the exact failure mode of a large deletion, and it was the one class of
-// error the suite was blind to. This closes it statically - no browser, no DOM, no fixtures.
+//   - no test renders a DOM, so no test executes that code path to trip it.
+// This closes that gap statically - no browser, no DOM, no fixtures.
 //
 // LIMITS, stated so nobody trusts this further than it goes: it is a lexical scan, not a
 // scope-aware one. It sees top-level declarations and imports; a name only ever defined as a

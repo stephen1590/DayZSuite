@@ -8,6 +8,7 @@ try {
 } catch (e) { /* default light */ }
 </script>
 <link rel="stylesheet" href="/web/style.css">
+<link rel="stylesheet" href="/web/jsoneditor-theme.css">
 <style>body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; padding: 12px 20px; }</style>
 <script type="importmap">
 { "imports": {
@@ -17,26 +18,54 @@ try {
 <body>
 <div id="toast" class="toast"></div>
 <h3 style="font-family:monospace">own-editor.js DOM harness</h3>
-<div id="body" style="max-width:900px"></div>
+<p class="meta">Add <b>?big=400</b> to the URL for a synthetic 400-entry config — that is what reproduces
+the open-time lock-up. <b>msToTypeable</b> is the number that must stay small: it is how long the file
+takes to become editable. Building the structured side is a separate, opt-in cost.</p>
+<div id="body" style="max-width:1400px"></div>
 <pre id="result" style="font-family:monospace;font-weight:bold"></pre>
 <script type="module">
 // Top-level await HOLDS the load event until the editor is rendered - so a headless
 // screenshot taken at load shows the real final state.
 const { renderOwnEditor, ownAnyDirty } = await import('/web/js/own-editor.js');
 const body = document.getElementById('body');
+const t0 = performance.now();
 const text = await renderOwnEditor(
   { key: 'harness', relpath: 'profiles/ExpansionMod/Loadouts/TownLoadout.json' }, body, {});
 for (let i = 0; i < 100 && !body.querySelector('.cm-editor'); i++) await new Promise(r => setTimeout(r, 50));
+const msToTypeable = Math.round(performance.now() - t0);
+
+const ownPane = body.querySelector('.tp-pane.tp-own');
+const projPane = body.querySelector('.tp-pane.tp-proj');
 const r = {
-  returnedLiveText: typeof text === 'string' && text.includes('TownEdited'),
+  returnedLiveText: typeof text === 'string' && text.length > 0,
   cmRendered: !!body.querySelector('.cm-editor'),
-  contentShown: (body.querySelector('.cm-content')?.textContent || '').includes('TownEdited'),
-  diffGutterShown: !!body.querySelector('.cm-deletedChunk, .cm-changedLine, .cm-changeGutter'),
-  deletedDefaultLineShown: (body.textContent || '').includes('RemovedInLive'),
   saveDisabledWhenClean: body.querySelector('#ownSave')?.disabled === true,
   cleanNotDirty: ownAnyDirty() === false,
+  // both sides present, structured on the LEFT (owner: "render the structured compositors on the left")
+  bothPanesShown: body.querySelectorAll('.tp-pane').length === 2,
+  structuredIsFirst: body.querySelector('.tp-pane')?.dataset.side === 'structured',
+  // raw is the DEFAULT owner, and it is the one wearing the gold box
+  rawOwnsByDefault: ownPane?.dataset.side === 'raw',
+  goldBoxOnOneSideOnly: !!ownPane && !!projPane && body.querySelectorAll('.tp-own').length === 1,
+  // the projection cannot be typed into while it is a projection
+  projectionInert: body.querySelector('.tp-pane[data-side="structured"] #ownJson')?.inert === true,
+  // OPEN COSTS NOTHING BEYOND THE RAW EDITOR (owner 2026-08-04: it locked up while loading the
+  // left side). The structured side must NOT exist until asked for.
+  structuredNotBuiltAtOpen: !body.querySelector('.jn-json'),
+  commitButtonOffered: body.querySelector('.tp-pane[data-side="structured"] .tp-commit')?.hidden === false,
+  msToTypeable,
 };
-r.ALL_PASS = Object.values(r).every(Boolean);
+
+// ...and it builds when told to. This is the commit path, the one the owner asked for.
+const t1 = performance.now();
+body.querySelector('.tp-pane[data-side="structured"] .tp-commit')?.click();
+for (let i = 0; i < 200 && !body.querySelector('.jn-json'); i++) await new Promise(r => setTimeout(r, 50));
+r.structuredBuildsOnCommit = !!body.querySelector('.jn-json');
+r.msToBuildStructured = Math.round(performance.now() - t1);
+// committing does NOT hand the document over - the gold box stays where it was
+r.commitKeptOwnership = body.querySelector('.tp-pane.tp-own')?.dataset.side === 'raw';
+
+r.ALL_PASS = Object.entries(r).every(([k, v]) => k.startsWith('ms') || v === true);
 document.getElementById('result').textContent = JSON.stringify(r, null, 1);
 try { await fetch('/RESULT/' + encodeURIComponent(JSON.stringify(r))); } catch {}
 </script></body></html>

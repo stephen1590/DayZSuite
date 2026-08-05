@@ -11,7 +11,7 @@
 //     z' = b*x + d*z + f
 // Identity = {a:1,b:0,c:0,d:1,e:0,f:0} -> no change (the renderer's today-exact path).
 //
-// PURE + dependency-free so it is unit-testable offline (see the harness in scratch): the solver
+// PURE + dependency-free so it is unit-testable offline: the solver
 // is the one piece whose correctness must be provable without a browser.
 
 export const IDENTITY = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };

@@ -2,9 +2,8 @@
 // hand-built one instead of sitting beside it.
 //
 // The problem it closes: json-editor-ui could render any JSON, but it could not be told anything
-// domain-specific, so every view that needed a domain affordance kept its own editor. Two editors,
-// then three. The UI contract called for this descriptor on day one and it was never built, which
-// is the whole reason map.js still hand-rolls ~550 lines of field rendering.
+// domain-specific, so every view that needed a domain affordance kept its own editor. map.js still
+// hand-rolls ~550 lines of field rendering rather than going through this path.
 //
 // THE BINDING RULE: nothing here knows what DayZ is. No field names, no "-1 means inherit", no
 // waypoints. The caller passes functions and lists; this resolves them per field. If a change here

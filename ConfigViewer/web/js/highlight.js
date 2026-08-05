@@ -1,6 +1,6 @@
 // highlight.js — dependency-free syntax highlighting for the file + docs viewers. Runs on
-// ESCAPED text (escapeHtml from ui.js), inserting only our own <span> classes. Extracted from
-// index.html (P1 modular split). Shared by editor.js (File view) and the docs renderer.
+// ESCAPED text (escapeHtml from ui.js), inserting only our own <span> classes. Shared by
+// editor.js (File view) and the docs renderer.
 import { escapeHtml } from './ui.js';
 
 export function detectLang(path) {

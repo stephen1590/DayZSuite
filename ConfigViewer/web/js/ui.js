@@ -1,5 +1,5 @@
 // ui.js — shared UI + text primitives used across every tab: the transient toast, and the
-// HTML-escapers every render path relies on. Extracted from index.html. Native ES module.
+// HTML-escapers every render path relies on. Native ES module.
 import { el } from './dom.js';
 
 let toastTimer;

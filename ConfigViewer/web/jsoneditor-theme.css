@@ -81,6 +81,8 @@
 /* delete = red X (bumped past the generic muted); deleteall red too */
 .je-mount .json-editor-btntype-delete::before,.je-mount .json-editor-btntype-deleteall::before{ content:"\2715"; color:var(--danger) !important; }
 .je-mount .json-editor-btntype-copy::before{ content:"\29C9"; }
+/* our object-property twin of that button: same icon, right-justified like the lifted array controls */
+.je-mount .je-dup{ margin-left:auto; }
 /* move up / down via the runtime btn-moveup/-movedown classes */
 .je-mount .json-editor-btn-moveup::before{ content:"\2191"; }
 .je-mount .json-editor-btn-movedown::before{ content:"\2193"; }
@@ -93,16 +95,24 @@
 .je-mount.je-stacked div:has(> label.je-form-input-label) > label.je-form-input-label{ display:block; margin:0 0 2px; }
 
 /* ===================== jump-to-node navigator ===================== */
-/* ONE height for both navigator panes (owner 2026-08-01: "make jn-editor and jn-json have
-   independent scrolling"). Declared once on purpose - two literals drift, and the moment the
-   panes differ in height you are scrolling one out of alignment with the other, which defeats
-   showing them side by side. */
+/* ONE height for both navigator panes, declared once on purpose - two literals drift, and the
+   moment the panes differ in height you are scrolling one out of alignment with the other,
+   which defeats showing them side by side. */
 .jn-wrap{ display:flex; flex-direction:column; gap:8px; min-height:340px; --jn-pane-h:62vh; }
 .jn-bar{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-height:20px; }
 .jn-bar .jn-crumb{ color:var(--muted); cursor:pointer; padding:1px 5px; border-radius:4px; }
 .jn-bar .jn-crumb:hover{ background:color-mix(in srgb,var(--fg) 10%,transparent); color:var(--fg); }
 .jn-bar .jn-crumb.jn-cur{ color:var(--accent); font-weight:600; cursor:default; }
 .jn-bar .jn-sep{ color:var(--faint); }
+/* The JSON map is a projection, committed on demand and never rebuilt per keystroke - rebuilding
+   the whole document's markup on every change stalls. It says when it is behind; the button
+   beside it is how it catches up. */
+.jn-bar .jn-mapstate{ color:var(--faint); font-size:10.5px; }
+.jn-bar .jn-mapstate.jn-stale{ color:var(--drift); font-weight:600; }
+.jn-bar .jn-refresh{ font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:6px;
+  background:transparent; color:var(--muted); border:1px solid var(--border); cursor:pointer; }
+.jn-bar .jn-refresh:not(:disabled):hover{ color:var(--fg); border-color:var(--accent); }
+.jn-bar .jn-refresh:disabled{ opacity:.4; cursor:default; }
 /* stretch, not flex-start: flex-start sizes each pane to its own content, so the taller one
    sets the page height and neither scrolls internally. */
 .jn-split{ display:flex; gap:12px; align-items:stretch; flex:1; min-height:0; flex-wrap:wrap; }

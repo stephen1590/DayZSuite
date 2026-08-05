@@ -2,16 +2,15 @@
 // BROWSER COPY of Api/app/src/lossless-json.ts — keep the two in sync.
 //
 // JavaScript numbers are IEEE-754 doubles: every integer above 2^53 silently snaps to the
-// nearest representable double. A Steam64 ID typed as 76561198065425750 became
-// 76561198065425740 on every save (proven 2026-07-17). This module keeps integer literals
-// EXACT end to end:
+// nearest representable double — a Steam64 ID typed as 76561198065425750 becomes
+// 76561198065425740 on save. This module keeps integer literals EXACT end to end:
 //   bigParse:     big integer literals in the JSON TEXT become sentinel strings BEFORE
 //                 JSON.parse ever sees them — no double is ever created
 //   bigStringify: sentinel strings are unwrapped back to bare literals AFTER stringify
 // The API server does the same on its side and normalizes to bare literals on disk.
 
-// Written as an explicit escape ON PURPOSE — a raw U+E000 in source is invisible, and if an
-// editor ever stripped it the restore regex would degrade to unquoting EVERY numeric string.
+// Written as an explicit escape on purpose: a raw U+E000 in source is invisible, and if an
+// editor stripped it, the restore regex would degrade to unquoting every numeric string.
 export const BIG = '\uE000';
 
 // Any pure-integer literal with 16+ digits may exceed 2^53; preserve them all (restoring a

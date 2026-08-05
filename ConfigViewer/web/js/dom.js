@@ -13,6 +13,7 @@ export const el = {
   mntUpdateInfo: $('mntUpdateInfo'), mntUpdQueue: $('mntUpdQueue'), mntUpdCancel: $('mntUpdCancel'), mntUpdLogWrap: $('mntUpdLogWrap'), mntUpdLog: $('mntUpdLog'),
   mntArm: $('mntArm'), mntStart: $('mntStart'), mntRestart: $('mntRestart'), mntStop: $('mntStop'), mntForce: $('mntForce'),
   mntMapSel: $('mntMapSel'), mntMapGo: $('mntMapGo'), mntMsg: $('mntMsg'), mntSend: $('mntSend'),
+  mntPicker: $('mntPicker'), mntCharts: $('mntCharts'), mntChartRange: $('mntChartRange'),
   signout: $('signout'), toast: $('toast'), themeToggle: $('themeToggle'),
   statsbar: $('statsbar'), sbStats: $('sbStats'), sbArm: $('sbArm'), sbRestart: $('sbRestart'),
   sbUpdate: $('sbUpdate'), sbUpdPill: $('sbUpdPill'), sbUpdQueue: $('sbUpdQueue'), sbUpdCancel: $('sbUpdCancel'), updPanel: $('updPanel'),

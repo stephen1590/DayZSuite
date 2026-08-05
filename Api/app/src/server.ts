@@ -8,6 +8,7 @@ import { makeAudit } from './audit.js';
 import { makeDayz } from './dayz.js';
 import { buildActions } from './actions.js';
 import { HeightmapStore } from './heightmap.js';
+import { makeTimeseries } from './timeseries.js';
 import { Cooldowns } from './guard.js';
 import { KeyStore } from './keys.js';
 import { registerCommands } from './routes/commands.js';
@@ -22,7 +23,8 @@ const cfg = loadConfig();
 const audit = makeAudit(cfg.auditDir);
 const dayz = makeDayz(cfg);
 const heightmaps = new HeightmapStore(cfg.heightmapsDir);
-const actions = buildActions(dayz, cfg.restartWarningSeconds, heightmaps);
+const timeseries = makeTimeseries(cfg.prometheusUrl);
+const actions = buildActions(dayz, cfg.restartWarningSeconds, heightmaps, timeseries);
 const cooldowns = new Cooldowns();
 const keyStore = new KeyStore(cfg.keysFile);
 

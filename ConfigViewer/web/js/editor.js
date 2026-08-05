@@ -3,9 +3,7 @@
 //   owned   -> own-editor.js   (whole file, live beside its frozen default, configs/set-own)
 //   types   -> types-editor.js (the CE types table, configs/set-types)
 //   the rest-> a read-only file view
-// The field-override editor that used to live here is DELETED (2026-07-31, owner: "No Overrides.
-// Just whole file ownership and modifying with a better UI/Syntax manager"). Nothing in this
-// module writes config-overrides.json, because there is no such document any more.
+// Nothing in this module writes config-overrides.json - there is no such document.
 import { $, el } from './dom.js';
 import { setGlobalMsg, escapeHtml, attr, stripBom } from './ui.js';
 import { apiPost } from './api-client.js';
@@ -15,7 +13,7 @@ import { getActiveMission, setActiveMission } from './state.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own module with its OWN save path (configs/set-types).
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
-import { renderOwnEditor, ownAnyDirty, ownDirtyNames, ownJsonHandle } from './own-editor.js';
+import { renderOwnEditor, renderOwnCompare, ownAnyDirty, ownDirtyNames, ownSetPath } from './own-editor.js';
 // Named-dirty: the header pill and the unload guard say WHICH files are unsaved.
 import { formatUnsaved, confirmSave } from './dirty-files.js';
 
@@ -34,6 +32,10 @@ let roRe = [];            // /dayz/configs/readonly — compiled globs of genera
 let disabledSet = new Set(); // /dayz/configs/disabled — relpaths whose owning mod is off in mods.conf; dropped from the tree
 let ownedFiles = new Set(); // /dayz/configs/owned — exact relpaths of category-'owned' file surfaces
 let ownedDirs = [];         // /dayz/configs/owned — folders whose json/xml files are owned (whole-file editable)
+// /dayz/configs/owned `edited` — owned files the box has a captured .defaults baseline for, i.e.
+// saved through the editor at least once. It is NOT a content comparison: a file saved back to
+// identical bytes still has a baseline, so the tree marker says "edited here", never "differs".
+let editedFiles = new Set();
 let rows = [];            // the merged tree rows (buildRows)
 let selKey = null;        // selected row key
 let selMode = null;       // null | 'edit' | 'own'
@@ -45,7 +47,7 @@ const fileCache = {};
 // holds none of its own: with the override document gone there is nothing here left to dirty.
 export function isDirty() { return typesAnyDirty() || ownAnyDirty(); }
 export function dirtyNames() { return [...typesDirtyNames(), ...ownDirtyNames()]; }
-// ONE pill renderer for both chromes (they used to hold three copies of this markup).
+// ONE pill renderer for both chromes.
 function dirtyPillText() { return formatUnsaved(dirtyNames()) || 'Unsaved changes'; }
 export function dirtyPillHtml() {
   return '<span id="ovrDirty" class="ovr-unsaved' + (isDirty() ? ' on' : '') + '" title="' +
@@ -109,8 +111,8 @@ function buildRows(items, writable, mission) {
     if (byRel.has(rel)) continue;                     // first listing wins (alias before folder copy)
     const row = makeRow(rel, c.name, c.label || c.name, c.group || 'General');
     // about/aboutUrl come from the registry row via CONFIG_MAP -> config-list. Set here rather
-    // than inside makeRow because this is the ONLY call site that has the API payload (synth()
-    // fabricates rows for override targets the curated list never returned). Absent = no block.
+    // than inside makeRow because this is the ONLY call site that has the API payload.
+    // Absent = no block.
     row.about = (c.about || '').trim();
     row.aboutUrl = (c.aboutUrl || '').trim();
     const w = wByKey.get(c.name) || wByKey.get(rel) || null;
@@ -136,25 +138,18 @@ function buildRows(items, writable, mission) {
     row.access = 'own'; row.writableName = w.name;
     byRel.set(rel, row); list.push(row);
   }
-  // Override entries with no curated row -> their own sections.
-  // (2026-07-31) A block here SYNTHESISED extra rows from config-overrides.json - every file
-  // the manifest patched appeared in the tree whether or not the registry declared it. That is
-  // how 22 undeclared surfaces got into the UI. The manifest is deleted: rows now come only from
-  // the registry-backed listings, so an undeclared file is a missing registry row to fix, not a
-  // ghost row to click.
-  // Final sweep: any row that resolves to a GENERATED (compiler-output) file is read-only,
-  // however it was created (curated listing, writable, or override-synth). This is the ONE place
-  // the generated rule is enforced in the UI, so every code path above inherits it.
+  // Rows come only from the registry-backed listings; an undeclared file is a missing registry
+  // row to fix, not a ghost row to click.
+  // Final sweep: any row resolving to a GENERATED (compiler-output) file is locked read-only,
+  // however it was created (curated listing or writable). This is the ONE place the generated
+  // rule is enforced in the UI, so every code path above inherits it.
   for (const r of list) { if (isGenerated(r.relpath)) { r.access = 'lock'; r.generated = true; } }
-  // Phase 5: AIPatrolSettings.json is MAP-OWNED - patrols and globals are edited on the Map tab
+  // AIPatrolSettings.json is MAP-OWNED - patrols and globals are edited on the Map tab
   // (direct-write, out of the override system). Read-only here so it is never override-patched
   // and the Patrols array is never dumped as a field blob.
   for (const r of list) { if (r.relpath && /(^|\/)mpmissions\/[^/]+\/expansion\/settings\/AIPatrolSettings\.json$/.test(r.relpath)) { r.access = 'lock'; r.mapOwned = true; } }
-  // Two-copy routing: an owned surface edits WHOLE in the own-editor. This used to carry a second
-  // condition - `&& ownLayerCount(r) === 0` - so a file still holding override rows was denied the
-  // whole-file editor until its cutover emptied the block. With the override document deleted that
-  // count is always zero, so the condition is not simplified away, it is SATISFIED away: being
-  // declared owned in the registry is now the whole test.
+  // Two-copy routing: an owned surface edits WHOLE in the own-editor - being declared owned in
+  // the registry is the whole test.
   for (const r of list) {
     if (r.access === 'edit' && !r.types && !r.generated && !r.mapOwned && !r.readonly
         && isOwnedRel(r.relpath)) r.ownFile = true;
@@ -164,12 +159,8 @@ function buildRows(items, writable, mission) {
   // on disk (reversible); re-enable the mod + redeploy the Api.
   return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
-// THE single answer to "can this row be written". The nav badge and the editor chrome both read
-// it, because them disagreeing twice in ONE DAY is what made this function exist:
-//   - it started as `access !== 'lock'`, so every 'view' row badged rw and then opened read-only
-//   - the fix `ownFile || types` missed `access === 'own'` (the file-list surface: ban/allowlist),
-//     so those showed a Save button under an ro badge - the same bug wearing the other mask
-// Three write paths, ONE predicate. A fourth is added HERE, never beside a badge.
+// THE single answer to "can this row be written". The nav badge and the editor chrome both
+// read it. Three write paths, ONE predicate. A fourth is added HERE, never beside a badge.
 function canWrite(r) {
   if (!r) return false;
   return !!(r.ownFile             // owned whole-file editor (own-write)
@@ -207,18 +198,18 @@ function renderFilesNav() {
       bySub.get(sub).push(Object.assign({}, r, { file: slash >= 0 ? r.label.slice(slash + 1) : r.label }));
     }
     const rowHtml = (r) => {
-      // Owner 2026-07-31: "how come the RO/RW only applies to a few items? Be consistent." Every
-      // row states its access, always - no empty fallback. The override COUNT that used to ride
-      // alongside (and sometimes replace) this badge is gone with the document it counted.
-      // FIXED 2026-08-02: this read `r.access !== 'lock'`, so every 'view' row - a reference
-      // surface with no edit path at all - badged as rw and then opened read-only. The badge
-      // promised something the panel refused. `access` is edit|view|lock, not a boolean.
-      // rw now means exactly what the panel will let you do: an owned whole-file editor, or the
-      // types editor. Everything else is ro, which is the truth.
+      // Every row states its access, always - no empty fallback. `access` is edit|view|lock,
+      // not a boolean; rw means exactly what the panel will let you do (an owned whole-file
+      // editor, or the types editor) - everything else is ro.
       const writable = canWrite(r);
       const badge = writable ? '<span class="own-badge">rw</span>' : '<span class="ro-badge">ro</span>';
+      // Beside the NAME, never in the badge slot - a second element there would displace the
+      // access badge.
+      const edited = editedFiles.has(r.relpath)
+        ? '<span class="edited-mark" title="edited here — saved through this editor at least once, so the box holds a frozen baseline for it">\u270e</span>'
+        : '';
       return '<div class="side-item' + (r.key === selKey ? ' active' : '') + '" data-key="' + attr(r.key) + '" title="' + attr(r.relpath || r.label) + '">' +
-        '<span class="fn">' + escapeHtml(r.file) + '</span>' + badge + '</div>';
+        '<span class="fn">' + escapeHtml(r.file) + '</span>' + edited + badge + '</div>';
     };
     let inner = (bySub.get('') || []).map(rowHtml).join('');
     for (const sub of [...bySub.keys()].filter(Boolean).sort()) inner += '<div class="side-sub2">' + escapeHtml(sub) + '</div>' + bySub.get(sub).map(rowHtml).join('');
@@ -227,7 +218,7 @@ function renderFilesNav() {
     i++;
   }
   if (!rows.length) html = '<span class="meta" style="padding:10px;display:block">No files exposed.</span>';
-  el.filesNav.innerHTML = html + '<div class="ovr-add" id="ovrAddFile"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add a file to override…</div>';
+  el.filesNav.innerHTML = html;
 }
 
 export function showFilesSurface() {
@@ -243,17 +234,12 @@ function selectRow(key) {
   if (el.workspace) el.workspace.scrollTop = 0;   // fresh file: show the editor header + first fields, not wherever the last file was scrolled
   if (row.access === 'own') { el.editorPage.classList.remove('types-mode'); selMode = 'own'; renderFilesNav(); showFilesSurface(); loadOwn(row); return; }
   selMode = 'edit';
-  // EDIT is the default view for every OWNED surface, XML included (owner call 2026-07-31,
-  // The Fields view is retired for those: it renders the override DELTA, and
-  // the delta engine is being deleted (A3), so a field grid is a view onto something going away.
-  //
-  // server-settings.json is the ONE exception and it is not an exception to the rule - it is a
-  // different KIND of surface. It is not a file the game reads; it is the INPUT set that
-  // Apply-ServerCfg turns into serverDZ.cfg (which is itself a read-only generated artifact).
-  // That makes it a GENERATOR INPUT: the UI edits the inputs, never the generated output.
-  // Its form is purpose-built for generator parameters - custom fields that drive other things -
-  // so whole-file editing would be meaningless here and would let an admin type keys the
-  // renderer's allowlist silently drops. It keeps its form.
+  // EDIT is the default view for every OWNED surface, XML included. server-settings.json is the
+  // ONE exception, and it is not an exception to the rule - it is a different KIND of surface:
+  // not a file the game reads, but the INPUT set Apply-ServerCfg turns into serverDZ.cfg (itself
+  // a read-only generated artifact). It is a GENERATOR INPUT - the UI edits the inputs, never
+  // the generated output - so its purpose-built form stays rather than whole-file editing, which
+  // would let an admin type keys the renderer's allowlist silently drops.
   // A locked row has nothing to edit, so it falls back to the read-only file view.
   edView = row.types ? 'types'
     : (row.access === 'lock' || row.kind === 'other') ? 'file'
@@ -293,6 +279,7 @@ export async function loadFiles(preserve) {
     disabledSet = new Set(disR.files || []);
     ownedFiles = new Set(ownR.files || []);
     ownedDirs = ownR.dirs || [];
+    editedFiles = new Set(ownR.edited || []);   // absent on an older API = no marks, never a wrong mark
   } catch (err) {
     if (handle(err)) return;
     el.filesNav.innerHTML = '<span class="meta" style="padding:10px;display:block">Could not load: ' + escapeHtml(err.message) + '</span>';
@@ -313,10 +300,9 @@ export async function loadFiles(preserve) {
 // XML files written by the box (XmlDocument.Save) carry a UTF-8 BOM; as a JS string
 // that's a leading U+FEFF, which breaks JSON.parse and can confuse DOMParser.
 // stripBom -> js/ui.js (shared with the map's JSON loads).
-// A row's content comes from its curated read alias. The configs/target fallback that used to
-// sit here is gone with the override engine: it existed to read files the MANIFEST named but the
-// registry did not. Every registry row carries a read alias (asserted by the registry contract
-// test), so a row without one is a declaration bug, not a path to route around.
+// A row's content comes from its curated read alias. Every registry row carries a read alias
+// (asserted by the registry contract test), so a row without one is a declaration bug, not a
+// path to route around.
 async function fetchRowFile(row) {
   const ck = 'f|' + row.key;
   if (fileCache[ck]) return fileCache[ck];
@@ -368,10 +354,17 @@ function ownChrome(row) {
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(row.scope === 'mission' ? 'mpmissions · ' + (row.mission || '') + '/' : 'files/') + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
     '<div class="ovr-pact">' +
       dirtyPillHtml() +
+      // Editing and comparing are different jobs, so they are different views - the same segment
+      // switcher every other row uses. Comparing is never the landing view.
+      '<div class="seg" id="ovrSeg"><button data-v="edit" class="' + (edView === 'edit' ? 'on' : '') + '">Editor</button>' +
+      '<button data-v="compare" class="' + (edView === 'compare' ? 'on' : '') + '">Compare with default</button></div>' +
       '<button class="btn-sm" id="ovrCopy" type="button">Copy</button>' +
     '</div></div>' +
     aboutBlock(row) +
-    '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>owned file — edited whole; the diff vs the frozen default is display-only</span>' +
+    '<div class="ovr-sum"><span class="stat d"><span class="dot d"></span>' +
+    (edView === 'compare'
+      ? 'live file beside the frozen default — read-only; the box never applies a diff'
+      : 'owned file — edited whole, saved whole') + '</span>' +
     '<span class="stat" style="margin-left:auto">Restart to apply</span></div>';
 }
 // A read-only row (registry reference/browse surfaces): filename, About, and the file itself.
@@ -408,6 +401,12 @@ async function renderBody(row) {
   // and the LIST is the sole scroller (types-mode CSS on #editorPage). Everything else — the
   // overrides editor, and a types row's own 'file' view — keeps the normal workspace scroll.
   // Owned rows: the whole-file two-copy editor (own-editor.js) - its own load/save path.
+  if (row.ownFile && edView === 'compare') {
+    el.editorPage.classList.remove('types-mode');
+    const text = await renderOwnCompare(row, body);
+    if (text != null && selKey === row.key) lastFileText = text;
+    return;
+  }
   if (row.ownFile) {
     el.editorPage.classList.remove('types-mode');
     const text = await renderOwnEditor(row, body, {
@@ -415,8 +414,8 @@ async function renderBody(row) {
       onSaved: () => { delete fileCache['f|' + row.key]; },
     });
     if (text != null && selKey === row.key) lastFileText = text;
-    // E5: the generator-input driver keeps its context panel ABOVE the document - the numbers
-    // it reports are the file's own, so it can only ever agree with what is on screen.
+    // The generator-input driver keeps its context panel ABOVE the document - the numbers it
+    // reports are the file's own, so it can only ever agree with what is on screen.
     if (isCycleRow(row) && text != null) {
       let doc = null; try { doc = JSON.parse(stripBom(text)); } catch { /* unparseable: skip the panel, the editor still works */ }
       if (doc) { body.insertAdjacentHTML('afterbegin', cycleHtml(doc)); wireCycle(row); }
@@ -436,9 +435,8 @@ async function renderBody(row) {
     if (text != null && selKey === row.key) lastFileText = text;   // feed the Copy button
     return;
   }
-  // Everything else is READ-ONLY now. A row is either owned (handled above), types (handled
-  // above), or a reference/generated file we only display. There is no third editable state -
-  // that was the override editor, and it is gone.
+  // Everything else is READ-ONLY: a row is either owned (handled above), types (handled above),
+  // or a reference/generated file only displayed here. There is no third editable state.
   body.innerHTML = '<span class="meta" style="padding:16px;display:block">Loading file\u2026</span>';
   const file = await fetchRowFile(row);
   if (selKey !== row.key) return;                    // selection changed while awaiting
@@ -461,12 +459,6 @@ async function renderBody(row) {
 //     day_real = D / X        night_real = (24 - D) / (X * Y)      cycle = day + night
 // where D = in-game daylight hours. D varies by map/season; 12 is the standard assumption and
 // is stated in the panel rather than hidden.
-//
-// NOTE: this supersedes the formula that used to be in docs/SETUP.md and .internal/OPERATIONS.md
-// (full = 24/X, night = 24/(X*Y), day = full - night). That one treats all 24 in-game hours as
-// running at the day rate and then carves night out of the result, so it overstates the cycle
-// and breaks outright at Y=1 - no night acceleration reported day = 0 rather than an even split.
-// Both docs were corrected to match this. 2026-07-22.
 //
 // Map selection is NOT here - that is map.env -> the unit's -mission=; serverDZ.cfg's Missions
 // block is untouched by the renderer.
@@ -506,11 +498,8 @@ function cycleOutHtml(x, y) {
     ? '<div class="cyc-warn">Night acceleration below 1 makes night pass slower than daylight — night becomes the longest part of the cycle.</div>' : '';
   return bar + nums + warn;
 }
-// The day/night cycle editor. Owner 2026-07-31: "you got rid of the day/night cycle editor
-// view.... THAT WAS USEFUL VISUALLY. Keep it. That had no bearing on the 'form input' method."
-// Correct - retiring the Fields VIEW (E5) was never a reason to lose this. It is back, and the
-// sliders now drive the SAME document the editor below holds (via the navigator's setValue),
-// instead of writing override rows into config-overrides.json the way they used to.
+// The day/night cycle editor. The sliders drive the SAME document the editor below holds, via
+// the navigator's setValue.
 function cycleHtml(doc) {
   const num = (k, d) => { const n = Number(doc && doc[k]); return (isFinite(n) && n > 0) ? n : d; };
   const x = num(CYCLE_X, 5), y = num(CYCLE_Y, 4);
@@ -541,12 +530,16 @@ function wireCycle(row) {
     return { x: g(CYCLE_X), y: g(CYCLE_Y) };
   };
   const redraw = () => { const v = readAll(); if (out) out.innerHTML = cycleOutHtml(v.x, v.y); };
-  const commit = (sel, valStr) => {
+  const commit = async (sel, valStr) => {
     const n = Number(valStr);
     if (!isFinite(n) || n <= 0) { setGlobalMsg('Acceleration must be a positive number.', true); return; }
-    const handle = ownJsonHandle(row.key);   // server-settings.json is an owned file - one editor, one handle
-    if (!handle || !handle.setValue) { setGlobalMsg('Edit the value in the document below - this file is not open in the structured editor.', true); return; }
-    handle.setValue([sel], n);
+    // One document, one write path: the slider edits whichever side is holding it. ownSetPath
+    // moves the gold box to the structured side if it is not already there, warning first if
+    // that costs the admin their raw formatting - the same prompt as clicking the pane.
+    if (!(await ownSetPath(row.key, [sel], n))) {
+      setGlobalMsg('The document is not in a state the sliders can edit - fix the raw text first.', true);
+      return;
+    }
     updateDirtyUi();
     setGlobalMsg('Unsaved change - press Save.', false);
   };
@@ -594,16 +587,13 @@ async function saveOwnFile() {
   const cred = loadCred();
   const row = currentRow();
   if (!cred || !row || !row.writableName) return;
-  // Name the file before writing, like every other save path (found missing 2026-07-31 by the
-  // wiring assertion, which only listed three paths and never covered this one).
+  // Name the file before writing, like every other save path.
   if (!confirmSave([row.writableName])) return;
   el.ownSave.disabled = true;
   setGlobalMsg('Saving…', false);
   try {
-    // U2 2026-08-02: was configs/set-file -> the bespoke file-write verb. That verb existed only
-    // because own-write refused any extension but .json/.xml (U5 deleted that refusal), so these
-    // .txt lists now go through the ONE generic write path like every other owned file.
-    // set-own takes the ServerDir-relative PATH; set-file took a short name from file-list.
+    // These .txt lists go through the ONE generic write path (set-own) like every other owned
+    // file; set-own takes the ServerDir-relative PATH.
     await apiPost('/dayz/configs/set-own', cred, { path: row.relpath || row.writableName, content: el.ownTa.value });
     setGlobalMsg('Saved — previous version snapshotted on the box.', false, true);
     Object.keys(fileCache).forEach((k) => delete fileCache[k]);

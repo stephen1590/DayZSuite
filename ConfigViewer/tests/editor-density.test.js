@@ -1,12 +1,8 @@
-// Owner (2026-07-31): "Reduce the padding between objects. It looks like a major one is
-// je-object__controls adding 15 pixels even if there aren't controls present. And
-// je-indented-panel has massive 10x padding. we don't need that. Where else?"
-//
-// Measured before the change - and the library styles NONE of these classes, so every pixel
-// is ours (jsoneditor-theme.css):
+// The library styles NONE of these classes, so every pixel of nesting inset is ours
+// (jsoneditor-theme.css):
 //   tier rule, applied to EVERY nested node   padding-left 10 + margin-left 3 = 13px
 //   .je-indented-panel                        padding-left 11 + margin-left 7 = 18px
-//   -> 31px of horizontal inset PER NESTING LEVEL, and 12px of vertical rhythm.
+//   -> 31px of horizontal inset PER NESTING LEVEL, unbudgeted, plus 12px of vertical rhythm.
 //
 // Nesting compounds, so this is the thing that makes a deep document unreadable. This test is a
 // BUDGET: the theme may not spend more than the numbers below per level. It is a regression guard
@@ -63,16 +59,12 @@ test('the tier guide itself survives - density must not delete the visual hierar
   assert.ok(px(TIER, 'padding-left') >= 4, 'keep enough inset that the guide reads as a tier, not a smudge');
 });
 
-// Owner, 2026-08-01: "Please make jn-editor and jn-json have independent scrolling."
+// Both panes must be independently scrollable - an unbounded pane grows to its content and
+// pushes the whole page, scrolling the other pane out of view, which defeats the entire point of
+// showing them side by side.
 //
-// Before: .jn-json was capped (max-height 60vh, overflow auto) but .jn-editor had NO bound, so
-// the form pane grew to its content and pushed the whole page. Scrolling to the bottom of a long
-// form scrolled the document away from the JSON preview - the two panes could not be read against
-// each other, which is the entire point of showing them side by side.
-//
-// Both panes must be independently scrollable AND share one height, so neither can drift past the
-// other. The height lives in a custom property for exactly that reason: two literals would be two
-// places to change.
+// Both panes must also share one height, so neither can drift past the other. The height lives
+// in a custom property for exactly that reason: two literals would be two places to change.
 test('the navigator panes scroll independently', () => {
   const ed = CSS.match(/\.jn-editor\s*\{([^}]*)\}/);
   const js = CSS.match(/\.jn-json\s*\{([^}]*)\}/);

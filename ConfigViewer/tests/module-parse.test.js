@@ -1,14 +1,13 @@
 // EVERY shipped browser module must parse AS A MODULE.
 //
-// Why this exists (2026-07-31): a bad edit left a duplicate `const CYCLE_RESTART_H` in editor.js.
-// It shipped, and the app died at load with "Uncaught SyntaxError: redeclaration of const" - the
-// owner could not log in. I had "syntax checked" it with `node --check editor.js`, which parses a
-// .js file in the SCRIPT goal and does not report that redeclaration. The same bytes as .mjs are
-// rejected immediately. So the check I was trusting could not see the class of error I made.
+// `node --check foo.js` parses in the SCRIPT goal, which does not catch a duplicate `const NAME`
+// redeclaration - the same bytes parsed as .mjs (the MODULE goal, matching the browser's
+// <script type="module">) are rejected immediately. A file that passes --check can still crash
+// the browser at load with "Uncaught SyntaxError: redeclaration of const".
 //
 // This runs every file the deploy actually ships through a MODULE-goal parse. It is cheap, it is
-// total (no file list to keep in sync - it globs), and it fails the deploy via the T1 runner
-// before a broken bundle reaches a browser.
+// total (no file list to keep in sync - it globs), and it fails the deploy before a broken bundle
+// reaches a browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';

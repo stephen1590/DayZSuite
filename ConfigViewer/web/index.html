@@ -209,6 +209,25 @@
             <h3>Players online</h3>
             <div class="mnt-body" id="mntPlayersBody"><span class="meta">Loading…</span></div>
           </section>
+
+          <!-- Charts: history from the on-box Prometheus, via POST /dayz/timeseries.
+               The browser sends METRIC KEYS from the server-owned allowlist and never
+               PromQL, so there is no query to inject and no new credential anywhere.
+               Gaps are drawn as bands, never interpolated — see js/charts.js. -->
+          <section class="mnt-card span2">
+            <h3>Charts
+              <span class="rangebtns" id="mntChartRange">
+                <button type="button" data-range="6" aria-pressed="false">6h</button>
+                <button type="button" data-range="12" aria-pressed="false">12h</button>
+                <button type="button" data-range="24" aria-pressed="true">24h</button>
+              </span>
+            </h3>
+            <div class="mnt-body">
+              <div class="mnt-lbl">Show</div>
+              <div class="picker" id="mntPicker"><span class="meta">Loading…</span></div>
+              <div id="mntCharts"></div>
+            </div>
+          </section>
         </div>
       </div>
     </section>

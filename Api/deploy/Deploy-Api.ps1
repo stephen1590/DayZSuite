@@ -108,6 +108,23 @@ if (-not (Test-Path $registryPath)) {
     throw "Config registry not found at: $registryPath`nThe web config allowlist is defined in DayZ-Server/config-registry.json at the repo root, or set 'ConfigRegistry' in deploy.config.json."
 }
 $registry = Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json
+
+# --- Prometheus URL: DERIVED, never a second copy ----------------------------
+# The read-only `timeseries` action queries the on-box Prometheus over loopback for the
+# Maintenance tab's charts. WHERE Prometheus listens is owned by the Monitoring stack's own
+# deploy.config.json (PrometheusListen); writing the port here as well would be exactly the
+# hand-synced copy the structural rules call a defect. Same shape as the config allowlist
+# above, which is derived from DayZ-Server/config-registry.json rather than restated.
+# A box with no Monitoring deploy falls back to the documented loopback default and the
+# charts report "history unavailable" - an optional stack must not fail an Api deploy.
+$monitoringCfgPath = Join-Path $PSScriptRoot '../../Monitoring/deploy/deploy.config.json'
+$prometheusUrl = 'http://127.0.0.1:9090'
+if (Test-Path $monitoringCfgPath) {
+    $monListen = (Get-Content -Raw -LiteralPath $monitoringCfgPath | ConvertFrom-Json).PrometheusListen
+    if ($monListen) { $prometheusUrl = "http://$monListen" }
+} else {
+    Write-Host "NOTE: no Monitoring deploy config at $monitoringCfgPath - charts fall back to $prometheusUrl" -ForegroundColor Yellow
+}
 $allConfigs = @($registry.surfaces) | Where-Object { $_ -and ($_.web -ne 'none') } | ForEach-Object {
     if ($_.dir) { [pscustomobject]@{ group = $_.group; dir = $_.dir; subfolders = $_.subfolders } }
     else        { [pscustomobject]@{ name = $_.name; path = $_.box; writable = [bool]$_.writable; group = $_.group; label = $_.label; ro = ($_.web -eq 'view'); kind = "$($_.web)"; about = $_.about; aboutUrl = $_.aboutUrl } }
@@ -144,7 +161,7 @@ foreach ($c in $dirEntries) {
 # name is the API key (stable); group + label are display-only (default 'General' / name);
 # ro='1' locks the row read-only in the editor (web:'view' surfaces); kind is the registry
 # 'web' value verbatim so dayz-ctl types-write can gate on kind 'types' and the editor can pick
-# a surface-specific view; about + aboutUrl (2026-07-30) render as the "About this file" line
+# a surface-specific view; about + aboutUrl render as the "About this file" line
 # under the filename, with aboutUrl as its citation link. dayz-ctl parses all eight;
 # config/config-target still key off fields 1-2, so appending 3-8 is backward-safe, and a row
 # with no about simply emits two empty trailing fields.
@@ -235,10 +252,10 @@ if ($disabledTargets) { Write-Host "Config surfaces hidden (owning mod disabled 
 # READS the file (the game vs a compiler), not in how it is written. Safe because the compiler's
 # allowlist is closed and enforced at RENDER time - an unlisted key is ignored with a warning no
 # matter who wrote it - so whole-file editing cannot widen what reaches serverDZ.cfg.
-# types rows are STILL EXCLUDED, deliberately. own-write now carries their structural CE check
-# (2026-08-02) but the types editor still saves via types-write, and it only knows a row NAME, not
-# the path set-own takes. Including them here before that is threaded through would give those two
-# files TWO live write paths at once - the dual-write defect. Flip this in the SAME change that
+# types rows are STILL EXCLUDED, deliberately. own-write carries their structural CE check, but
+# the types editor still saves via types-write, and it only knows a row NAME, not the path
+# set-own takes. Including them here before that is threaded through would give those two files
+# TWO live write paths at once - the dual-write defect. Flip this in the SAME change that
 # migrates types-editor.js and deletes the verb.
 # Exactly ONE input row exists today; tests/server-settings-surface.test.ps1 fails if a second
 # appears, so a new input is classified deliberately instead of silently becoming writable.
@@ -335,6 +352,7 @@ $appConfig = [ordered]@{
     auditDir        = $cfg.AuditDir
     keysFile        = if ($cfg.KeysFile) { $cfg.KeysFile } else { '/var/lib/api/keys.json' }
     heightmapsDir   = if ($cfg.HeightmapsDir) { $cfg.HeightmapsDir } else { '/var/lib/api/heightmaps' }
+    prometheusUrl   = $prometheusUrl
     rateLimit       = [ordered]@{ max = [int]$cfg.RateLimit.Max; windowMs = [int]$cfg.RateLimit.WindowMs }
     vpp             = [ordered]@{ enabled = [bool]$cfg.Vpp.Enabled; rules = @($cfg.Vpp.Rules) }
 }

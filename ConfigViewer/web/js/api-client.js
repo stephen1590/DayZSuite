@@ -1,11 +1,10 @@
 // api-client.js — the wire layer for the DayZ Config UI. Signs each request (HMAC-SHA256,
 // Web Crypto) and POSTs it to the same-origin /api proxy; owns the shared rate-limit backoff.
-// Extracted from index.html (P1 modular split). Native ES module, no build step.
+// Native ES module, no build step.
 //
 // Extension is .js (NOT .mjs) on purpose: the vhost sends X-Content-Type-Options: nosniff, and
 // .mjs is absent from nginx's default mime.types — it would be served as octet-stream and the
-// browser would refuse to execute the module. .js gets a JS MIME (proven: the vendored Swagger
-// bundle loads on this box).
+// browser would refuse to execute the module. .js gets a JS MIME.
 
 const API = '/api';
 export const enc = new TextEncoder();

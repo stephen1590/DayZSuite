@@ -1,5 +1,5 @@
 // logs.js — the Logs tab: browse the box RPT/ADM logs by day, page a bounded window,
-// filter (grep -E), follow the tail. Extracted from index.html (P1 modular split).
+// filter (grep -E), follow the tail.
 import { el } from './dom.js';
 import { toast, escapeHtml, attr } from './ui.js';
 import { apiPost, rateLimited } from './api-client.js';

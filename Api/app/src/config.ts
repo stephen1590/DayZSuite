@@ -37,6 +37,13 @@ export interface AppConfig {
   playerLedgerFile: string;
   /** Per-map baked terrain grids for the surface-y action (see heightmap.ts). */
   heightmapsDir: string;
+  /**
+   * The on-box Prometheus, for the read-only `timeseries` action. Loopback and
+   * unauthenticated by design — it is not reachable off the box. Deploy-Api derives this
+   * from the Monitoring stack's own PrometheusListen so the port has ONE owner; the default
+   * below is only reached on a box with no Monitoring deploy, where charts read "unavailable".
+   */
+  prometheusUrl: string;
   rateLimit: { max: number; windowMs: number };
   /** HMAC-SHA256 shared secret for the /dayz command API (from env). */
   secret: string;
@@ -68,6 +75,7 @@ export function loadConfig(): AppConfig {
     keysFile: raw.keysFile ?? '/var/lib/api/keys.json',
     playerLedgerFile: raw.playerLedgerFile ?? '/var/lib/api/player-ledger.json',
     heightmapsDir: raw.heightmapsDir ?? '/var/lib/api/heightmaps',
+    prometheusUrl: raw.prometheusUrl ?? 'http://127.0.0.1:9090',
     rateLimit: {
       max: Number(raw.rateLimit?.max ?? 30),
       windowMs: Number(raw.rateLimit?.windowMs ?? 60_000),

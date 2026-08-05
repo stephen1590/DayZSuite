@@ -10,6 +10,9 @@
 // gains privilege.
 import type { DayzBridge } from './dayz.js';
 import type { HeightmapStore } from './heightmap.js';
+import type { TimeseriesQuery } from './timeseries.js';
+import { METRICS, RANGE_HOURS } from './timeseries.js';
+import { statusView, humanDuration } from './status-view.js';
 import { sanitizeText } from './dayz.js';
 import { bigStringify } from './lossless-json.js';
 import { SETTINGS_KEYS, isSettingsKey } from './settings-keys.js';   // generalized AI-settings write allowlist (patrols/locations)
@@ -24,15 +27,6 @@ function fail(statusCode: number, message: string): ActionError {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function humanDuration(sec: number): string {
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
 }
 
 
@@ -89,7 +83,7 @@ const UPDATE_STATUS_SCHEMA: JSONSchema = {
   },
 };
 
-export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: HeightmapStore): Record<string, Action> {
+export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: HeightmapStore, timeseries: TimeseriesQuery): Record<string, Action> {
   // Give connected players a chance to reach safety before an action that's about to
   // disconnect them: broadcast, then wait. Skipped when nobody's on, or the count
   // can't be verified (RCon down) -- don't block the action on a guess, the player
@@ -139,13 +133,20 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     status: {
       destructive: false,
       readOnly: true,
-      describe: 'server info: state, uptime, players, map, mod list, next scheduled restart',
+      describe: 'server info: state, uptime, players (count + roster), map, mod list, next scheduled restart, and the unit footprint (memory, threads, log + persistence sizes, restarts). ONE call covers the whole server picture — it makes exactly one unit snapshot and one RCon query, so a dashboard needs neither a second players read nor the dayz half of /sysload.',
       schema: { response: { type: 'object', properties: {
         status: { type: 'string' }, since: { type: 'string', nullable: true },
         uptimeSeconds: { type: 'integer', nullable: true }, uptimeHuman: { type: 'string', nullable: true },
-        players: { type: 'integer', nullable: true }, map: { type: 'string', nullable: true },
+        players: { type: 'integer', nullable: true },
+        roster: { type: 'array', items: { $ref: '#/components/schemas/Player' } },
+        map: { type: 'string', nullable: true },
         modCount: { type: 'integer' }, mods: { type: 'array', items: { $ref: '#/components/schemas/Mod' } },
         restart: { type: 'object', nullable: true },
+        unit: { type: 'object', properties: {
+          memoryMb: { type: 'number' }, tasks: { type: 'integer' }, cpuTimeSec: { type: 'integer' },
+          unitRestarts: { type: 'integer' }, logDirMb: { type: 'number' }, persistenceMb: { type: 'number' },
+          mainPid: { type: 'integer', nullable: true },
+        } },
       } } },
       async run() {
         // One dayz-ctl round-trip for the unit snapshot, one RCon call for players.
@@ -155,36 +156,44 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           dayz.info(),
           dayz.players().catch(() => ({ count: null, players: [], raw: '' })),
         ]);
-        const now = Math.floor(Date.now() / 1000);
-        const running = i.state === 'active' && i.sinceEpoch > 0;
-        const up = running ? Math.max(0, now - i.sinceEpoch) : null;
+        return statusView(i, p, Math.floor(Date.now() / 1000));
+      },
+    },
 
-        // The native messages.xml scheduler stops the server <deadline> minutes
-        // after start (Restart=always brings it back), so next restart = unit
-        // start + deadline. Estimated: mission load shifts it by a minute or two.
-        let restart: Record<string, unknown> | null = null;
-        if (running && i.deadlineMin > 0) {
-          const at = i.sinceEpoch + i.deadlineMin * 60;
-          restart = {
-            everyMinutes: i.deadlineMin,
-            nextAt: new Date(at * 1000).toISOString(),
-            inSeconds: Math.max(0, at - now),
-            inHuman: humanDuration(Math.max(0, at - now)),
-            estimated: true,
-          };
-        }
-
-        return {
-          status: i.state,
-          since: i.sinceEpoch > 0 ? new Date(i.sinceEpoch * 1000).toISOString() : null,
-          uptimeSeconds: up,
-          uptimeHuman: up === null ? null : humanDuration(up),
-          players: p.count,
-          map: i.mission,
-          modCount: i.mods.length,
-          mods: i.mods,
-          restart,
-        };
+    // Historical charts for the Maintenance tab. Reads the on-box Prometheus over loopback —
+    // no dayz-ctl, no sudo, no pwsh. The browser sends KEYS from the server-owned table in
+    // timeseries.ts and can never express a query, so there is nothing to inject; Grafana is
+    // not in the path, so no allow_embedding / anonymous auth / public dashboard is needed.
+    // The reply carries each metric's CURRENT value beside its history, which is what lets the
+    // tab drop a separate poll instead of gaining one.
+    timeseries: {
+      destructive: false,
+      readOnly: true,
+      describe: `historical series for the charts: { "metrics": ["players_online", ...], "hours": ${RANGE_HOURS.join('|')} }. Keys come from the server-owned allowlist (${METRICS.map((m) => m.key).join(', ')}) — PromQL is never accepted. Each metric comes back with its points AND its latest value, so a caller needs no second request. Read-only, loopback Prometheus, briefly cached.`,
+      schema: {
+        body: { type: 'object', properties: {
+          metrics: { type: 'array', items: { type: 'string', enum: METRICS.map((m) => m.key) },
+            description: 'metric keys to chart; the pinned one is always included' },
+          hours: { type: 'integer', enum: [...RANGE_HOURS], description: 'window size' },
+        } },
+        response: { type: 'object', properties: {
+          hours: { type: 'integer' }, step: { type: 'integer' },
+          from: { type: 'integer' }, to: { type: 'integer' },
+          available: { type: 'array', items: { type: 'object', properties: {
+            key: { type: 'string' }, label: { type: 'string' }, series: { type: 'string' },
+            unit: { type: 'string' }, pinned: { type: 'boolean' }, on: { type: 'boolean' },
+          } } },
+          metrics: { type: 'array', items: { type: 'object', properties: {
+            key: { type: 'string' }, label: { type: 'string' }, series: { type: 'string' }, unit: { type: 'string' },
+            points: { type: 'array', items: { type: 'array', items: { type: 'number' } },
+              description: '[epochSeconds, value] pairs. Prometheus OMITS what it never collected and so does this — a hole is an outage, and the UI draws it as a band rather than joining across it.' },
+            latest: { type: 'object', nullable: true, properties: { at: { type: 'integer' }, value: { type: 'number' } } },
+          } } },
+        } },
+      },
+      async run(params) {
+        // resolveMetrics / resolveHours throw 400s that name the offending value.
+        return timeseries(params.metrics ?? [], params.hours ?? 24) as unknown as Record<string, unknown>;
       },
     },
 
@@ -744,8 +753,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-    // 'configs/set-file' RETIRED 2026-08-02 (U2) - file-write existed only to work around
-    // own-write's extension refusal, which U5 deleted. Ban/allow lists post to configs/set-own.
     'configs/types': {
       destructive: false,
       readOnly: true,
@@ -865,18 +872,19 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
     'configs/owned': {
       destructive: false,
       readOnly: true,
-      describe: 'the owned-surface masks (registry category:\'owned\'): files = exact relpaths, dirs = folders whose json/xml files are owned. The web editor routes matching rows to the whole-file two-copy editor (configs/own + configs/set-own) instead of a raw text edit.',
-      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, dirs: { type: 'array', items: { type: 'string' } } } } },
+      describe: 'the owned-surface masks (registry category:\'owned\'): files = exact relpaths, dirs = folders whose json/xml files are owned. The web editor routes matching rows to the whole-file two-copy editor (configs/own + configs/set-own) instead of a raw text edit. edited = owned files that have a captured .defaults baseline beside them, i.e. saved through the editor at least once — the tree marks those; it does NOT mean the content differs from the baseline today.',
+      schema: { response: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, dirs: { type: 'array', items: { type: 'string' } }, edited: { type: 'array', items: { type: 'string' } } } } },
       async run() {
         const r = await dayz.ctl('config-owned');
         if (r.code !== 0) throw fail(502, `config-owned failed: ${(r.stderr || r.stdout).trim()}`);
-        const files: string[] = []; const dirs: string[] = [];
+        const files: string[] = []; const dirs: string[] = []; const edited: string[] = [];
         for (const line of r.stdout.split('\n')) {
           const [k, v] = line.replace(/\r$/, '').split('\t');
           if (k === 'F' && v) files.push(v);
           else if (k === 'D' && v) dirs.push(v);
+          else if (k === 'E' && v) edited.push(v);
         }
-        return { files, dirs };
+        return { files, dirs, edited };
       },
     },
 
@@ -932,10 +940,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
       },
     },
 
-
-
-    // 'configs/set-spawns' DELETED 2026-08-02 (U2) - spawn-write's only caller was a UI path
-    // disabled since the map inversion. Deleted rather than migrated: nothing to migrate.
 
 
     // Terrain group — baked-heightmap lookups, no game-server involvement. Slashed

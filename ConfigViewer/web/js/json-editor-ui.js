@@ -13,6 +13,9 @@
 // assumes a closed schema.
 
 import { resolveHint } from './json-editor-hints.js';
+// One wording, one rule for "the projection has fallen behind the document", shared with the
+// outer raw/structured split in own-editor.js so the two can never drift apart.
+import { projectionStatus } from './two-pane.js';
 
 const LIB_SRC = 'vendor/jsoneditor-2.17.1.min.js';   // resolved against the document, not this module
 let libPromise = null;
@@ -50,7 +53,7 @@ export function inferSchema(v) {
 }
 // What the focused node is CALLED. The navigator mounts a fresh editor per focus, rooted at the
 // focused subtree, so json-editor's own root label is always the literal "root" however deep you
-// clicked (the 2026-07-31 bug report). The path knows better, so the path names it.
+// clicked. The path knows better, so the path names it.
 // Array items read "Parent [i+1]" - 1-based, matching the array-item titles the decorator already
 // writes elsewhere in this file.
 export function titleForPath(path) {
@@ -64,10 +67,9 @@ export function titleForPath(path) {
   return String(last);
 }
 
-// The size shown next to the name, derived from the DATA. It used to come from the editor
-// widget's internal `rows`, which only exists on array editors - so an object could never report
-// a field count, and anything whose rows were absent fell through to the empty-array text.
-// "(null)" is now reachable ONLY by a genuinely empty array.
+// The size shown next to the name, derived from the DATA rather than the editor widget's internal
+// `rows` (which exists only on array editors), so "(null)" is reachable only by a genuinely empty
+// array.
 export function sizeBadge(v) {
   if (Array.isArray(v)) return v.length ? '[' + v.length + ']' : '[ ] (null)';
   if (v && typeof v === 'object') { const n = Object.keys(v).length; return n ? '{' + n + '}' : '{ }'; }
@@ -82,10 +84,9 @@ export function parentKeyOf(parentPath, rootTitle) {
   return (seg === 'root' || seg === '') ? (rootTitle || 'root') : seg;
 }
 
-// The size badge for one editor node, decided by what the node IS rather than by truthiness.
-// The old test was `if (ed.rows)` - and an EMPTY ARRAY IS TRUTHY, so any editor exposing rows: []
-// (object editors included) fell into the array branch and printed "[ ] (null)". Schema type wins;
-// when the schema is permissive ({}) fall back to whichever collection is actually present.
+// The size badge for one editor node, decided by what the node IS (schema type), not by truthiness -
+// an empty array is truthy, so testing `ed.rows` alone would misclassify object editors that expose
+// rows: []. When the schema is permissive ({}) fall back to whichever collection is actually present.
 // Both counts are O(1) - never getValue(), which serializes the whole subtree per node.
 export function badgeForNode(ed) {
   if (!ed) return '';
@@ -101,6 +102,35 @@ export function badgeForNode(ed) {
 // header renders. Keeping these together is what stops the two drifting apart again.
 export function schemaForFocus(sub, path) {
   return { ...inferSchema(sub), title: titleForPath(path) };
+}
+
+// What a duplicated object property is called. A copy needs a NAME, and silently taking one that
+// is already in use would delete the property it lands on - so the copy is always suffixed, and
+// the suffix counts up past anything already there.
+export function uniqueKey(key, existing) {
+  const taken = new Set(existing || []);
+  let name = key + ' copy';
+  for (let i = 2; taken.has(name); i++) name = key + ' copy ' + i;
+  return name;
+}
+
+// Duplicate one property of an object, in place (the copy sits directly after its source), and
+// return a NEW object - the caller hands it to the editor's setValue, so mutating the input would
+// edit the document behind the editor's back. Deep-copied: two entries that share a subtree look
+// duplicated until you edit one of them.
+// ARRAY ITEMS ARE NOT HERE ON PURPOSE: json-editor's own per-row copy button already does that
+// (enable_array_copy below), and a second implementation of the same control is a parallel
+// mechanism - the design contract forbids it.
+export function duplicateProperty(obj, key) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return null;
+  const name = uniqueKey(String(key), Object.keys(obj));
+  const out = {};
+  for (const k of Object.keys(obj)) {
+    out[k] = obj[k];
+    if (k === key) out[name] = structuredClone(obj[k]);
+  }
+  return out;
 }
 
 function mergeSchema(a, b) {
@@ -170,13 +200,26 @@ function decorate(root, ed, hints) {
     // handler + modal are JS-referenced by the lib, so relocating the element keeps them working.
     const props = node.querySelector(':scope > .je-object__controls .json-editor-btntype-properties, :scope > .je-header .json-editor-btntype-properties');
     if (props && name && props.previousElementSibling !== name) { props.classList.add('je-props'); name.after(props); }
-    // status after the name: array length from the editor's own .rows (O(1)). getValue() here
-    // would serialize the whole subtree per node - the O(n^2) storm that made big files crawl.
-    // Badge from the DATA (sizeBadge), not the widget's internal `rows`. rows exists only on array
-    // editors, so an object could never report a field count and a missing rows fell through to the
-    // empty-array text - the "[ ] (null) on everything" bug. rows.length is still preferred for a
-    // BUILT array editor because it is O(1) and always current mid-edit; getValue() here would
-    // serialize the whole subtree per node (the O(n^2) storm that made big files crawl).
+    // Duplicate, for OBJECT PROPERTIES only: array rows already carry json-editor's own copy
+    // button (enable_array_copy in the mount options), and a second implementation of the same
+    // control would be a parallel mechanism. Same icon class as that button so the two read as
+    // one control wherever they appear. The click is handled by delegation on the mount.
+    const cut = path.lastIndexOf('.');
+    if (cut > 0 && !m && name && !row.querySelector(':scope > .je-dup')) {
+      const parent = ed.getEditor(path.slice(0, cut));
+      if (parent && parent.editors && !Array.isArray(parent.rows)) {
+        const dup = document.createElement('button');
+        dup.type = 'button';
+        dup.className = 'json-editor-btntype-copy je-dup';
+        dup.dataset.path = path;
+        dup.setAttribute('title', 'Duplicate this property');
+        row.appendChild(dup);
+      }
+    }
+    // Status badge from the DATA (sizeBadge), not the widget's internal `rows` (exists only on
+    // array editors). rows.length is preferred for a built array editor since it's O(1) and always
+    // current mid-edit; getValue() here would serialize the whole subtree per node - the O(n^2)
+    // cost that makes big files crawl.
     const ce = ed.getEditor(path);
     const txt = badgeForNode(ce);
     row.classList.toggle('je-empty', txt.indexOf('null') > -1);   // empty array -> dimmed gold
@@ -293,6 +336,9 @@ export async function mountJsonEditor(host, opts = {}) {
   const ed = new JE(mount, {
     schema, startval, theme, iconlib: null, disable_edit_json: true, disable_collapse: false,
     collapsed: false, show_errors: 'never', prompt_before_delete: false, object_layout: 'normal',
+    // Per-row duplicate on arrays: the lib already splices the copy in at i+1 and the theme already
+    // carries its icon, so this only needs enabling.
+    enable_array_copy: true,
     ...editorOptions,
   });
   const fire = () => { if (onChange) onChange(safeVal(ed)); };
@@ -313,6 +359,23 @@ export async function mountJsonEditor(host, opts = {}) {
   });
   ed.on('change', () => { scheduleDecorate(); fire(); });
   mount.addEventListener('click', (e) => { if (e.target.closest('.json-editor-btntype-toggle')) requestAnimationFrame(() => syncCarets(ed)); });
+  // Duplicate an object property. Delegated, so it survives every re-decoration; the DATA
+  // operation is duplicateProperty (unit-tested) and the write goes through the parent editor's
+  // own setValue, which is what fires change and keeps the host's dirty tracking honest.
+  mount.addEventListener('click', (e) => {
+    const btn = e.target.closest('.je-dup');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const path = btn.dataset.path || '';
+    const cut = path.lastIndexOf('.');
+    if (cut < 1) return;
+    const parent = ed.getEditor(path.slice(0, cut));
+    if (!parent) return;
+    const next = duplicateProperty(safeVal(parent), path.slice(cut + 1));
+    if (!next) return;
+    parent.setValue(next);
+    fire(); scheduleDecorate();
+  });
 
   return {
     editor: ed,
@@ -365,17 +428,35 @@ export async function mountJsonNavigator(host, opts = {}) {
 
   host.classList.add('jn-wrap');
   host.innerHTML =
-    '<div class="jn-bar"><span class="jn-crumbs"></span></div>'
+    '<div class="jn-bar"><span class="jn-crumbs"></span><span class="spacer"></span>'
+    + '<span class="jn-mapstate"></span>'
+    + '<button type="button" class="jn-refresh" title="Rebuild the JSON map from the document">Update map</button></div>'
     + '<div class="jn-split">'
     + '<div class="jn-editor"></div>'
     + '<pre class="jn-json"></pre></div>';
   const crumbs = host.querySelector('.jn-crumbs');
   const edPane = host.querySelector('.jn-editor');
   const jsonPane = host.querySelector('.jn-json');
+  const mapState = host.querySelector('.jn-mapstate');
+  const mapBtn = host.querySelector('.jn-refresh');
 
-  const renderJson = () => { jsonPane.innerHTML = jnRenderJson(workingDoc, [], focus, 0); };
-  let rerenderPending = false;
-  const scheduleRerender = () => { if (rerenderPending) return; rerenderPending = true; requestAnimationFrame(() => { rerenderPending = false; renderJson(); }); };
+  // The JSON map is a PROJECTION of the document, committed rather than continuously recomputed -
+  // rebuilding it from the whole document on every keystroke burst means a full re-serialise plus
+  // a full re-parse of the markup while typing. It falls behind, SAYS it has fallen behind, and
+  // catches up on demand or when you navigate.
+  // Versions, not text: workingDoc is mutated in place, so there is nothing to compare by value,
+  // and stringifying it per keystroke to find out would be the same cost all over again.
+  let docVersion = 0;
+  let mapVersion = null;
+  const showMapState = () => {
+    const s = projectionStatus(docVersion, mapVersion);
+    mapState.textContent = 'JSON map ' + s.label;
+    mapState.classList.toggle('jn-stale', s.stale);
+    mapBtn.disabled = !s.stale;
+  };
+  const renderJson = () => { jsonPane.innerHTML = jnRenderJson(workingDoc, [], focus, 0); mapVersion = docVersion; showMapState(); };
+  const markChanged = () => { docVersion++; showMapState(); };
+  mapBtn.addEventListener('click', () => renderJson());
 
   const renderCrumbs = () => {
     const segs = ['root', ...(focus || [])];
@@ -397,15 +478,28 @@ export async function mountJsonNavigator(host, opts = {}) {
       if (curHandle) { try { curHandle.destroy(); } catch (_) {} curHandle = null; }
       curHandle = await mountJsonEditor(mnt, {
         // schemaForFocus, not inferSchema: it carries the TITLE, so the header names the node you
-        // clicked instead of the literal "root" at every depth (2026-07-31 bug report).
+        // clicked instead of the literal "root" at every depth.
         schema: schemaForFocus(sub, path), startval: sub, pathbar: true, collapseLargeOver: 400,
-        onChange: (val) => { if (!path.length) workingDoc = val; else setP(workingDoc, path, val); scheduleRerender(); if (onChange) onChange(workingDoc); },
+        // Mark, do not rebuild. The map catches up on Update map, or on the next jump (focusTo
+        // re-renders anyway, so navigating is always looking at a true map).
+        onChange: (val) => { if (!path.length) workingDoc = val; else setP(workingDoc, path, val); markChanged(); if (onChange) onChange(workingDoc); },
       });
       if (spin) spin.remove();
     }, 0));
   };
 
-  jsonPane.addEventListener('click', (e) => { const n = e.target.closest('.jn-node'); if (!n) return; try { focusTo(JSON.parse(n.getAttribute('data-p'))); } catch (_) {} });
+  // A stale map can hold paths the document no longer has (an add or a delete shifts array
+  // indices). Refresh under the click first, and only jump if the path still resolves - jumping
+  // to a vanished path would mount an editor over `undefined`.
+  jsonPane.addEventListener('click', (e) => {
+    const n = e.target.closest('.jn-node'); if (!n) return;
+    let path; try { path = JSON.parse(n.getAttribute('data-p')); } catch (_) { return; }
+    if (projectionStatus(docVersion, mapVersion).stale) {
+      renderJson();
+      if (path.length && getP(workingDoc, path) === undefined) return;   // it moved; the fresh map is on screen
+    }
+    focusTo(path);
+  });
   crumbs.addEventListener('click', (e) => { const c = e.target.closest('.jn-crumb'); if (!c) return; focusTo((focus || []).slice(0, +c.getAttribute('data-d'))); });
 
   renderCrumbs(); renderJson();
@@ -416,7 +510,7 @@ export async function mountJsonNavigator(host, opts = {}) {
   const setValue = (path, val) => {
     if (!path || !path.length) return;
     workingDoc = setP(workingDoc, path, val);
-    scheduleRerender();
+    markChanged();
     if (curHandle && JSON.stringify(focus) === JSON.stringify(path.slice(0, focus.length))) focusTo(focus);
     if (onChange) onChange(workingDoc);
   };
