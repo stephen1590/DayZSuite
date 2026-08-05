@@ -2,13 +2,11 @@
 <#
   mechanism-counts.test.ps1 - the one-off freeze.
   Design decisions that CAN be gate assertions ARE ones - a rule in a doc gets missed:
-  the mechanism counts below are pinned at their 2026-07-31 measured values as
-  MAXIMUMS. They may only go DOWN (WS-U migrations delete a verb, then the pin
-  here is lowered in the same change). Adding an Nth+1 write verb or a new
-  box-writing UI module is a STOP-AND-SURFACE decision, never a drive-by -
-  a pin only ever moves DOWN - raising one means a mechanism was added, which is the defect.
+  the mechanism counts below are pinned as MAXIMUMS. They may only go DOWN - retiring
+  a verb lowers the pin in the same change. Adding an Nth+1 write verb or a new
+  box-writing UI module is a STOP-AND-SURFACE decision, never a drive-by.
 
-  Runs on EVERY deploy via Invoke-Tests.ps1 (T1) - including Deploy-Api, which
+  Runs on EVERY deploy via Invoke-Tests.ps1, including Deploy-Api, which
   Test-Configs does not gate.
 #>
 $ErrorActionPreference = 'Stop'
@@ -27,16 +25,10 @@ function Assert([string]$name, [bool]$cond, [string]$why = '') {
 }
 
 # --- 1. dayz-ctl *-write verbs: the EXACT set ---------------------------------
-# Was a `<= 6` ceiling. That shape failed on 2026-07-31: A3 deleted override-write
-# seven hours after the pin was written, the real count fell to 5, and a ceiling
-# cannot notice a mechanism LEAVING - so the pin never came down and the gate
-# would have waved a replacement through as "no change". An exact set fails in
-# BOTH directions: a new verb, and a retirement that forgets to lower the pin.
+# An exact set fails in BOTH directions: a new verb, and a retirement that
+# forgets to lower the pin - a ceiling only catches the first.
 $tpl = Get-Content -Raw (Join-Path $repo 'Api/deploy/templates/dayz-ctl.template')
 $writeVerbs = @([regex]::Matches($tpl, '(?m)^\s*([a-z][a-z-]*-write)\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
-# 2026-08-02: 6 -> 5 (override-write left with the delta engine), then 5 -> 4 (file-write
-# retired by U2 once U5 removed own-write's extension refusal). Lowered in the SAME change as the
-# deletion - the step missed on 07-31, which is what let a stale pin stand for a day.
 $PINNED_WRITE_VERBS = @('own-write', 'settings-write', 'types-write') | Sort-Object
 $added   = @($writeVerbs | Where-Object { $_ -notin $PINNED_WRITE_VERBS })
 $removed = @($PINNED_WRITE_VERBS | Where-Object { $_ -notin $writeVerbs })
@@ -62,10 +54,9 @@ for ($i = 0; $i -lt $labels.Count; $i++) {
     if ($body.Substring($from, $to - $from) -match $writePattern) { $writers += $labels[$i].Groups[1].Value }
 }
 $writers = @($writers | Sort-Object)
-# 2026-08-02: set-map / update-arm / update-disarm were invisible to the name pin.
 $PINNED_WRITERS = @(
     'set-map'         # writes $SERVER_DIR/map.env
-    'types-write', 'own-write', 'settings-write'   # file-write + spawn-write retired 2026-08-02 (U2)
+    'types-write', 'own-write', 'settings-write'
     'update-arm'      # writes $UPDATE_PENDING
     'update-disarm'   # removes $UPDATE_PENDING
 ) | Sort-Object
@@ -80,7 +71,7 @@ Assert "dayz-ctl verbs that write a file = the pinned set ($($writers.Count): $(
 # module gaining write access is a design decision, not a side effect.
 $allowedWriters = @(
     'api-client.js'    # defines apiPost - the ONE transport
-    'editor.js'        # overrides doc + owned-file chrome (god-file, B4 splits it)
+    'editor.js'        # overrides doc + owned-file chrome
     'own-editor.js'    # whole-file editor (CM6 + JSON navigator)
     'types-editor.js'  # types tuning editor
     'map.js'           # map editor (patrols, LBC, waypoints)

@@ -26,7 +26,7 @@ UPDATE_TIMEOUT=2400   # hard ceiling (40m) for an armed update; MUST stay below 
 # silently keep a retired step running. Commented lines (leading #, indented or not) are
 # disabled, which is exactly how mods.conf already expresses "off".
 # FAIL-OPEN when mods.conf is absent: prestart must never block boot on a missing file
-# (a failing ExecStartPre took the server down 2026-07-07).
+# (a failing ExecStartPre can take the server down).
 mod_enabled() {
     [ -f "$SERVER/mods.conf" ] || return 0
     grep -qE "^[[:space:]]*$1([[:space:]]|\$)" "$SERVER/mods.conf"
@@ -46,7 +46,7 @@ installed_build() {
 # pull the latest server app + mods NOW. The engine isn't up yet, so swapping the binary is
 # safe, and the server was going down for this restart anyway — the update rides the reboot
 # instead of being its own disruptive event. `timeout` caps the worst case so a slow/hung
-# steamcmd can never brick the boot (a blocking ExecStartPre took the server down 2026-07-07);
+# steamcmd can never brick the boot (a blocking ExecStartPre can take the server down);
 # the outcome is recorded for the status surface and the flag is cleared either way. On
 # failure we boot with whatever's on disk — update-check.sh re-arms next cycle if still
 # behind, so failures retry on the check cadence, not on every single boot. Never exits.
@@ -95,7 +95,7 @@ backup() {
     mkdir -p "$dir"
     tar -czf "$dir/storage_1-$(date +%Y%m%d_%H%M%S).tar.gz" -C "$MISSIONS/$1" storage_1
     # || true: with pipefail, ls exits 2 when a glob matches nothing — best-effort
-    # pruning must never block server start (took the server down 2026-07-07)
+    # pruning must never block server start (can take the server down)
     ls -t "$dir"/storage_1-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -- || true
 }
 
@@ -106,25 +106,20 @@ if [ -f "$SERVER/messages.xml" ]; then
     cp -f "$SERVER/messages.xml" "$MISSIONS/$TARGET/db/messages.xml"
 fi
 
-# NOTE (2026-08-01): the frozen-default capture used to run HERE. It is REMOVED, and must not
-# come back. Capturing at prestart reads the file's CURRENT content - i.e. AFTER whatever edit
-# prompted the boot - so it froze the EDIT as the "baseline" and every diff against it showed
-# nothing. Proven twice on prod: expansion_types_tuning.xml and its .defaults were byte-identical
-# with the same mtime, and five out-of-scope defaults archived off the box were re-created here,
-# from live content, at the very next restart.
+# The frozen-default capture must NOT run here. Capturing at prestart reads the file's CURRENT
+# content - i.e. AFTER whatever edit prompted the boot - so it freezes the EDIT as the
+# "baseline" instead of state 0.
 #
 # Capture belongs in the WRITE path, which is the only place that sees the bytes BEFORE they are
-# replaced: dayz-ctl own-write now captures <stem>.defaults.<ext> when none exists (2026-08-01).
-# Owner's rule: a server-made file needs its original kept when a change is made; a generated
-# file or one we authored never needs one. Nothing is left uncovered - the surfaces still edited
-# through the bespoke verbs (types-write / file-write / spawn-write) are all files we author.
+# replaced: dayz-ctl own-write captures <stem>.defaults.<ext> when none exists. A server-made
+# file needs its original kept when a change is made; a generated file or one we authored never
+# needs one. Nothing is left uncovered - the surfaces still edited through the bespoke verbs
+# (types-write / file-write / spawn-write) are all files we author.
 
-# NOTE (2026-07-31): the field-override applier used to run HERE, between the default capture
-# and the serverDZ.cfg render. It is deleted - owner's ruling: "No Overrides. Just whole file
-# ownership and modifying with a better UI/Syntax manager." Config files are now owned whole
-# and edited directly through the web editor; nothing patches them at boot any more. Do not
-# reintroduce a patch step: a second writer on a file it does not own is the drift machine
-# this removal exists to end.
+# The field-override applier must NOT run here, between the default capture and the
+# serverDZ.cfg render. Config files are owned whole and edited directly through the web
+# editor; nothing patches them at boot. Do not reintroduce a patch step: a second writer on
+# a file it does not own is the drift machine this removal exists to end.
 
 # Rebuild serverDZ.cfg = serverDZ.cfg.template + host.env passwords + server-settings.json's
 # allowlisted toggles. server-settings.json is now edited whole in the web UI, so what we read
@@ -135,37 +130,30 @@ if [ -f "$SERVER/Apply-ServerCfg.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Apply-ServerCfg.ps1" -ServerDir "$SERVER" -Fix || true
 fi
 # If the cfg STILL doesn't exist here, the engine cannot boot and Restart=always will loop
-# forever - that exact loop happened 2026-07-23 (renderer refused on a blank admin password
-# while serverDZ.cfg was absent, so every boot failed with nothing naming the cause). We do
-# NOT exit (prestart never blocks boot by doctrine; the engine fails either way) - but this
-# line turns a mystery loop into a named error in journalctl.
+# forever - e.g. if the renderer refuses (a blank admin password) while serverDZ.cfg is
+# absent, every boot fails with nothing naming the cause. We do NOT exit (prestart never
+# blocks boot by doctrine; the engine fails either way) - but this line turns a mystery loop
+# into a named error in journalctl.
 if [ ! -f "$SERVER/serverDZ.cfg" ]; then
     echo "prestart: FATAL - serverDZ.cfg is missing and Apply-ServerCfg could not render it (check host.env: DEPLOY_ADMIN_PASSWORD must be non-empty; DEPLOY_SERVER_PASSWORD= empty is fine = open server). The engine cannot start without it - this boot WILL fail and systemd will keep retrying." >&2
 fi
 
 # Bubaku (SpawnerBubaku) composer - gated on @babaku being ENABLED in mods.conf, nothing else.
-# Disabling the mod is now ONE edit (comment the line in mods.conf); this step, the config
+# Disabling the mod is ONE edit (comment the line in mods.conf); this step, the config
 # surfaces the web editor shows, and dayz-ctl's write guard all derive from that single fact.
-# It used to take three hand-synced edits (mods.conf + this call site + the deploy ship list)
-# and nothing kept them in agreement.
 if mod_enabled '@babaku' && [ -f "$SERVER/Build-BabakuSpawns.ps1" ] && command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$SERVER/Build-BabakuSpawns.ps1" -ServerDir "$SERVER" -Mission "$TARGET" -Fix || true
 fi
 
-# AI bandit configs (DynamicAIB/StaticAIB) are RAW per-map world coords, but the mod reads one
-# fixed path. Compose the active map's flat config from common + maps/$TARGET NOW, before the
-# engine reads it, so a map switch can never leave another map's coords in place. Fail-soft +
-# `|| true`: a bad source can NEVER block server start; a map with no per-map file gets no bandits.
-#
-# BanditAI retired 2026-07-23; its compiler lives in archive/Build-AIBandits.ps1 (repo), with
-# restore instructions in archive/README.md. The stale copy on the box is inert - remove whenever.
+# BanditAI is retired; nothing here composes DynamicAIB/StaticAIB any more. Its compiler lives
+# in archive/Build-AIBandits.ps1 with restore instructions in archive/README.md.
 
-# Expansion AI draft builders (Build-AILocations / Build-AIPatrols) RETIRED 2026-07-23 (Phase 4,
-# archive/). They composed *.draft.json PREVIEWS from the frozen authored map-points.json; nothing
-# ever read the drafts (the mod reads the live AILocation/AIPatrolSettings.json). The inversion runs
-# the other way now - Build-MapPoints below derives the map store FROM those live files.
+# Expansion AI draft builders (Build-AILocations / Build-AIPatrols) are RETIRED (archive/). They
+# composed *.draft.json PREVIEWS from the frozen authored map-points.json; nothing ever read the
+# drafts (the mod reads the live AILocation/AIPatrolSettings.json). The inversion runs the other
+# way now - Build-MapPoints below derives the map store FROM those live files.
 
-# Map inversion Phase 2 (2026-07-23): derive the Map tab's point store FROM the active
+# Map inversion: derive the Map tab's point store FROM the active
 # mission's live AILocationSettings/AIPatrolSettings (the web-edited truth). Writes
 # profiles/AI_Shared/map-points.generated.json - registry 'generated', read-only in the UI.
 # The authored map-points.json is frozen (archive/) and no longer rendered. Fail-soft +

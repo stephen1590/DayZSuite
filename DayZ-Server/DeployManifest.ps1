@@ -8,8 +8,7 @@
 
   THE BUG IT CLOSES: `$items` in Deploy-DayZServer.ps1 copies files one at a time and nothing
   reconciles, so anything ever shipped stays on the box forever. Deleting a script from the
-  repo does NOT remove it from the box; every retirement leaves a corpse. Eight of them were
-  measured on prod on 2026-08-01, including three builders retired eleven days earlier.
+  repo does NOT remove it from the box; every retirement leaves a corpse.
 
   WHY NOT `rsync --delete`, which solves the identical problem for ConfigViewer in one line:
   ConfigViewer's webroot is entirely deploy-owned, so a directory boundary exists. The DayZ
@@ -80,13 +79,12 @@ function Write-DeployManifest {
 .PARAMETER Protected
   ServerDir-relative paths or prefixes this must NEVER remove, whatever the manifest says.
 
-  The near miss that added it, 2026-08-02: seven config files left `$items` because the box
-  owns them now. The previous manifest still listed them as placed, so the next run would have
-  read them as orphans and deleted them - taking Expansion loot registration and the admin
-  list with it. **"We stopped shipping it" and "we retired it" are the same set difference.**
-  They cannot be told apart from the manifest alone, so the caller declares what is off
-  limits: every registry surface, and every deny-listed prefix. A deploy has no business
-  deleting either. Protection is by prefix, so a whole directory can be handed over at once.
+  A config file can leave `$items` because the box now owns it. The previous manifest would
+  still list it as placed, so the next run would read it as an orphan and delete it.
+  **"We stopped shipping it" and "we retired it" are the same set difference.** They cannot be
+  told apart from the manifest alone, so the caller declares what is off limits: every registry
+  surface, and every deny-listed prefix. A deploy has no business deleting either. Protection
+  is by prefix, so a whole directory can be handed over at once.
 #>
 function Get-DeployOrphans {
     param(

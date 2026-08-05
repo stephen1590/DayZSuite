@@ -5,21 +5,20 @@
   every prestart.
 
 .DESCRIPTION
-  Phase 2 of the map inversion (2026-07-23). The OLD direction had map-points.json as the
-  authored source that Build-AIPatrols/Build-AILocations composed drafts FROM. The NEW
-  direction inverts that: the live, web-edited AILocationSettings.json / AIPatrolSettings.json
-  ARE the truth, and this script derives a read-only point store FROM them for the Map tab
-  to render (Phase 3). The authored map-points.json is frozen (snapshot in archive/) and no
-  longer rendered - see MAP_POINTS_DEPRECATED in ConfigViewer's map.js.
+  The map inversion: the OLD direction had map-points.json as the authored source that
+  Build-AIPatrols/Build-AILocations composed drafts FROM. The NEW direction inverts that:
+  the live, web-edited AILocationSettings.json / AIPatrolSettings.json ARE the truth, and
+  this script derives a read-only point store FROM them for the Map tab to render. The
+  authored map-points.json is frozen (snapshot in archive/) and no longer rendered - see
+  MAP_POINTS_DEPRECATED in ConfigViewer's map.js.
 
   Reads   mpmissions/<mission>/expansion/settings/AILocationSettings.json
           mpmissions/<mission>/expansion/settings/AIPatrolSettings.json
   Writes  profiles/AI_Shared/map-points.generated.json     (registry 'generated': read-only
                                                             in the web editor, never mirrored)
 
-  The store mirrors the two source files 1:1 (owner's call, 2026-07-23) instead of merging
-  into one tagged list, so Phase 3 can present each list as-if editing its source file and
-  Phase 4 can lock per-file:
+  The store mirrors the two source files 1:1 instead of merging into one tagged list, so
+  the Map tab can present each list as-if editing its source file and lock per-file:
     locations[]      one per RoamingLocations entry - positional (Position -> x/y/z)
     patrols[]        one per Patrols entry with NO ObjectClassName - positional; the marker
                      is the FIRST waypoint, the full Waypoints ride along for route rendering
@@ -85,7 +84,7 @@ foreach ($l in @($locDoc.RoamingLocations)) {
     $p = @($l.Position)
     $locations += [ordered]@{
         # idx = position in the SOURCE file's RoamingLocations array - the stable key for the
-        # future write-back path. Name is NOT unique (the 2026-07-22 outage), so it can't key edits.
+        # future write-back path. Name is NOT unique, so it can't key edits.
         idx     = $li
         name    = [string]$l.Name
         x       = [double]$p[0]; y = [double]$p[1]; z = [double]$p[2]

@@ -104,11 +104,9 @@ foreach ($s in $surfaces) {
 Write-Host "  staged $stagedDefaults baseline target(s) + $stagedSeeds seed-only file(s)"
 
 # Declared, on-disk missions - derived from the REGISTRY's `scope: map:<mission>` rows.
-# This used to read `mpmissions.<mission>` keys out of config-overrides.json. That coupled the
-# gate's coverage to the override document: on 2026-07-31 a cutover emptied two mission layers
-# and the gate silently dropped from 3 missions to 1 while still reporting "passed". A3 deletes
-# that document outright, which would have left the gate with NO missions and a green tick.
-# The registry is the declaration point for config surfaces, so it is the honest source here.
+# The registry is the declaration point for config surfaces, so it is the honest source here:
+# deriving mission coverage from any single document risks the gate silently testing fewer
+# missions than exist while still reporting "passed".
 $allSurfaces = @((Get-Content -Raw -LiteralPath $registryPath | ConvertFrom-Json).surfaces)
 $declared = @($allSurfaces
     | ForEach-Object { "$($_.scope)" }
@@ -154,19 +152,16 @@ foreach ($m in $missions) {
 Write-Host "  staged custom-ce/ + $stagedFixtures game-file fixture(s) across $($missions.Count) mission(s)"
 
 # --- Run the REAL build chain against the staged dir ----------------------------------------
-# (2026-07-31) Apply-ConfigOverrides ran first here and its warning count drove a zero-MISS
-# check. The applier is deleted: config files are owned whole, so there is no patch pass and
-# nothing that can silently miss. The compilers below are the whole chain now.
+# The applier is deleted: config files are owned whole, so there is no patch pass and nothing
+# that can silently miss. The compilers below are the whole chain now.
 Write-Host "`nRunning the build chain (the prestart compilers) against staging" -ForegroundColor Cyan
 
 # --- Validate the produced artifacts --------------------------------------------------------
 Write-Host "`nValidating built artifacts" -ForegroundColor Cyan
 
-# 2. DynamicAIB.common.json left the override engine on 2026-07-31 (A2 cutover) - it is an OWNED
-# file now, so nothing BUILDS it and there is no force-create to prove. What still matters is that
-# the cutover did not silently drop the tuning it used to force-create: the repo mirror must still
-# carry flags.spawnTypes. Verified on the box at cutover time (live file byte-identical, 12 types
-# present); this keeps that honest offline, against the mirror, for good.
+# 2. DynamicAIB.common.json is an OWNED file - nothing BUILDS it and there is no force-create
+# to prove. What still matters is that the tuning was not silently dropped: the repo mirror
+# must still carry flags.spawnTypes.
 # Resolve the repo copy from the REGISTRY row's own 'seed' rather than guessing a path - the
 # registry is the declaration point, and a hardcoded guess here silently no-ops if it is wrong.
 $aibRow = @($allSurfaces | Where-Object { "$($_.box)" -eq 'profiles/AI_Bandits/common/DynamicAIB.common.json' })[0]
@@ -188,12 +183,12 @@ elseif (Test-Path $aib) {
 #    validate each mission before the next runs. Each engine is guarded independently: one bad
 #    engine surfaces its own failure without masking the others.
 foreach ($m in $missions) {
-    # (BanditAI retired 2026-07-23; its compiler is archived - archive/Build-AIBandits.ps1.)
+    # (BanditAI retired; its compiler is archived - archive/Build-AIBandits.ps1.)
 
     # The old draft builders (Build-AIPatrols / Build-AILocations) that composed *.draft.json from
-    # the frozen authored map-points are RETIRED (Phase 4, 2026-07-23, archive/) - the drafts had
-    # no runtime consumer (the mod reads the LIVE *Settings.json). Only the live-file paths remain,
-    # for the Build-MapPoints derivation below to read (staged from config-mirror, mirror:live).
+    # the frozen authored map-points are RETIRED (archive/) - the drafts had no runtime consumer
+    # (the mod reads the LIVE *Settings.json). Only the live-file paths remain, for the
+    # Build-MapPoints derivation below to read (staged from config-mirror, mirror:live).
     $patLive = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AIPatrolSettings.json"
     $locLive = Join-Path $StagingDir "mpmissions/$m/expansion/settings/AILocationSettings.json"
 
@@ -391,9 +386,9 @@ if (Test-Path $deployScript) {
     }
 }
 
-# (2026-07-31) A ratchet capped the field-patch niche at 60 leaves per file. There is no niche:
-# config-overrides.json is deleted and tests/override-engine-deleted.test.ps1 asserts it stays
-# deleted, which is a stronger guarantee than a size cap on a document that may not exist.
+# There is no field-patch ratchet here: config-overrides.json is deleted and
+# tests/override-engine-deleted.test.ps1 asserts it stays deleted, which is a stronger
+# guarantee than a size cap on a document that may not exist.
 
 $prestartPath = Join-Path $PSScriptRoot 'deploy/prestart.sh'
 if (-not (Test-Path $prestartPath)) { Show-Fail "deploy/prestart.sh missing - cannot check the mod-enablement invariant" }
@@ -412,7 +407,7 @@ else {
 }
 
 # --- Web-edited CE types surfaces (registry web:'types') -------------------------------------
-# The Expansion tuning pair is BOX-OWNED, WEB-EDITED content (2026-07-23): dayz-ctl types-write
+# The Expansion tuning pair is BOX-OWNED, WEB-EDITED content: dayz-ctl types-write
 # is the only writer, the deploy only seeds-if-missing, Pull-Configs mirrors the box copy back
 # into the seed path. Four seams can silently break that contract, so gate all four:
 #   1. the registry row shape - a types surface needs seed + mirror:'live' + check:'xml' (the

@@ -9,7 +9,7 @@
     time prestart patches it (see that script). This pulls those box-born defaults DOWN into
     config-defaults/ - a committed MIRROR (backup + fresh-box seed).
 
-    BOX-AUTHORITATIVE (pull-only config model, 2026-07-16): the mirror FOLLOWS the box - a
+    BOX-AUTHORITATIVE (pull-only config model): the mirror FOLLOWS the box - a
     default the box re-captured (e.g. after a mod update: delete it on the box, restart,
     prestart re-freezes the current pristine file) is pulled over the repo copy, reported
     [DIFF]. The mirror is git-tracked, so history is the rollback path. The deploy ships
@@ -64,11 +64,10 @@ $find = "cd '$RemotePath' && find profiles mpmissions -type d -name 'storage_*' 
 $list = Get-Stdout { ssh -o ConnectTimeout=10 $target $find } | Out-String
 $rels = @($list -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notmatch '\.\.' })
 
-# Only MANAGED missions are pulled. This used to read the mpmissions.<mission> keys of
-# config-overrides.json; that document is deleted (2026-07-31), so the DECLARATION now comes
-# from the same place every other surface fact does - config-registry.json's box paths. One
-# source of truth, which is what the registry is for. A foreign dir under mpmissions/ (a side
-# project, an admin copy) may carry copied .defaults - those are not ours and never enter the repo.
+# Only MANAGED missions are pulled. The declaration comes from config-registry.json's box
+# paths - one source of truth, which is what the registry is for. A foreign dir under
+# mpmissions/ (a side project, an admin copy) may carry copied .defaults - those are not
+# ours and never enter the repo.
 $declared = @()
 $registryPath = Join-Path $PSScriptRoot 'config-registry.json'
 if (Test-Path $registryPath) {

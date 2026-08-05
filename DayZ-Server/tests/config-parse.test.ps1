@@ -3,16 +3,13 @@
 .SYNOPSIS
   The shared parse check behind every config pull/validate. Must accept a UTF-8 BOM.
 
-  WHY (found 2026-08-01): Pull-Configs validated a pulled box file with a bare `[xml]$text`
-  cast. DayZ ships several mission files WITH a UTF-8 BOM, and that cast REJECTS a string
-  whose first character is U+FEFF - so the pull logged "box copy does not parse as xml" and
-  silently left the repo copy stale. Measured 1:1 on prod: db/globals.xml (all three maps)
-  and Sakhal db/events.xml carry a BOM and were rejected; every BOM-free file pulled.
+  WHY: DayZ ships several mission files WITH a UTF-8 BOM, and a bare `[xml]$text` cast
+  REJECTS a string whose first character is U+FEFF - so validating a pulled box file with
+  that cast logs "does not parse as xml" and silently leaves the repo copy stale.
 
   The failure mode is the dangerous kind - it looks like box corruption ("does not parse")
-  when the box file is perfectly valid, and it fails CLOSED into "no mirror", which is the
-  exact state that lost the vehicle lifetimes. Hence a shared, tested validator instead of
-  an inline cast repeated per consumer.
+  when the box file is perfectly valid, and it fails CLOSED into "no mirror". Hence a shared,
+  tested validator instead of an inline cast repeated per consumer.
 #>
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -44,9 +41,8 @@ Check (-not (Test-ConfigParses "  `n " 'xml'))                        'whitespac
 Check (-not (Test-ConfigParses $xml 'none'))                          "an undeclared check kind is rejected (never pull unvalidated)"
 Check (-not (Test-ConfigParses $xml ''))                              'an empty check kind is rejected'
 
-# --- 'text': the OTHER kind (owner 2026-08-01) ---
+# --- 'text': the OTHER kind ---
 # ban.txt / whitelist.txt / map.env are real owned surfaces that are neither JSON nor XML.
-# They declared check:'none', so the validator refused them and they could never mirror.
 # 'text' means "readable text, not binary" - that is the only claim we can honestly make
 # about a freeform file, and it is enough to refuse a truncated or binary pull.
 Check (Test-ConfigParses "line one`nline two`n" 'text') 'plain text parses as text'

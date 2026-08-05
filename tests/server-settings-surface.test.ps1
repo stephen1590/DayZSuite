@@ -2,20 +2,16 @@
 <#
   server-settings-surface.test.ps1 - the server-settings surface contract, across all three tiers.
 
-  Owner, verbatim: "We are getting rid of the fields view,
-  remember? Use the JSON/XML editor. The server-settings compiles (not explicit write) on
-  a save to create our OWNED file... It's a driver for the settings."
-
-  server-settings.json is a 2.2 GENERATOR INPUT: the driver. serverDZ.cfg is the generated
+  server-settings.json is a GENERATOR INPUT: the driver. serverDZ.cfg is the generated
   owned output and Apply-ServerCfg is the compiler (its allowlist is closed and enforced at
   RENDER time, so no editor can widen it). The file is therefore edited like every other
   owned surface - the JSON editor - and saved whole through own-write.
 
   THE ORDERING THIS TEST PROTECTS: own-write refuses any path outside the box's rendered
   OWNED_FILES. If ConfigViewer stops forcing the Fields view while the Api still excludes
-  the file, its save path silently becomes the override engine's whole-file flow (the very
-  thing A3 deletes) or nothing at all. So the Api-side inclusion and the UI-side removal
-  are asserted TOGETHER - neither may land alone.
+  the file, its save path silently becomes the override engine's whole-file flow or nothing
+  at all. So the Api-side inclusion and the UI-side removal are asserted TOGETHER - neither
+  may land alone.
 
   Lives in the repo-root tests/ because it spans registry + Api + ConfigViewer, same as
   mechanism-counts.test.ps1.
@@ -57,10 +53,8 @@ Assert "Deploy-Api's owned-surface mask includes category 'input'" `
     "own-write refuses paths outside OWNED_FILES, so without this the UI change below leaves server-settings.json with NO save path."
 
 # --- 3b. the registry's own _readme must not contradict the mask above ---------
-# It said an input is "deliberately NOT in OWNED_FILES" while Deploy-Api put it there and
-# assertion 3 enforced it. Whoever read the registry to decide something got the opposite
-# of the truth, and the registry is the file this repo calls the one contract. Found
-# 2026-08-02. Asserting on the text because the text is the thing that was wrong.
+# Asserted on the raw text, not a parsed value: the _readme's prose is itself the
+# contract surface here, so a wrong claim in it is the defect being caught.
 $registryRaw = Get-Content -Raw (Join-Path $repo 'DayZ-Server/config-registry.json')
 Assert "the registry _readme does not claim an input is excluded from OWNED_FILES" `
     ($registryRaw -notmatch 'deliberately NOT in OWNED_FILES') `

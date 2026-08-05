@@ -7,21 +7,20 @@
     locations (server dir + systemd units). -Fix copies the payload into place (sudo
     for units), reloads systemd, and restarts the service unless -NoRestart.
 
-    OWNERSHIP RULE (pull-only config model, 2026-07-16): the deploy ships CODE and
+    OWNERSHIP RULE (pull-only config model): the deploy ships CODE and
     overwrites it on drift; it never overwrites CONFIG CONTENT. Config-content items
     ($items entries flagged Seed, plus the config-defaults/ mirror) are copied only to a
     box that doesn't have them — fresh box or disaster recovery — and reported BoxOwned
     otherwise. Config changes are made in the web editor (ConfigViewer), which writes the
     box directly; the deploy's sync steps pull those box copies back into the repo as
-    committed mirrors/backups. See docs/CONFIGURATION.md + docs/RECOVERY.md.
+    committed mirrors/backups.
 
     Host portability: the systemd units in the payload are TEMPLATES with
     {{DEPLOY_USER}}/{{DEPLOY_GROUP}}/{{DEPLOY_HOME}} placeholders; per-host values
     come from `host.env` (or the -Deploy* params), and the units are RENDERED before
     comparing and deploying — the SAME payload is drift-clean on any host. host.env
     is per-host, never in the payload, and lives ON THE BOX at
-    <server dir>/host.env (moved there 2026-07-16 when the persistent ~/dayz-tooling
-    checkout was retired); absent => built-in defaults (ubuntu, the VPS). A fresh box
+    <server dir>/host.env; absent => built-in defaults (ubuntu, the VPS). A fresh box
     gets it seeded from host.env.example — then fill in the secrets there.
 
     Two separate local, gitignored files: host.env describes the SERVER (lives there,
@@ -29,7 +28,7 @@
     (dev-machine-local; only read when NOT -Local; never rsynced over). Never conflate
     the two — see deployer.env.example.
 
-    SINGLE SOURCE OF TRUTH (2026-07-16): the box's ~/servers/dayz-server is the ONLY
+    SINGLE SOURCE OF TRUTH: the box's ~/servers/dayz-server is the ONLY
     home of live config; this repo is CODE + committed config HISTORY. Deploy stages
     the runtime payload into a transient $RemoteDir (deploy-stage/ INSIDE the server
     dir, wiped each run) — the box never carries a second copy of the repo, and there
@@ -57,7 +56,7 @@ param(
     [string]$Env = 'staging',                               # which box: staging is the DEFAULT, prod must be explicit. Picks deployer.<env>.env; ignored under -Local
     [string]$RemoteHost,                                    # dev-machine-local — see deployer.env below, or -RemoteHost
     [string]$RemoteUser   = "ubuntu",                       # override via deployer.env's DEPLOY_REMOTE_USER if it differs
-    [string]$RemoteDir    = "servers/dayz-server/deploy-stage",  # transient payload staging INSIDE the server dir (home-relative for ssh/rsync) — wiped and re-shipped every deploy, so the box has exactly ONE DayZ location and this subfolder is just the delivery truck: templates land here, get rendered with host.env's secrets, pass the player guard, then are PLACED into the server dir / systemd. Never a second copy of the repo (~/dayz-tooling retired 2026-07-16).
+    [string]$RemoteDir    = "servers/dayz-server/deploy-stage",  # transient payload staging INSIDE the server dir (home-relative for ssh/rsync) — wiped and re-shipped every deploy, so the box has exactly ONE DayZ location and this subfolder is just the delivery truck: templates land here, get rendered with host.env's secrets, pass the player guard, then are PLACED into the server dir / systemd. Never a second copy of the repo.
     [string]$HostEnv     = (Join-Path $PSScriptRoot "host.env"),
     [string]$DeployerEnv = '',                              # default: deployer.<Env>.env (legacy deployer.env accepted for prod only)
     [string]$DeployUser,
@@ -87,7 +86,7 @@ if ((-not $PSBoundParameters.ContainsKey('RemoteHost') -or -not $PSBoundParamete
 }
 
 # --- Remote is the DEFAULT: there is no local server install anymore (meshroom is
-# tooling-only since 2026-07-06); the VPS is the one deployment. A bare run rsyncs
+# tooling-only); the VPS is the one deployment. A bare run rsyncs
 # this tooling folder + common/ to the target and runs the apply step THERE over ssh
 # (-t so sudo can prompt). The ssh leg re-invokes this script with -Local on the VPS.
 # Remote's own logs/ and host.env are excluded from --delete, so they survive; the
@@ -137,14 +136,12 @@ if (-not $Local) {
         Write-Host "--- mirror pulls skipped (prod-only; env=$Env) ---`n"
     }
 
-    # Spawn-point mirror-pull RETIRED in Phase 4 (2026-07-23): map-points.json is now a frozen,
-    # read-only legacy store (the live AI settings are the source), so there is nothing changing
-    # on the box to pull. Sync-SpawnPoints.ps1 is archived; the committed mirror stays as the
-    # frozen reference. (Was: pull box map-points.json down before pushing.)
+    # map-points.json is a frozen, read-only legacy store (the live AI settings are the
+    # source), so there is nothing changing on the box to pull. Sync-SpawnPoints.ps1 is
+    # archived; the committed mirror stays as the frozen reference.
 
-    # (2026-07-31) The config-overrides pull was here. The override engine is deleted - owner's
-    # ruling "No Overrides. Just whole file ownership". Owned files are pulled by the
-    # config-mirror / config-defaults syncs below; there is no separate override document.
+    # The override engine is deleted. Owned files are pulled by the config-mirror /
+    # config-defaults syncs below; there is no separate override document.
 
     # Frozen defaults: the box-born baselines behind the reversible overrides (config-defaults/).
     # Same pull: the mirror follows the box (new captures and re-captures come down); the -Local
@@ -191,8 +188,7 @@ if (-not $Local) {
 
     # Committed config history: each PROD -Fix deploy commits the just-pulled box config
     # state, so `git log -- config-mirror` is the browsable history of what actually
-    # ran on the box ("backup the configs to the repo; commit the history on sync" — user
-    # directive 2026-07-16). Pathspec-limited on purpose: only the pulled mirrors are ever
+    # ran on the box. Pathspec-limited on purpose: only the pulled mirrors are ever
     # committed here, never unrelated working-tree changes. Prod-only, same reason as the
     # pulls above: staging state must never enter the prod mirror history.
     if ($Fix -and $Env -eq 'prod') {
@@ -206,7 +202,7 @@ if (-not $Local) {
         }
     }
 
-    # PULL-ONLY CONFIG MODEL (2026-07-16): the dev box does not push config content, full
+    # PULL-ONLY CONFIG MODEL: the dev box does not push config content, full
     # stop. Config-content items in $items below
     # are flagged Seed=$true: copied only when MISSING on the box (fresh box / disaster
     # recovery), never overwriting a live copy. New config fields are created box-side by
@@ -224,7 +220,7 @@ if (-not $Local) {
         }
     }
 
-    # PAYLOAD-ONLY STAGING (2026-07-16, replaces the whole-repo ~/dayz-tooling mirror): ship
+    # PAYLOAD-ONLY STAGING: ship
     # exactly what the -Local leg needs — the runtime payload, its seeds, and this script —
     # into a transient staging dir that is WIPED first (no stale files, no drift, no second
     # source of truth on the box). Dev-only tooling (Sync-*, Test-*, docs/, serverMods
@@ -235,7 +231,7 @@ if (-not $Local) {
     # EVERY root-level file an $items row reaches with a '../' Src must be listed here, or it
     # never reaches deploy-stage and the copy fails ON THE BOX, mid-deploy (the Test-Path below
     # skips a missing entry silently). Test-Configs cross-checks the two lists so that mismatch
-    # fails the gate on the dev machine instead. Cost one broken prod deploy, 2026-07-22.
+    # fails the gate on the dev machine instead.
     foreach ($f in 'Deploy-DayZServer.ps1', 'Apply-CustomCE.ps1',
                    'Apply-ServerCfg.ps1',
                    # Dot-sourced by the -Local leg for the orphan reconcile. Staged only - it is
@@ -269,9 +265,9 @@ if (-not $Local) {
     $commonSrc = (Resolve-Path (Join-Path $PSScriptRoot "../../../common")).Path
     & rsync -az --delete -e $sshOpt "$commonSrc" "${RemoteTarget}:${RemoteDir}/"
     if ($LASTEXITCODE) { Write-Error "common/ rsync failed (exit $LASTEXITCODE)"; exit 1 }
-    # host.env lives in the server dir on the box (survives the staging wipe; rescued out of
-    # ~/dayz-tooling 2026-07-16). Fresh box: seed it from the example, then the -Local leg
-    # hard-fails on the placeholder secrets with instructions — fill them in ON THE BOX.
+    # host.env lives in the server dir on the box (survives the staging wipe). Fresh box:
+    # seed it from the example, then the -Local leg hard-fails on the placeholder secrets
+    # with instructions — fill them in ON THE BOX.
     $flags = @('-Local'); if ($Fix) { $flags += '-Fix' }; if ($NoRestart) { $flags += '-NoRestart' }; if ($NoLog) { $flags += '-NoLog' }; if ($Force) { $flags += '-Force' }
     ssh -t -o ConnectTimeout=10 $RemoteTarget "mkdir -p ~/servers/dayz-server && { [ -f ~/servers/dayz-server/host.env ] || cp $RemoteDir/host.env.example ~/servers/dayz-server/host.env; } && cd $RemoteDir && pwsh -NoProfile ./Deploy-DayZServer.ps1 $($flags -join ' ')"
     exit $LASTEXITCODE
@@ -295,8 +291,8 @@ if (-not $utils) { throw "common/Utils.ps1 not found near $PSScriptRoot (tried .
 # password is fully supported and MAY also be left empty (open server), the admin password is
 # required. update.sh carries the Steam account as a {{...}} placeholder; see the guard below.
 $hv = [ordered]@{ DEPLOY_USER = 'ubuntu'; DEPLOY_GROUP = 'ubuntu'; DEPLOY_HOME = '/home/ubuntu'; DEPLOY_SERVER_PASSWORD = $null; DEPLOY_ADMIN_PASSWORD = $null; DEPLOY_STEAM_ACCOUNT = $null; DEPLOY_UPDATE_CHECK_INTERVAL = '4h' }
-# host.env lives ON THE BOX in the server dir (moved out of the retired ~/dayz-tooling,
-# 2026-07-16) — the staging dir beside this script is transient and never carries it.
+# host.env lives ON THE BOX in the server dir — the staging dir beside this script is
+# transient and never carries it.
 # The script-dir path stays first so an explicit -HostEnv (or a legacy layout) still wins.
 if (-not (Test-Path $HostEnv)) {
     $boxEnv = Join-Path $HOME 'servers/dayz-server/host.env'
@@ -477,32 +473,27 @@ $items = @(
     # The template ships UNRENDERED — the passwords stay {{...}} here and resolve on the box,
     # so no deploy-time temp file ever holds them.
     @{ Src = "serverDZ.cfg.template"; Dst = Join-Path $ServerDir "serverDZ.cfg.template"; Sudo = $false; Exec = $false }
-    # REMOVED 2026-08-02 (owner: "those files are all owned by the server. We should not touch
-    # them, but they should have a backup process"): the VPP permission pair, SuperAdmins.txt
-    # and UserGroups.json. They shipped DRIFT-OVERWRITE, so the deploy re-stamped the box copy
-    # on every run, not just a fresh one. The repo copies stay under deploy/ as the backup.
-    # Verified behaviour-neutral before removal, not assumed: the prod run that day reported
-    # both InSync, so freezing them froze them at exactly what the repo holds.
+    # The VPP permission pair, SuperAdmins.txt and UserGroups.json are box-owned: shipping them
+    # DRIFT-OVERWRITE would re-stamp the box copy on every run, clobbering on-box edits. The
+    # repo copies stay under deploy/ as the backup only.
     # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, map-points.json, classification,
-    # per-map StaticAIB, messages.xml, config-overrides.json, the Babaku per-map sources) is NO
+    # per-map StaticAIB, messages.xml, the Babaku per-map sources) is NO
     # LONGER listed here. It is declared once in config-registry.json and seeded-if-missing by the
     # "Config content" section below (single source; the API allowlist + pulls + validator read the
-    # same file). $items now carries CODE only (ships on drift). Architecture recap that used to
-    # live here: AI_Bandits DynamicAIB/StaticAIB are per-map raw coords composed at prestart from
+    # same file). $items now carries CODE only (ships on drift).
+    #
+    # AI_Bandits DynamicAIB/StaticAIB are per-map raw coords composed at prestart from
     # common (shared templates, scope:shared) + maps/<mission> (per-map, scope:map:<mission>);
     # Sakhal's dynamic spawns come entirely from map-points.json; Chernarus is PARKED (map.env +
-    # its registry/seed present but not the active mission — see maps/dayzOffline.chernarusplus/PARKED.md);
-    # KnockKnock/AIB_UL/etc. are mod-generated, patched via config-overrides.json (not seeded).
+    # its registry/seed present but not the active mission);
+    # KnockKnock/AIB_UL/etc. are mod-generated; the box owns them (not seeded).
     @{ Src = "dayz-rcon.ps1";       Dst = Join-Path $ServerDir "dayz-rcon.ps1"; Sudo = $false; Exec = $true  }
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
     # The registry is CODE-side truth, but box-side tooling reads it AT RUNTIME, so the box needs
-    # the file itself - not just the masks the deploy renders into dayz-ctl. (Historic: the
-    # prestart default-capture died on every boot with "config-registry.json not found" because
-    # this row was missing, and prestart's `|| true` swallowed it - found live on staging
-    # 2026-08-01. That capture step is gone as of the same day; the row stays because
-    # Confirm-LiveConfigs and the recovery tooling read the registry on the box.)
+    # the file itself - not just the masks the deploy renders into dayz-ctl. The row stays because
+    # Confirm-LiveConfigs and the recovery tooling read the registry on the box.
     @{ Src = "../config-registry.json"; Dst = Join-Path $ServerDir "config-registry.json"; Sudo = $false; Exec = $false }
     # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
     # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
@@ -522,8 +513,6 @@ $items = @(
     # are pulled from their doc folder at prestart. Apply-CustomCE copies them into the active
     # mission's custom/ folder and regenerates <ce folder="custom"> in its cfgeconomycore.xml
     # (never the vanilla types.xml). Add a modded types file = one line in custom-ce.json.
-    # REMOVED 2026-08-02 with the other three below - the box owns them (see the note at the
-    # Expansion CE block).
     # Expansion CE (from the DayZ-Expansion-Missions mission templates): none of our missions ever
     # registered these, so NO Expansion item spawned as world loot. The shared types file is the
     # Chernarus variant (usage-based, Tier1-4 - fits chernarusplus AND sakhal); Enoch defines no
@@ -531,21 +520,17 @@ $items = @(
     # per-map override). spawnabletypes is byte-identical across every template - truly shared.
     # expansion_events.xml is NOT shipped: map-specific AND inert without per-map cfgeventspawns
     # positions, which no mission has yet - separate task.
-    # REMOVED 2026-08-02, all five custom-ce files (owner: "those files are all owned by the
-    # server. We should not touch them, but they should have a backup process"). They shipped
-    # DRIFT-OVERWRITE, so the deploy re-stamped the box copy on every run - a config push under
-    # the name of a code ship. The box owns them now; the repo copies under deploy/custom-ce/
-    # are the backup, and Apply-CustomCE keeps reading them from the SERVER dir exactly as
-    # before. Verified behaviour-neutral before removal: the prod run that day reported all
-    # five InSync, so freezing them froze them at exactly what the repo holds.
+    # All five custom-ce files are box-owned: shipping them DRIFT-OVERWRITE would re-stamp the
+    # box copy on every run - a config push under the name of a code ship. The box owns them
+    # now; the repo copies under deploy/custom-ce/ are the backup, and Apply-CustomCE keeps
+    # reading them from the SERVER dir exactly as before.
     # A REBUILT box needs them restored from deploy/custom-ce/ by hand - that is what a backup
     # is, as opposed to a seed. Gated by tests/deploy-ships-code-only.test.ps1.
-    # The loot-balance tuning pair (expansion_types_tuning.xml root + enoch) is NOT here any more
-    # (2026-07-23): it became box-owned, WEB-EDITED content - the ConfigViewer types editor writes
-    # it via dayz-ctl types-write, so shipping it on drift would clobber every web edit. Declared
-    # in config-registry.json (web:'types', seed, mirror:'live') and seeded-if-missing below like
-    # config-overrides.json; Pull-Configs pulls the box copy back into deploy/custom-ce/ (seed =
-    # latest mirror, map-points model). It keeps the SAME per-map split as the file it patches:
+    # The loot-balance tuning pair (expansion_types_tuning.xml root + enoch) is NOT here: it is
+    # box-owned, WEB-EDITED content - the ConfigViewer types editor writes it via dayz-ctl
+    # types-write, so shipping it on drift would clobber every web edit. Declared
+    # in config-registry.json (web:'types', seed, mirror:'live') and seeded-if-missing below;
+    # Pull-Configs pulls the box copy back into deploy/custom-ce/ (seed = latest mirror). It keeps the SAME per-map split as the file it patches:
     # 33 tuned types differ between the Chernarus and Enoch variants, so one shared file would
     # restore Tier4 on Enoch and kill them there.
     @{ Src = "../Apply-CustomCE.ps1";        Dst = Join-Path $ServerDir "Apply-CustomCE.ps1";        Sudo = $false; Exec = $true }
@@ -623,11 +608,10 @@ foreach ($i in $items) {
 }
 
 # --- RECONCILE: remove what this deploy placed before and no longer places -------------------
-# Until 2026-08-02 the loop above only ever ADDED. Deleting a script from the repo left it
-# running on the box forever - 8 corpses on prod on 2026-08-01, three of them builders retired
-# eleven days earlier. ConfigViewer fixes the same bug with `rsync --delete` because its webroot
-# is wholly deploy-owned; the server dir is not (persistence, logs, host.env, mpmissions/,
-# profiles/ and the game binaries share it), so the deploy records what it PLACED instead.
+# The loop above only ever ADDS. Deleting a script from the repo alone would leave it running on
+# the box forever. ConfigViewer avoids this with `rsync --delete` because its webroot is wholly
+# deploy-owned; the server dir is not (persistence, logs, host.env, mpmissions/, profiles/ and
+# the game binaries share it), so the deploy records what it PLACED instead.
 # Logic and its guards: DeployManifest.ps1. It can only ever remove a path it wrote down.
 $manifestPath = Join-Path $ServerDir '.deploy-manifest.json'
 # The one-time sweep for corpses that predate the manifest lives in deploy/retired-paths.txt -
@@ -637,20 +621,15 @@ $retiredSweep = Read-RetiredPaths -Path (Join-Path $deployDir 'retired-paths.txt
 $placedNow = @($items | ForEach-Object { $_.Dst })
 # NEVER remove box-owned config or a deny-listed path, whatever the manifest says. A file that
 # LEAVES $items because the box now owns it is indistinguishable, by set difference alone, from
-# one that was retired - and on 2026-08-02 seven of them left at once. Without this the next
-# deploy would have deleted the live Expansion CE files and the admin list. Derived from the
-# registry, so handing a new file to the box protects it automatically.
+# one that was retired. Without this guard the next deploy would delete files the box now owns.
+# Derived from the registry, so handing a new file to the box protects it automatically.
 # Read the STAGED registry, not the server's. The server's copy is the one this deploy is about
-# to replace, so on the run that introduces a protection it does not have it yet - which is
-# exactly what happened on 2026-08-02: the report proposed deleting the two VPP permission files
-# because the box's registry predated the denyList that same run was shipping. A guard derived
-# from the outgoing truth protects everything except the change you are making. Fall back to the
-# server copy only if the payload has none.
+# to replace, so on the run that introduces a new protection it does not have it yet - a guard
+# derived from the outgoing (box) truth would fail to protect exactly the file the current
+# change is trying to protect. Fall back to the server copy only if the payload has none.
 # The staged registry sits at $PSScriptRoot, NOT $deployDir - $items ships it as
-# '../config-registry.json' because $deployDir is the deploy/ subfolder. My first attempt at this
-# fix pointed at $deployDir, found nothing, silently fell through to the box copy and reproduced
-# the exact bug it was meant to close. On the box $PSScriptRoot is deploy-stage; in the repo it
-# is DayZ-Server. Both hold the outgoing registry.
+# '../config-registry.json' because $deployDir is the deploy/ subfolder. On the box
+# $PSScriptRoot is deploy-stage; in the repo it is DayZ-Server. Both hold the outgoing registry.
 $registryForGuard = $null
 foreach ($cand in (Join-Path $PSScriptRoot 'config-registry.json'), (Join-Path $ServerDir 'config-registry.json')) {
     if (-not $registryForGuard -and (Test-Path $cand)) {
@@ -664,7 +643,7 @@ if ($registryForGuard) {
     $protectedPaths += @($registryForGuard.denyList | ForEach-Object { $_.path })
 }
 $protectedPaths = @($protectedPaths | Where-Object { $_ } | ForEach-Object { "$_".Trim() } | Sort-Object -Unique)
-# Also protect the repo-authored config that left $items on 2026-08-02 but has no surface row.
+# Also protect the repo-authored config that left $items but has no surface row.
 $protectedPaths += 'custom-ce'
 $orphans = @(Get-DeployOrphans -Previous (Read-DeployManifest -Path $manifestPath) `
                                -Current $placedNow -ServerDir $ServerDir -Retired $retiredSweep `
@@ -800,9 +779,9 @@ if (Test-Path $mirrorDir) {
 # live Steam session of the server account elsewhere — accepted cost of hands-off
 # deploys. On update failure the restart is skipped so the running server stays
 # consistent. Report mode just warns.
-# The mod set comes straight from mods.conf ($enabledMods, parsed above) — no more
-# regex-scraping the unit (an unanchored '-mod=' once matched a commented-out ExecStart
-# and silently skipped update.sh, 2026-07-10: unit advertised 13 mods, disk had 6).
+# The mod set comes straight from mods.conf ($enabledMods, parsed above) — not from
+# regex-scraping the unit: an unanchored '-mod=' can match a commented-out ExecStart line
+# and silently skip update.sh.
 $missingMods = @($enabledMods | Where-Object { $_ -and -not (Test-Path (Join-Path $ServerDir $_)) })
 if ($missingMods.Count) {
     if ($Fix -and -not $NoRestart) {
@@ -827,8 +806,7 @@ if ($Fix) {
     sudo systemctl daemon-reload
     # Boot persistence: `enable` (NOT --now) only writes the wants symlink, so it is safe
     # under -NoRestart and a no-op on a box that already has it. Without this a rebuilt box
-    # comes up with the game server dead after every reboot — found on staging 2026-07-21,
-    # where the unit was 'disabled' after a clean deploy (RECOVERY.md depends on this).
+    # comes up with the game server dead after every reboot.
     sudo systemctl enable dayz-server
     # Timer enable is safe under -NoRestart: it never touches the game server process.
     sudo systemctl enable --now dayz-logarchive.timer

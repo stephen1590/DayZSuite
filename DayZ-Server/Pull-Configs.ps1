@@ -6,7 +6,7 @@
 .DESCRIPTION
     The box owns all game-config content (the web editor writes it; prestart rebuilds live
     files from frozen defaults + overrides). The repo keeps committed MIRRORS so a dead box
-    is one `Deploy-DayZServer.ps1 -Fix` away from its config state (docs/RECOVERY.md).
+    is one `Deploy-DayZServer.ps1 -Fix` away from its config state.
     This runs every mirror pull in sequence:
 
       Sync-ConfigDefaults.ps1    config-defaults/**           (frozen <stem>.defaults<ext> baselines)
@@ -49,8 +49,7 @@ param(
     [switch]$NoLog
 )
 
-# Sync-ConfigOverrides.ps1 was the first entry until 2026-07-31. It pulled config-overrides.json,
-# which no longer exists. One sync left: the frozen defaults behind every owned surface.
+# One sync: the frozen defaults behind every owned surface.
 $syncs = @(
     "Sync-ConfigDefaults.ps1"
 )
@@ -81,9 +80,9 @@ if ($failed.Count) {
 # surface is a registry line, not a new script. Deliberately inline rather than a sixth Sync-*.
 #
 # Why this exists: mission expansion/settings files (AIPatrolSettings, AILocationSettings, ...) are
-# written by the mod on a mission's first boot and hand-edited thereafter. No registry row seeded
-# them and no pull captured them, so they lived ONLY on prod - a fresh box and every staging VM
-# had none of it, and enoch silently lost 17 patrols for five days with no diff to notice it.
+# written by the mod on a mission's first boot and hand-edited thereafter. No registry row seeds
+# them and no other pull captures them, so without this they live ONLY on prod - a fresh box or
+# staging VM would have none of it, with no diff to notice the gap.
 . (Join-Path $PSScriptRoot "_DZSync.ps1")
 . (Join-Path $PSScriptRoot "ConfigParse.ps1")             # Test-ConfigParses - BOM-tolerant, kind-driven
 . (Join-Path $PSScriptRoot "../../../common/Utils.ps1")   # Get-Stdout - strips ErrorRecords from 2>&1
@@ -135,7 +134,7 @@ if ($bad) { Write-Warning "config-mirror: $bad file(s) rejected - the repo copy 
 Write-Host ""
 
 # --- LIVE file mirror (seed = latest mirror) ----------------------------------------------
-# FILE rows tagged "mirror":"live" (2026-07-23: the web-edited expansion_types_tuning pair) are
+# FILE rows tagged "mirror":"live" (the web-edited expansion_types_tuning pair) are
 # pulled back INTO their registry 'seed' path - the map-points model. NOT into config-mirror/:
 # the seed path already holds a copy of this exact file, and "one file, one mirror" (above)
 # forbids a second. The box copy must pass the row's 'check' parse before it may enter the repo,
@@ -148,11 +147,10 @@ foreach ($row in $liveFileRows) {
     if (-not $row.seed) { Write-Warning "  SKIP $($row.name) - mirror:'live' file row has no seed path (nowhere to pull to)."; $fBad++; continue }
     $text = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$($row.box)'" } | Out-String
     if (-not $text.Trim()) { Write-Warning "  SKIP $($row.name) - box copy missing/empty ($($row.box))."; $fBad++; continue }
-    # Shared validator (ConfigParse.ps1). It strips a leading UTF-8 BOM before parsing: the
-    # bare `[xml]$text` cast this replaced rejected every BOM'd mission file, so db/globals.xml
-    # on all three maps + Sakhal db/events.xml reported "does not parse" and never mirrored,
-    # while the box copies were valid the whole time (2026-08-01). An undeclared check kind is
-    # still false - a mirrored file row must declare one; never pull unvalidated content.
+    # Shared validator (ConfigParse.ps1). It strips a leading UTF-8 BOM before parsing - a bare
+    # `[xml]$text` cast rejects any BOM'd file even when the box copy is valid. An undeclared
+    # check kind is still false - a mirrored file row must declare one; never pull unvalidated
+    # content.
     if (-not (Test-ConfigParses $text $row.check)) { Write-Warning "  SKIP $($row.name) - box copy does not parse as $($row.check)."; $fBad++; continue }
     $dst = Join-Path $PSScriptRoot $row.seed
     $liveFilePaths += $row.seed
@@ -169,9 +167,9 @@ Write-Host ("  {0} to pull, {1} in sync, {2} rejected{3}" -f $fPulled, $fSame, $
 if ($fBad) { Write-Warning "live file mirror: $fBad file(s) rejected/skipped - the repo copy is unchanged for those." }
 Write-Host ""
 
-# Commit the pulled state so git history IS the backup ("commit the history on sync" —
-# user directive 2026-07-16; Deploy-DayZServer.ps1 -Fix does the same). Pathspec-limited:
-# only the mirrors this script pulls are committed, never unrelated working-tree changes.
+# Commit the pulled state so git history IS the backup; Deploy-DayZServer.ps1 -Fix does the
+# same. Pathspec-limited: only the mirrors this script pulls are committed, never unrelated
+# working-tree changes.
 if ($Execute) {
     $mirrorPaths = @('deploy/profiles/AI_Shared/map-points.json', 'config-defaults', 'config-mirror') + $liveFilePaths
     git -C $PSScriptRoot add -- $mirrorPaths 2>$null

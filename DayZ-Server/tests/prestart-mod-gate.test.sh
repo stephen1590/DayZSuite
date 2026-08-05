@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# prestart-mod-gate.test.sh - TDD harness for prestart.sh's mod_enabled() gate.
-# Written BEFORE the function exists: first run must FAIL (function not found).
+# prestart-mod-gate.test.sh - harness for prestart.sh's mod_enabled() gate.
 #
 # WHY THIS EXISTS (the project's core thesis - one concept, ONE owner):
-# disabling a single mod used to require hand-editing THREE files that each held a private
-# copy of the same fact - mods.conf (the declared owner), Deploy-DayZServer.ps1's ship list
-# (commented out), and prestart.sh's call site (commented out). Nothing kept them in sync,
-# and the retired script stayed on the box as an unmanaged orphan. mods.conf is now the ONLY
-# place enablement is written; prestart DERIVES execution from it through this one function.
+# mods.conf is the ONLY place mod enablement is written; prestart DERIVES execution from it
+# through this one function. Disabling a mod any other way - a ship-list edit, a commented-out
+# call site - creates a second copy of the same fact that nothing keeps in sync, and leaves a
+# retired step as an unmanaged orphan on the box.
 #
 # Extracts mod_enabled() out of prestart.sh and exercises it against fixture mods.conf files.
 # No box, no sudo, no network.
@@ -66,7 +64,7 @@ mod_enabled '@expansion'   && bad "PREFIX BUG: '@expansion' matched '@expansionc
 mod_enabled '@nosuchmod'   && bad "absent mod reported enabled" || ok "absent mod is disabled"
 
 # 8. FAIL-OPEN when mods.conf is missing: prestart must never block boot on a missing file
-#    (a failing ExecStartPre took the server down 2026-07-07).
+#    (a failing ExecStartPre can take the server down).
 rm -f "$WORK/mods.conf"
 mod_enabled '@anything'    && ok "missing mods.conf fails OPEN (never blocks boot)" || bad "missing mods.conf failed closed - can block boot"
 

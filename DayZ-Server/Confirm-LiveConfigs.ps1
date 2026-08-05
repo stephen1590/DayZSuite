@@ -12,11 +12,10 @@
         3. every JSON seed in the deploy payload parses; messages.xml parses as XML
       LIVE (over ssh, all read-only):
         4. dayz-server unit is active
-        5. (RETIRED 2026-07-31) the zero-MISS override report. The applier is deleted; a
-           two-copy equivalent is unbuilt (T4) and this script SAYS SO rather than passing.
-           every override in the live document will land on the next boot. This is the
-           check that catches silent dead overrides (a selector typo, a removed file, an
-           XML path that no longer matches). [NEW]/[OK] lines are healthy; [WARN] is not.
+        5. the zero-MISS override report is RETIRED: the applier is deleted, so there is no
+           apply step left that can silently miss a change. Not yet replaced by a two-copy
+           equivalent for the live box; this script reports that gap rather than asserting
+           nothing.
         6. COMPOSED ARTIFACTS: the files prestart's builders generate for the active
            mission parse (SpawnerBubakuV2.json, transfer_spawn.json) — proof the box-side
            build chain produced valid output. (DynamicAIB/StaticAIB dropped: BanditAI retired.)
@@ -89,11 +88,10 @@ if (-not $LocalOnly) {
     if ($unit -eq 'active') { Show-Pass "dayz-server unit is active" }
     else { Show-Fail "dayz-server unit is '$unit' (expected active)" }
 
-    # (2026-07-31) A "zero-MISS" check ran the box's override applier in report mode and failed
-    # on any WARN. The applier is deleted - config files are owned whole, so there is no apply
-    # step that can miss. The equivalent live check for the two-copy model is: every OWNED
-    # surface declared in the registry exists on the box and parses. That is what T4 must build;
-    # asserting nothing here is honest, asserting the old thing would be a green light on a
+    # The applier is deleted - config files are owned whole, so there is no apply step that
+    # can miss. The equivalent live check for the two-copy model would be: every OWNED
+    # surface declared in the registry exists on the box and parses - not yet built.
+    # Asserting nothing here is honest; asserting the old thing would be a green light on a
     # mechanism that no longer runs.
     Show-Warn "live config verification is NOT implemented for the two-copy model (T4). This run checked the unit only."
 
@@ -103,9 +101,9 @@ if (-not $LocalOnly) {
         Where-Object { $_ -match '^DAYZ_MISSION=(.+)$' } | ForEach-Object { $Matches[1].Trim() } | Select-Object -First 1)
     if ($mission) { Show-Pass "active mission: $mission" } else { Show-Fail "could not read map.env for the active mission" }
 
-    # BanditAI retired 2026-07-23: Build-AIBandits no longer runs at prestart, so DynamicAIB.json /
-    # StaticAIB.json are no longer composed. Dropped from this check - a fresh box would never
-    # create them and this would hard-fail. (The files may still linger on an old box; that's fine.)
+    # Build-AIBandits does not run at prestart, so DynamicAIB.json / StaticAIB.json are never
+    # composed. Dropped from this check - a fresh box would never create them and this would
+    # hard-fail. (The files may still linger on an old box; that's fine.)
     foreach ($rel in @(
         "profiles/SpawnerBubaku/SpawnerBubakuV2.json"
         "profiles/transfer_spawn.json"

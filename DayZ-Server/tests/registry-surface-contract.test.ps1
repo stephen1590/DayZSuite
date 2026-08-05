@@ -1,15 +1,14 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Table-driven contract test for the DECLARED mission config surfaces.
-  Supersedes ce-logging-surface.test.ps1 (that file tested one surface with the same
-  assertions copy-pasted three times; this drives them from a table - one mechanism, N cases).
+  Table-driven contract test for the DECLARED mission config surfaces: one mechanism, N cases,
+  rather than the same assertions copy-pasted per surface.
 
-  Scope source (owner, 2026-07-30): https://low.ms/knowledgebase/dayz-server-configuration
+  Scope source: https://low.ms/knowledgebase/dayz-server-configuration
   Every config file that reference lists must be DECLARED in config-registry.json, so nothing
   the docs call a config surface is invisible to the gate, the mirror and the web editor.
 
-  Owner classification decisions (2026-07-30):
+  Classification decisions:
    - the six admin-tunable files      -> category 'owned',     web 'file'  (two-copy editor)
    - mapgroupproto.xml (1.2-1.5 MB)   -> category 'reference', web 'view'  (read-only: game-owned
                                           loot positions, rewritten by updates, too big to edit
@@ -72,8 +71,8 @@ foreach ($m in $missions) {
         # a 'view' row must never also be writable - web:'view' is enforced read-only end to end
         if ($e.web -eq 'view') { Check (-not $row.writable) "$rel : view row is not 'writable'" }
 
-        # (2026-07-31) The wholeFiles-blob check lived here. config-overrides.json is deleted,
-        # so the pattern it guarded against cannot exist: there is no document to hold a blob.
+        # No wholeFiles-blob check here: config-overrides.json is deleted, so the pattern it
+        # guarded against cannot exist - there is no document to hold a blob.
     }
 }
 

@@ -26,6 +26,12 @@ Never claim "done" or "verified" without a test that failed first. A question is
 answer it, propose the change, get a go before any non-trivial build. Generalize - one mechanism for
 N cases; never ship per-case copy-paste mirrors.
 
+**Comments carry constraints, never history.** No dates, incident stories, owner quotes, commit refs,
+before/after narration, or test evidence in source comments - that is change-notice content and it
+rots silently. One line stating the timeless trap ("getValue() on a container serializes the whole
+subtree") is the ceiling. **If code is not apparent in its function even without comments, that is a
+structural defect: FLAG it (tracker row), do not paper it with prose.**
+
 ## Working on the box
 
 - **Never hand-patch the live box.** Fix the deploy script, redeploy. Code → Document → Deploy.

@@ -7,12 +7,9 @@
   Dot-source this; it defines Test-ConfigParses and nothing else (no side effects, so a
   test can load it directly).
 
-  One rule worth stating because it cost a silent mirror outage on 2026-08-01: DayZ ships
-  several mission files with a UTF-8 BOM, and PowerShell's `[xml]$string` cast REJECTS a
-  string starting with U+FEFF - the BOM is a byte-order mark for a FILE, and has no meaning
-  once the bytes are already a .NET string. Pull-Configs used a bare cast, so db/globals.xml
-  (all three maps) and Sakhal db/events.xml were reported "does not parse as xml" and never
-  mirrored. The box files were valid the whole time.
+  One rule worth stating: DayZ ships several mission files with a UTF-8 BOM, and
+  PowerShell's `[xml]$string` cast REJECTS a string starting with U+FEFF - the BOM is a
+  byte-order mark for a FILE, and has no meaning once the bytes are already a .NET string.
 
   So: strip a leading BOM, then parse. An unknown kind is ALWAYS false - a caller must not
   be able to pull content nothing validated (that is how a bad file reaches the repo, and
@@ -39,7 +36,7 @@ function Test-ConfigParses {
     switch ([string]$Kind) {
         'json'  { try { $null = $t | ConvertFrom-Json; return $true } catch { return $false } }
         'xml'   { try { $null = [xml]$t;               return $true } catch { return $false } }
-        # 'text' - the OTHER kind (owner 2026-08-01). ban.txt / whitelist.txt / map.env are
+        # 'text' - the OTHER kind. ban.txt / whitelist.txt / map.env are
         # real owned surfaces that are neither JSON nor XML; declaring check:'none' left them
         # permanently unmirrorable. The only honest claim about a freeform file is "this is
         # readable text, not binary or truncated" - which still catches the failures that

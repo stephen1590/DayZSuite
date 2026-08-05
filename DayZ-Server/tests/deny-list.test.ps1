@@ -2,19 +2,15 @@
 <#
   deny-list.test.ps1 - the paths that must never become a web surface.
 
-  WRITTEN BEFORE THE denyList EXISTS, so the first run must fail.
-
   WHY THIS IS A SECURITY BOUNDARY AND NOT A PREFERENCE. Today a file with no registry row is
   already invisible, so nothing is exposed and this list changes no behaviour. The moment
-  opt-in-by-default ships (WS-S), the default inverts: every .json/.xml under the server dir
+  opt-in-by-default ships, the default inverts: every .json/.xml under the server dir
   becomes visible unless something says otherwise, and this list becomes the only thing
   standing between the UI and player Steam64 IDs, admin permissions and a STEAM_API_KEY field.
 
-  The owner rejected a content scanner for this, correctly: *"You're just applying blanket
-  guesses as a dynamic solution... this shouldn't change often and secrets should be
-  known/static to begin with. Just hide them from the UI."* So it is a static list of four
-  known folders plus persistence and vendor geometry - and the thing that makes it real is
-  this assertion, not the list. A boundary maintained by memory is not one.
+  A static list of four known folders plus persistence and vendor geometry - and the thing
+  that makes it real is this assertion, not the list. A boundary maintained by memory is not
+  one.
 
   What is asserted: the list exists, it covers the six declared prefixes, and NO surface row
   resolves underneath any of them. That last one is the ratchet - it fails the day someone
@@ -33,8 +29,8 @@ function Check([bool]$ok, [string]$what) {
 $registry = Get-Content -Raw (Join-Path $dzRoot 'config-registry.json') | ConvertFrom-Json
 
 # --- 1. the declaration exists -------------------------------------------------
-# Filter nulls: an ABSENT denyList surfaces as $null, and @($null) has Count 1 - which made the
-# first version of this assertion pass against a registry that declared nothing at all.
+# Filter nulls: an ABSENT denyList surfaces as $null, and @($null) has Count 1 - which would
+# make this assertion pass against a registry that declares nothing at all.
 $deny = @($registry.denyList | Where-Object { $_ })
 Check ($deny.Count -gt 0) "config-registry.json declares a denyList ($($deny.Count) entries)"
 
@@ -43,8 +39,7 @@ Check (-not ($deny | Where-Object { -not $_.path -or -not $_.why })) `
     'every denyList entry declares both a path and a why'
 
 # --- 2. it covers the six paths the model names --------------------------------
-# CONFIG-ARCHITECTURE.md "Deny list" section. Named individually so dropping one is a
-# failure rather than a smaller number nobody reads.
+# Named individually so dropping one is a failure rather than a smaller number nobody reads.
 $required = @(
     'profiles/users'           # player profile data
     'profiles/VPPAdminTools'   # STEAM_API_KEY field + BanList player IDs
@@ -97,11 +92,11 @@ Check ($genViolations.Count -eq 0) `
 # Flipping a row to `owned` to unlock a writer uses the ownership field as an access flag - which
 # is how `category` became one, and why every file needs a hand-declared row today.
 #
-# The near miss that added this, 2026-08-02: the plan for retiring `spawn-write` was to reclassify
-# map-points.json from 'reference' to 'owned' so own-write would accept it. That file is a FROZEN
-# legacy store, read-only since the map inversion, and its live counterpart is rebuilt by a builder
-# every prestart. Marking it owned would have declared a generated, superseded file editable purely
-# to unlock a verb nobody can call - the verb was already dead behind MAP_POINTS_DEPRECATED.
+# A concrete danger this rule guards against: reclassifying map-points.json from 'reference' to
+# 'owned' so own-write would accept it. That file is a FROZEN legacy store, read-only since the
+# map inversion, and its live counterpart is rebuilt by a builder every prestart. Marking it
+# owned would declare a generated, superseded file editable purely to unlock a verb - exactly
+# the ownership-as-access-flag mistake this rule exists to catch.
 #
 # The checkable half of the rule: a file a BUILDER writes cannot also be one the UI writes. Two
 # writers, one file, and the builder wins at every restart - so the edit is silently discarded.
