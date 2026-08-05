@@ -2,17 +2,15 @@
 <#
   deploy-manifest.test.ps1 - V1: deleting a file from the repo must remove it from the box.
 
-  WRITTEN BEFORE DeployManifest.ps1 EXISTS, so the first run must fail on a missing module.
-
   The bug: Deploy-DayZServer's $items copies files one at a time and nothing ever reconciles,
-  so anything ever shipped stays on the box forever. 8 dead files were measured on prod on
-  2026-08-01, including three builders retired 11 days earlier.
+  so anything ever shipped stays on the box forever. Deleting a script from the repo does NOT
+  remove it from the box.
 
   Why not rsync --delete, which is how ConfigViewer solves the same problem: ConfigViewer's
   webroot is 100% deploy-owned. The DayZ server dir is not - persistence, logs, host.env,
   mpmissions/, profiles/, the game binaries and every box-owned config share it with the
-  deploy's files, and the corpses are in the ROOT, interleaved with all of that. There is no
-  directory boundary to point --delete at. So the deploy records what it PLACED and removes
+  deploy's files, and any corpse would sit in the ROOT, interleaved with all of that. There is
+  no directory boundary to point --delete at. So the deploy records what it PLACED and removes
   what it no longer places.
 
   The safety property that matters more than the feature: this can only ever remove a path
@@ -64,13 +62,12 @@ Check (SameSet (Get-DeployOrphans -Previous @() -Current @((& $P 'Build-AIBandit
                                   -Retired @('Build-AIBandits.ps1')) @()) `
     'a Retired path that is shipped again is kept - shipping always beats sweeping'
 
-# --- 5b. NEAR MISS, 2026-08-02: handing a file to the box must not delete it -----
-# The 7 config files left $items that day because the box owns them now. The manifest from the
-# previous deploy still listed them as placed, so the very next run would have classified them
-# as orphans and REMOVED them - taking Expansion loot registration and the admin list with it.
-# "Stopped shipping it" and "retired it" are indistinguishable to a set difference, so the
-# reconcile is told what it must never touch: anything the registry declares a surface, and
-# anything under a deny-listed prefix. Both are things a deploy has no business deleting.
+# --- 5b. handing a file to the box must not delete it -----
+# A config file can leave $items because the box now owns it. The manifest from the previous
+# deploy would still list it as placed, so the next run would classify it as an orphan and
+# remove it. "Stopped shipping it" and "retired it" are indistinguishable to a set difference,
+# so the reconcile is told what it must never touch: anything the registry declares a surface,
+# and anything under a deny-listed prefix. Both are things a deploy has no business deleting.
 $protectedCases = @(
     @{ what = 'a registry-declared surface'; protect = @('custom-ce/custom_types.xml'); path = 'custom-ce/custom_types.xml' }
     @{ what = 'a deny-listed prefix';        protect = @('profiles/VPPAdminTools');     path = 'profiles/VPPAdminTools/Permissions/SuperAdmins/SuperAdmins.txt' }
@@ -118,10 +115,8 @@ try {
 } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 
 # --- 10. ON A REAL FILESYSTEM, and 11. actually wired into the deploy -----------
-# Added AFTER the logic above (which was red-first against a missing module) - these are
-# regression guards, and they are here because the ledger already recorded the lesson the
-# hard way: asserting a mechanism's SHAPE is not asserting that anything can USE it. Both
-# were proven non-vacuous by mutation before being left in.
+# These are regression guards: asserting a mechanism's SHAPE is not asserting that anything
+# can USE it.
 $box = Join-Path ([IO.Path]::GetTempPath()) ("box-" + [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force -Path (Join-Path $box 'custom-ce') | Out-Null
@@ -146,17 +141,13 @@ try {
 } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 
 # --- 12. the sweep list is DATA and the deploy reads it ------------------------
-# It started life as an inline array in Deploy-DayZServer.ps1 and broke three gates at once:
-# no-dead-scripts, prestart-no-capture and override-engine-deleted all assert that a retired
-# script's name appears in no .ps1/.sh. They were right - a name in a script reads as a caller.
-# A delete list is the opposite of a call, so it moved to a text file rather than the gates
-# being weakened.
+# A name in a script reads as a caller; a delete list is the opposite of a call, so it lives
+# in a text file, not a script array.
 $dzRoot = Split-Path -Parent $here
 $retiredFile = Join-Path $dzRoot 'deploy/retired-paths.txt'
-# PRUNED 2026-08-02, the same day it shipped, because it had done its job: prod's 4 corpses are
-# gone and the manifest covers everything from here. A sweep list that survives its sweep is a
-# standing hand-maintained list, which is precisely what the manifest replaced - so its ABSENCE
-# is the correct end state and this asserts it stays absent.
+# A sweep list that survives its sweep is a standing hand-maintained list, which is precisely
+# what the manifest replaced - so its ABSENCE is the correct end state and this asserts it
+# stays absent.
 Check (-not (Test-Path $retiredFile)) `
     'deploy/retired-paths.txt is absent - the one-time sweep is spent and must not become standing state'
 Check (SameSet (Read-RetiredPaths -Path $retiredFile) @()) `
@@ -168,19 +159,15 @@ try {
     Check (SameSet (Read-RetiredPaths -Path $tmpSweep) @('Old-Thing.ps1', 'Spaced.ps1')) `
         'the parser still strips comments, blanks and surrounding space if the file is ever revived'
 } finally { Remove-Item $tmpSweep -Force -ErrorAction SilentlyContinue }
-# No "did a name leak back into a script" check here on purpose. I wrote one, and it failed on
-# prestart.sh / _DZSync / Test-Configs, all of which MENTION a retired builder in a comment
-# explaining that it is retired. tests/no-dead-scripts.test.ps1 already owns that question and
-# draws the line correctly - a mention is not a caller. A second gate for one concept is the
-# defect this project exists to remove, so the right move was deleting mine, not tuning it.
+# No "did a name leak back into a script" check here on purpose: scripts may MENTION a
+# retired builder in a comment explaining that it is retired, and a mention is not a caller.
 
 $deploy = Get-Content -Raw (Join-Path (Split-Path -Parent $here) 'Deploy-DayZServer.ps1')
 Check ($deploy -match 'Get-DeployOrphans' -and $deploy -match 'Write-DeployManifest' -and
        $deploy -match "\.\s*\(Join-Path \`$PSScriptRoot 'DeployManifest\.ps1'\)") `
     'Deploy-DayZServer dot-sources the module AND calls both halves (logic that nothing calls is not a fix)'
-# Scoped to the payload block, the same way Test-Configs reads it. The first version of this
-# assertion was `(?s)foreach.*?'DeployManifest.ps1'.*?\) \{` - which matched the dot-source line
-# on the other side of the file and passed with the payload entry deleted. Caught by mutation.
+# Scoped to the payload block, the same way Test-Configs reads it: a looser regex could match
+# the dot-source line elsewhere in the file and pass even with the payload entry deleted.
 $payloadBlock = [regex]::Match($deploy, '(?s)foreach \(\$f in (.*?)\) \{')
 $shippedList = @([regex]::Matches($payloadBlock.Groups[1].Value, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
 Check ($payloadBlock.Success -and $shippedList -contains 'DeployManifest.ps1') `
@@ -188,22 +175,20 @@ Check ($payloadBlock.Success -and $shippedList -contains 'DeployManifest.ps1') `
 Check ($deploy -match '(?s)if \(\$Fix\) \{ Write-DeployManifest') `
     'the manifest is written ONLY under -Fix - a report run must leave the box exactly as it found it'
 
-# The guard is only real if the DEPLOY passes it. Asserted separately from the logic because
-# the near miss was never in the logic - it was in nobody calling it.
+# The guard is only real if the DEPLOY passes it. Asserted separately from the logic because a
+# mechanism can be correct and still be unused if nothing calls it.
 Check ($deploy -match '-Protected \$protectedPaths') `
     'the deploy passes -Protected to the reconcile'
 Check ($deploy -match '\$registryForGuard\.surfaces' -and $deploy -match '\$registryForGuard\.denyList') `
     'the protected set is DERIVED from the registry surfaces AND the denyList, not hand-listed'
-# BOOTSTRAP, found by a live report run on 2026-08-02: the guard first read the registry from
-# $ServerDir - the copy this deploy is about to REPLACE. So on the run that introduces a new
-# protection, the guard does not have it yet, and the report proposed deleting the two VPP
-# permission files using a registry that predated the denyList shipping in the same payload.
-# A guard derived from the OUTGOING truth protects everything except the change being made.
-# Asserted by RESOLVING the path, not by matching the source text. The first version of this
-# check matched the code shape and passed while the path was wrong - it pointed at $deployDir,
-# where the registry is not (it ships as '../config-registry.json' because $deployDir is the
-# deploy/ subfolder), so the lookup silently fell through to the box copy and reproduced the
-# very bug it was written to close. Asserting a mechanism's SHAPE is not asserting it works.
+# The guard must read the registry from $PSScriptRoot, not $ServerDir - the server copy is the
+# one this deploy is about to REPLACE, so on the run that introduces a new protection the
+# server copy does not have it yet. A guard derived from the OUTGOING (staged) truth protects
+# everything except the change being made.
+# Asserted by RESOLVING the path, not by matching the source text: a regex that only matches
+# the code SHAPE can pass even when the path it resolves to is wrong (e.g. $deployDir, which
+# does not hold the registry - it ships as '../config-registry.json' because $deployDir is the
+# deploy/ subfolder). Asserting a mechanism's SHAPE is not asserting it works.
 $guardCandidate = [regex]::Match($deploy, "foreach \(\`$cand in \(Join-Path (\`$\w+) 'config-registry\.json'\)")
 Check $guardCandidate.Success 'the guard names a directory to read the outgoing registry from'
 $guardVar = $guardCandidate.Groups[1].Value

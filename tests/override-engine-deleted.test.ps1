@@ -2,13 +2,10 @@
 <#
   override-engine-deleted.test.ps1
 
-  The owner's ruling, 2026-07-31: "No Overrides. Just whole file ownership and modifying with a
-  better UI/Syntax manager."  A migration is DONE when the replaced mechanism is DELETED - an
-  abstraction that leaves the old path alive is two mechanisms, not one.
-
-  WRITTEN BEFORE THE DELETION, so it must FAIL on first run. It is the gate that keeps the
-  engine from coming back: every piece below has to be absent, in every tier at once. A partial
-  removal (UI gone, verbs still there) fails just as loudly as no removal.
+  A migration is DONE when the replaced mechanism is DELETED - an abstraction that leaves the
+  old path alive is two mechanisms, not one. This is the gate that keeps the engine from coming
+  back: every piece below has to be absent, in every tier at once. A partial removal (UI gone,
+  verbs still there) fails just as loudly as no removal.
 
   NOT covered here and deliberately so: whether PROD's live files already carry the 12
   server-settings.json values. That is a live-box question, it cannot be answered offline, and
@@ -60,8 +57,6 @@ Assert 'no module posts to configs/set-overrides' `
     (-not (Get-ChildItem (Join-Path $root 'ConfigViewer/web/js') -Filter *.js |
            Where-Object { Select-String -Path $_.FullName -Pattern 'configs/set-overrides' -SimpleMatch -Quiet }))
 # changedFiles() diffs two overrides-doc snapshots - a document shape that no longer exists.
-# It shipped with E4 on 2026-08-01 and was orphaned by A3 the same day: exported, zero callers,
-# still carrying 5 tests. Found 2026-08-02. Its only helper, isComment, dies with it.
 Assert "dirty-files.js no longer exports 'changedFiles'" `
     (-not (Grep 'ConfigViewer/web/js/dirty-files.js' 'export function changedFiles')) `
     'Dead since A3 deleted the overrides document. The live path is editor.js dirtyNames() over typesDirtyNames() + ownDirtyNames().'
@@ -75,8 +70,8 @@ $reg = Get-Content -Raw (Join-Path $root 'DayZ-Server/config-registry.json') | C
 Assert "registry has no 'overrides' surface row" (-not ($reg.surfaces | Where-Object { $_.name -eq 'overrides' }))
 Assert "registry has no web:'patch' row"         (-not ($reg.surfaces | Where-Object { $_.web -eq 'patch' }))
 Assert 'every surface row declares a category'   (-not ($reg.surfaces | Where-Object { -not $_.category }))
-# The registry's _readme still described the engine as "retiring" and claimed nothing reads
-# `category` yet - Deploy-Api.ps1 has filtered on it since the owned-surface mask landed.
+# The registry's _readme must not claim `category` is unread - Deploy-Api.ps1 filters on it
+# to build OWNED_FILES.
 $regRaw = Get-Content -Raw (Join-Path $root 'DayZ-Server/config-registry.json')
 Assert "the registry _readme no longer says category is unread" `
     ($regRaw -notmatch 'No consumer reads category yet') `
