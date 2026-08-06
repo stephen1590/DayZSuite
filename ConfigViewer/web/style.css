@@ -88,7 +88,9 @@
   .upd-lbl { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 4px; }
 
   /* ===================== Maintenance page ===================== */
-  .mnt { padding: 20px 22px; max-width: 1180px; }
+  /* No width cap: the grid is auto-fill, so a cap here just parks empty space to the right
+     on a wide screen instead of fitting more cards across. */
+  .mnt { padding: 20px 22px; }
   .mnt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
   .mnt-head h2 { margin: 0; font-size: 20px; }
   .mnt-sub { color: var(--faint); font-size: 13px; margin-top: 2px; }
@@ -100,7 +102,10 @@
   .mnt-viewer-note.hidden { display: none; }
   .mnt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
   .mnt-card { background: var(--card); border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; }
-  .mnt-card.mnt-ops, .mnt-card.span2 { grid-column: span 2; }
+  .mnt-card.mnt-ops { grid-column: span 2; }
+  /* Charts run the full row whatever the column count: the time axis is the point, and at
+     `span 2` of a six-column grid it would be squashed into a third of the page. */
+  .mnt-card.span2 { grid-column: 1 / -1; }
   @media (max-width: 720px) { .mnt-card.mnt-ops, .mnt-card.span2 { grid-column: auto; } .mnt { padding: 16px; } }
   .mnt-card h3 { margin: 0 0 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .mnt-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -172,7 +177,6 @@
   #statsbar .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
   #statsbar.sb-up .sb-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
   #statsbar.sb-down .sb-dot { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent); }
-  #statsbar .sb-spacer { margin-left: auto; }
   #statsbar .sb-foot { color: var(--faint); font-size: 11px; }
   #statsbar .sb-err { color: var(--danger); }
   #sidebar { background: var(--rail); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
@@ -210,7 +214,6 @@
   .side-item:hover { background: var(--panel2); } .side-item:hover .fn { color: var(--fg); }
   .side-item.active { background: var(--accent-weak); border-color: color-mix(in srgb, var(--accent) 30%, transparent); } .side-item.active .fn { color: var(--accent); font-weight: 600; }
   /* badges: green N = captured overrides; rw = box-owned whole-file; ro = locked (not patchable) */
-  .ovr-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; min-width: 18px; text-align: center; color: var(--delta); background: var(--delta-weak); border-radius: 999px; padding: 1px 6px; }
   .own-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-weak); border-radius: 999px; padding: 1px 6px; }
   /* "edited here" - the box captured a frozen baseline for this file, so it has been saved through
      the editor at least once. Beside the NAME, never in the badge slot - a second thing there
@@ -265,8 +268,6 @@
   .btn-sm:hover { border-color: var(--faint); }
   .btn-sm.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
   .btn-sm.primary:hover { filter: brightness(1.06); }
-  .lay-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-  .lay-sel { width: auto; font-size: 12px; padding: 5px 8px; border-radius: 7px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
   .ovr-sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 9px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); font-size: 12.5px; color: var(--muted); }
   .stat { display: inline-flex; align-items: center; gap: 7px; } .stat b { color: var(--fg); font-variant-numeric: tabular-nums; } .stat.d b { color: var(--delta); }
   .dot { width: 8px; height: 8px; border-radius: 50%; } .dot.d { background: var(--delta); } .dot.b { background: var(--faint); }
@@ -288,7 +289,6 @@
   .fld input, .fld textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); }
   .fld textarea { resize: vertical; min-height: 34px; }
   .fld input:focus, .fld textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .fld .meta2 { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
   .base { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--faint); white-space: nowrap; }
   .tag { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; color: var(--delta); background: var(--delta-weak); }
   .tag.warn { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
@@ -302,49 +302,13 @@
   .fld.ctx:hover .addb { opacity: 1; } .fld.ctx:hover { background: var(--panel2); }
   .fld.ctx .addb:hover { color: var(--delta); border-color: var(--delta); }
   /* Fields-view filter + capped-list expander */
-  .fld-filter { display: flex; align-items: center; gap: 10px; padding: 10px 22px; border-bottom: 1px solid var(--border-soft); }
-  .fld-filter input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; background: var(--pre-bg); color: var(--pre-fg); border: 1px solid var(--border); }
-  .fld-filter #ovrFilterNote { color: var(--muted); }
   .fld-more { padding: 10px 22px 4px; }
-  /* Complex-value (object/array) override editor: a compact summary at rest that expands
-     into a formatted + syntax-highlighted box while editing, then collapses again on commit.
-     The highlight is a <pre> layered behind a transparent-text <textarea> (both share exact
-     font/size/padding/border so the glyphs register); hlJson() paints the pre. */
-  .cxcell { width: 100%; }
-  .cxcell.scalar { display: flex; align-items: center; gap: 6px; }
-  .cxcell.scalar .ovr-inp { flex: 1; min-width: 0; }
-  .cx-collapsed { display: flex; align-items: center; gap: 8px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--faint); padding: 6px 9px; border: 1px dashed var(--border); border-radius: 6px; background: var(--pre-bg); }
-  .cx-collapsed:hover, .cx-collapsed:focus { border-color: var(--accent); color: var(--fg); outline: none; }
-  .cx-collapsed .cx-caret { color: var(--muted); }
-  .cx-edit { position: relative; }
-  .cx-edit .cx-hl, .cx-edit .cx-ta { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; white-space: pre; tab-size: 2; box-sizing: border-box; width: 100%; margin: 0; }
-  .cx-edit .cx-hl { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border: 1px solid var(--border); background: var(--pre-bg); color: var(--pre-fg); }
-  .cx-edit .cx-ta { position: relative; overflow: auto; resize: vertical; min-height: 60px; background: transparent; color: transparent; caret-color: var(--pre-fg); border: 1px solid transparent; }
-  .cx-edit .cx-ta:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .cx-edit .cx-ta.bad { outline: 2px solid var(--danger); outline-offset: -1px; }
-  /* Text mode (long strings): no highlight layer — a plain wrapping textarea. */
-  .cx-edit.text .cx-ta { position: static; overflow: auto; color: var(--pre-fg); background: var(--pre-bg); border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; }
-  .cx-tools { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-  .cx-btn { font-size: 11px; cursor: pointer; color: var(--faint); background: transparent; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
-  .cx-btn:hover { color: var(--accent); border-color: var(--accent); }
-  .cx-msg { font-size: 11px; color: var(--muted); }
-  .cx-msg.bad { color: var(--danger); }
-  .fdiv { display: flex; align-items: center; gap: 12px; padding: 13px 22px 7px; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
-  .fdiv::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
-  .frow-add { margin: 12px 22px 20px; }
 
   /* file view */
   .fileview pre { border-radius: 0; }
   .xeval { display: flex; flex-direction: column; gap: 4px; padding: 10px 22px; border-bottom: 1px solid var(--border-soft); background: var(--panel2); font-size: 12px; }
-  .xeval .row2 { display: flex; align-items: center; gap: 8px; }
   .xeval .sel { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); word-break: break-all; }
 
-  /* version history */
-  .ovr-history { margin: 10px 22px 30px; border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px; }
-  .ovr-history > summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 8px 4px; color: var(--muted); }
-  .ovr-ver { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-bottom: 1px solid var(--border-soft); }
-  .ovr-ver:last-child { border-bottom: none; }
-  .ovr-ver .mono { font-size: 12px; color: var(--fg); }
 
   /* API page */
   #swagger { margin: 0; background: #fff; }
@@ -428,28 +392,15 @@
   .map-detail.hidden { display: none; }
   .map-detail .k2 { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
   .map-detail:not(.editing) > span { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-  .map-detail .me-f { display: flex; flex-direction: column; gap: 3px; width: 100%; }
-  .map-detail .me-in { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 13px; padding: 6px 8px; width: 100%; box-sizing: border-box; }
-  .map-detail .me-in.me-num { font-variant-numeric: tabular-nums; }
-  .map-detail .me-wide .me-in { min-width: 0; }
-  .map-detail .me-btn { padding: 6px 11px; }
-  .map-detail .me-del { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
-  /* Per-point patrol tuning: collapsible section, fields stack down the sidebar (blank = inherit). */
-  .map-detail .me-adv { margin-top: 2px; border-top: 1px solid var(--border); padding-top: 10px; }
-  .map-detail .me-adv[open] { display: flex; flex-direction: column; gap: 9px; }
-  .map-detail .me-adv > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; list-style: none; user-select: none; }
-  .map-detail .me-adv > summary::-webkit-details-marker { display: none; }
-  .map-detail .me-adv > summary::before { content: "▸  "; color: var(--faint); }
-  .map-detail .me-adv[open] > summary::before { content: "▾  "; }
-  /* Waypoint list for the selected point (shift-click the map to add, drag dots to move). */
+  /* Waypoint list + buttons in the patrol editor (drag dots on the map to move). */
+  .map-detail .me-btns { display: flex; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 9px; margin-top: 3px; }
   .map-detail .me-wps { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; border-top: 1px solid var(--border); padding-top: 10px; }
   .map-detail .me-wp { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+  .map-detail .me-wp .me-wp-n { flex: none; width: 15px; color: var(--faint); font-size: 11px; text-align: right; }
+  .map-detail .me-wp .me-wpin { flex: 1; min-width: 0; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; color: var(--fg); font-size: 12px; padding: 3px 6px; }
+  .map-detail .me-wp .me-wpin:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .map-detail .me-wp-del { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 12px; line-height: 1; padding: 0 4px; }
   .map-detail .me-wp-hint { color: var(--faint); font-size: 10px; }
-  .map-save { display: inline-flex; gap: 6px; align-items: center; }
-  .map-save-go:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
-  .map-save button:disabled { opacity: .5; cursor: default; }
-  #mapCanvas.editing { cursor: crosshair; }
   .dot.mok { background: var(--map-ok); } .dot.mwarn { background: var(--map-warn); }
   .dot.mbad { background: var(--map-bad); border-radius: 2px; } .dot.mnull { background: var(--faint); }
   .mp-badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
@@ -472,7 +423,6 @@
     #sidebar { border-right: none; border-bottom: 1px solid var(--border); }
     .side-scroll { max-height: 40vh; }
     .fld { grid-template-columns: 1fr; gap: 6px; }
-    .fld .meta2 { justify-content: flex-start; }
   }
 
   /* ===== Swagger UI dark theme (scoped to #swagger; wins over the vendored light css) =====
@@ -583,36 +533,13 @@
   .lp-sel:disabled { color: var(--faint); }
 
   /* Whole-file Edit mode + saving spinner (js/editor.js) */
-  @keyframes wf-spin { to { transform: rotate(360deg); } }
-  .wf-sp { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px;
-    border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: wf-spin .7s linear infinite; }
-  .wf-sp.hidden { display: none; }
-  .wfedit { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
-  .wf-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .wf-hint { flex: 1 1 260px; color: var(--muted); font-size: 12px; }
-  .wf-ta { width: 100%; min-height: 380px; resize: vertical; box-sizing: border-box;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5;
-    padding: 10px; background: var(--pre-bg); color: var(--pre-fg); border: none; border-left: 2px solid var(--border); border-radius: 0; white-space: pre; overflow: auto; }
-  .wf-ta:focus { outline: none; border-left-color: var(--accent); }
   /* structured-editor host (the json-editor mounts inside): its own scroll box so the sticky path
      bar pins to the top and a deep/large file scrolls within the frame instead of the whole page. */
-  /* Third edit surface, same treatment as .own-cm / .wf-ta: left thread rule, no box. */
+  /* Third edit surface, same treatment as .own-cm: left thread rule, no box. */
   .wf-json { border: none; border-left: 2px solid var(--border); border-radius: 0; background: var(--card);
     padding: 8px 10px 8px 12px; min-height: 200px; max-height: 64vh; overflow: auto; }
   .wf-json:focus-within { border-left-color: var(--accent); }
-  .wf-preview { border-top: 1px solid var(--border); padding-top: 8px; }
-  .wf-preview:empty { display: none; }
-  .wf-ptitle { font-weight: 600; margin: 2px 0 4px; font-size: 13px; }
-  .wf-ok { color: var(--delta); }
-  .wf-warn { color: var(--danger); }
-  .wf-dlist { margin: 4px 0; padding-left: 18px; max-height: 220px; overflow: auto; font-size: 12px; }
-  .wf-dlist li { margin: 2px 0; }
-  .wf-pact { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  .wf-vtoggle { margin-bottom: 8px; }
   .meta.warn { color: var(--danger); }
-  .ovr-note.wf-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  .ovr-note.wf-active .btn-sm { margin-left: 8px; }
-  @media (prefers-reduced-motion: reduce) { .wf-sp { animation: none; } }
 
   /* --- serverDZ.cfg day/night cycle (Server settings row) ---------------------------------
      The two acceleration multipliers are meaningless as bare numbers, so the panel converts
@@ -640,9 +567,7 @@
   /* Comment column: shown only for field lists whose file carries a "_help" map. Adds a fifth
      grid column; lists without help keep the original four. */
   .fields.with-help .fld { grid-template-columns: minmax(140px,220px) minmax(110px,1fr) minmax(170px,1.5fr) auto 30px; }
-  .fld .hlp { font-size: 11.5px; line-height: 1.45; color: var(--muted); }
-  .fld.ctx .hlp { color: var(--faint); }
-  @media (max-width: 900px) { .fields.with-help .fld { grid-template-columns: minmax(140px,220px) minmax(110px,1fr) auto 30px; } .fields.with-help .fld .hlp { display: none; } }
+  @media (max-width: 900px) { .fields.with-help .fld { grid-template-columns: minmax(140px,220px) minmax(110px,1fr) auto 30px; } }
   .cyc-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
   .cyc-foot .cyc-note { margin-top: 0; flex: 1; font-size: 11.5px; opacity: .7; }
   /* A field shown under a friendlier name than the game's own key. Dotted underline + help
@@ -731,37 +656,9 @@
   /* Per-patrol field editor (map left nav): patrol / object / global editor, rendered IN
      .map-detail, in place. */
   .map-detail.editing { gap: 8px; }
-  .map-detail .me-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; }
-  .map-detail .me-head .k2 { color: var(--faint); font-weight: 400; }
-  .map-detail .me-note { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
-  .map-detail .me-note b { color: var(--fg); }
-  .map-detail .me-density { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--faint); }
-  .map-detail .me-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-  .map-detail .me-seg button { background: var(--panel2); color: var(--muted); border: 0; border-left: 1px solid var(--border); font-size: 11px; font-weight: 600; padding: 3px 9px; cursor: pointer; }
-  .map-detail .me-seg button:first-child { border-left: 0; }
-  .map-detail .me-seg button.on { background: var(--accent); color: var(--accent-fg); }
-  .map-detail .pe-fields { display: flex; flex-direction: column; }
-  .map-detail .pe-fields.stacked { gap: 9px; }
   /* opt-in structured (json-editor) mode for a patrol: scroll within the narrow detail panel */
   .map-detail .pe-jsonhost { max-height: 62vh; overflow: auto; margin-top: 6px; }
-  .map-detail .pe-fields.stacked .me-f { display: flex; flex-direction: column; gap: 3px; }
-  .map-detail .pe-fields.inline { gap: 3px; }
-  .map-detail .pe-fields.inline .me-f { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; padding: 1px 0; }
-  .map-detail .pe-fields.inline .me-f.me-wide { grid-template-columns: 1fr; }
-  .map-detail .pe-fields .me-k { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .map-detail .pe-fields.inline .me-k { cursor: help; }
-  .map-detail .pe-fields.inline .me-k:hover { color: var(--fg); }
-  .map-detail .pe-fields .me-inh { font-style: italic; text-transform: none; letter-spacing: 0; color: var(--faint); }
-  .map-detail .pe-fields .me-in { width: 100%; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12.5px; padding: 6px 8px; }
-  .map-detail .pe-fields.inline .me-in { padding: 3px 7px; }
-  .map-detail .pe-fields .me-in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .map-detail .pe-fields textarea.me-json { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
-  .map-detail .pe-fields .me-ro { font-size: 11.5px; color: var(--faint); }
-  .map-detail .me-btns { display: flex; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 9px; margin-top: 3px; }
   /* listed waypoints (reuses .me-wps / .me-wp / .me-wp-del / .me-wp-hint), with editable X / Z */
-  .map-detail .me-wp .me-wp-n { flex: none; width: 15px; color: var(--faint); font-size: 11px; text-align: right; }
-  .map-detail .me-wp .me-wpin { flex: 1; min-width: 0; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; color: var(--fg); font-size: 12px; padding: 3px 6px; }
-  .map-detail .me-wp .me-wpin:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   /* LoadBalancingCategories: a collapsible tier table per category (global editor) */
   .map-detail .lbc-wrap { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; }
   .map-detail .lbc-list { display: flex; flex-direction: column; gap: 5px; }
@@ -801,7 +698,7 @@
   .own-bar .spacer { flex: 1; }
   /* Edit surfaces carry a single left "thread" rule, never a full box - a boxed editor reads as
      a widget on the page instead of the page's content, and the four borders fight the gutter.
-     Same treatment on .wf-ta so both edit paths look identical. */
+     Same treatment on both edit paths so they look identical. */
   .own-cm { margin: 8px 22px 16px; border: none; border-left: 2px solid var(--border); border-radius: 0; overflow: hidden; background: var(--pre-bg); }
   .own-cm:focus-within { border-left-color: var(--accent); }
   .own-cm .cm-editor { height: min(68vh, 860px); font-size: 12.5px; background: var(--pre-bg); color: var(--pre-fg); }
@@ -884,19 +781,4 @@
 /* collapsed identical stretches - the thing that makes a badly diverged file readable at all */
 .cmp-split .cm-collapsedLines { background: var(--panel2); color: var(--muted); font-size: 11.5px; padding: 3px 10px; cursor: pointer; }
 .cmp-split .cm-collapsedLines:hover { color: var(--fg); }
-.fv-pane { min-width: 0; }
-.fv-pane .fv-cap { font-size: 11px; font-weight: 700; letter-spacing: .3px; color: var(--muted); padding: 0 0 4px 2px; }
-.fv-pane .fv-cap .meta { font-weight: 400; opacity: .75; }
-.fv-pane pre { margin: 0; max-height: 60vh; overflow: auto; }
 
-/* Which values an override layer controls for a row. Listed, not counted. */
-.oc { border: 1px solid var(--border); border-left: 3px solid var(--delta, #c2570b); border-radius: 6px; background: var(--panel2); padding: 8px 10px; margin: 0 0 10px; }
-.oc .oc-head { font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-bottom: 6px; }
-.oc .oc-row { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; border-top: 1px solid var(--border-soft); font-size: 11px; }
-.oc .oc-row:first-of-type { border-top: none; }
-.oc .oc-sel { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--fg); }
-.oc .oc-val { flex: 0 0 auto; color: var(--delta, #c2570b); }
-/* Inert rows: the manifest carries them, the box skips them (file not found). Muted, not
-   orange - orange means "this is forcing a value on your file", which is the opposite. */
-.oc.oc-dead { border-left-color: var(--drift); }
-.oc.oc-dead .oc-val { color: var(--muted); text-decoration: line-through; }

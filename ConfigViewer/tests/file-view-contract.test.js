@@ -132,12 +132,5 @@ test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
     'rw must come from the ONE predicate, not a second expression beside the badge');
 });
 
-// Two determination points is the bug itself: `access !== 'lock'` alone would badge reference
-// rows rw, or `ownFile || types` alone would miss `access === 'own'` and put a Save button under
-// an ro badge. Every write path belongs in canWrite, and nothing else may decide.
-test('E7: canWrite covers EVERY write path the editor offers', () => {
-  const fn = JS.slice(JS.indexOf('function canWrite('), JS.indexOf('function rowByKey('));
-  for (const path of ['ownFile', 'types', "access === 'own'"]) {
-    assert.ok(fn.includes(path), `canWrite must account for ${path} - a write path it misses is a wrong badge`);
-  }
-});
+// What the predicate DECIDES is asserted by calling it, in access-badge.test.js. Only its
+// wiring into the DOM string builder is a source question, and that is the test above.

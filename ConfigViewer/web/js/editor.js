@@ -10,6 +10,7 @@ import { apiPost } from './api-client.js';
 import { loadCred, handle } from './auth.js';
 import { detectLang, highlight } from './highlight.js';
 import { getActiveMission, setActiveMission } from './state.js';
+import { isOwnedRel, canWrite } from './access.js';
 // CE types-table editor for registry web:'types' surfaces (the Expansion tuning pair) — its
 // own VIEW over the shared save path (configs/set-own).
 import { renderTypesEditor, typesAnyDirty, typesDirtyNames } from './types-editor.js';
@@ -89,13 +90,6 @@ function isGenerated(rel) { return !!rel && roRe.some((re) => re.test(rel)); }
 // A surface whose owning mod is DISABLED in mods.conf (configs/disabled): dropped from the tree
 // entirely, so a mod turned off there stops surfacing its config files and override-patch targets.
 function isDisabledMod(rel) { return !!rel && disabledSet.has(rel); }
-// A file the two-copy model owns whole. EDITABLE BY DEFAULT: any json/xml surface the box
-// lists is own-editable unless an exception says no (view-locked, generated, map-owned,
-// disabled, denied - denied paths never arrive here at all). Mirrors dayz-ctl's _own_check
-// default; the box re-enforces everything on every read/write.
-function isOwnedRel(rel) {
-  return !!rel && /\.(json|xml)$/i.test(rel) && !/\.defaults\./.test(rel);
-}
 function buildRows(items, writable, mission) {
   const list = [];
   const byRel = new Map();
@@ -156,15 +150,6 @@ function buildRows(items, writable, mission) {
   // on disk (reversible); re-enable the mod + redeploy the Api.
   return disabledSet.size ? list.filter((r) => !isDisabledMod(r.relpath)) : list;
 }
-// THE single answer to "can this row be written". The nav badge and the editor chrome both
-// read it. Three write paths, ONE predicate. A fourth is added HERE, never beside a badge.
-function canWrite(r) {
-  if (!r) return false;
-  return !!(r.ownFile             // owned whole-file editor (own-write)
-    || r.types                    // CE types editor (own-write)
-    || r.access === 'own');       // file-list writable surface - ban.txt / whitelist.txt
-}
-
 function rowByKey(k) { return rows.find((r) => r.key === k) || null; }
 function currentRow() { return selKey ? rowByKey(selKey) : null; }
 

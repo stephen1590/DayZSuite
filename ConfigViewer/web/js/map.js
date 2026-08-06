@@ -42,28 +42,16 @@ let mapWs = 15360;       // world size in meters for the current map
 let mapHm = null;        // API heightmap meta for the current map (null = none shipped)
 let mapSelPt = -1;       // selected point index into mapPts
 let mapCatFilter = new Set();  // active class/type keys ('(base)' = uncategorized); a point shows only if its key is in here
-let mapEdit = false;           // edit mode: drag markers to move, click empty to add, panel to edit fields
 
 // The mission's raw AIPatrolSettings.json - the map's ONE write surface, reached through the
 // generic owned-file verbs (registry row aiPatrolSettings; its '*' segment is the mission).
 function patrolsPath(mission) { return 'mpmissions/' + mission + '/expansion/settings/AIPatrolSettings.json'; }
 
-// --- Deprecations (AI map/location settings rework) ------------------------------
-// The authored map-points store is being replaced by points DERIVED from the live
-// Expansion AIPatrol/AILocation settings. Its on-map layer is turned OFF here (render + new-point
-// creation); the derived points render read-only in its place. One switch, reversible: set false
-// to restore the old editable layer.
-const MAP_POINTS_DEPRECATED = true;
-// BanditAI is retired (its mods are already disabled in mods.conf). Stop drawing its live-position
-// layer too. Reversible.
-const BANDIT_RENDER_DEPRECATED = true;
 // mapData.derived = the map-points.generated.json store - points DERIVED from the live Expansion
 // AI settings by Build-MapPoints at prestart. When it exists and its mission matches the viewed
 // map, IT feeds mapPts (read-only: edit mode hidden, no creation). The authored-store path below
 // stays as the dormant fallback until that store is retired.
 function mapDerivedActive() { return !!(mapData && mapData.derived && mapData.derived.mission === mapMission); }
-let mapSpawnDirty = false;     // unsaved spawn-point edits held in memory (mapData.spawns)
-let mapSpawnBaseline = null;   // JSON of the last-saved points, for Discard
 let mapLoadSeq = 0;      // async guard: stale fetches/resolves must not render
 let mapTiles = null;     // { man, base, cache } once tiles/<map>/manifest.json loads
 let mapLocs = [];        // location labels (tiles/<map>/locations.json, tier-sorted)
@@ -149,8 +137,6 @@ export async function loadMapTab(force) {
         hms: hmsR.maps || [],
         derived,
       };
-      mapSpawnBaseline = JSON.stringify(spawns.points);
-      mapSpawnDirty = false;
     } catch (err) {
       if (handle(err)) return;
       mapStageMsg(err.status === 404
@@ -238,65 +224,8 @@ const LOCATION_TYPES = ['Local', 'Village', 'City', 'Capital', 'Hill', 'Camp', '
 function docDefaultSpawns() { return (mapData && mapData.spawns && mapData.spawns.defaultSpawns) || ['aib', 'expansion']; }
 function effSpawns(p) { return p.spawns || docDefaultSpawns(); }
 
-// Per-point ExpansionAI patrol tuning. Each key, when set in a point's `patrol` object, overrides
-// the safe template default in the builder; blank = inherit. THIS list is the UI half of a 3-way
-// contract — MIRROR of $PATROL_OVERRIDABLE (DayZ-Server/Build-AIPatrols.ps1) and PATROL_KEYS
-// (Api/app/src/actions.ts). Add a knob = add it to all three. t: num | int | bool | str.
-// def = the builder's template default, shown as the input placeholder so a blank field tells you
-// what it currently resolves to (blank still means "inherit", it does not write an override).
-const PATROL_FIELDS = [
-  { k: 'numberOfAIMax', label: 'Num AI max', t: 'int', def: '= count' },
-  { k: 'chance', label: 'Spawn chance', t: 'num', def: '1' },
-  { k: 'loadBalancingCategory', label: 'Load-balancing', t: 'str', def: 'Survivor' },
-  { k: 'minDistRadius', label: 'Min dist', t: 'num', def: '0' },
-  { k: 'maxDistRadius', label: 'Max dist', t: 'num', def: '-1' },
-  { k: 'despawnRadius', label: 'Despawn dist', t: 'num', def: '-1' },
-  { k: 'useRandomWaypointAsStartPoint', label: 'Random start WP', t: 'bool', def: '0' },
-  { k: 'canBeLooted', label: 'Can be looted', t: 'bool', def: '1' },
-  { k: 'accuracyMin', label: 'Accuracy min', t: 'num', def: '-1' },
-  { k: 'accuracyMax', label: 'Accuracy max', t: 'num', def: '-1' },
-  { k: 'speed', label: 'Speed', t: 'str', def: 'JOG' },
-  { k: 'underThreatSpeed', label: 'Threat speed', t: 'str', def: 'SPRINT' },
-  { k: 'defaultStance', label: 'Stance', t: 'str', def: 'STANDING' },
-  { k: 'formation', label: 'Formation', t: 'str', def: '(none)' },
-  { k: 'formationScale', label: 'Formation scale', t: 'num', def: '1.5' },
-  { k: 'threatDistanceLimit', label: 'Threat dist limit', t: 'num', def: '-1' },
-  { k: 'respawnTime', label: 'Respawn time', t: 'num', def: '-2' },
-  { k: 'despawnTime', label: 'Despawn time', t: 'num', def: '-1' },
-  { k: 'damageMultiplier', label: 'Damage x', t: 'num', def: '-1' },
-  { k: 'damageReceivedMultiplier', label: 'Dmg received x', t: 'num', def: '-1' },
-  { k: 'headshotResistance', label: 'Headshot resist', t: 'num', def: '0' },
-  { k: 'lootDropOnDeath', label: 'Loot drop', t: 'str', def: '(none)' },
-];
-
-// Serialise an in-memory point back to the stored map-points.json shape.
-function mapToStored(p) {
-  const o = { name: p.name, map: p.map };
-  if (p.cat) o.category = p.cat;
-  if (p.size) o.size = p.size;
-  if (p.faction) o.faction = p.faction;      // omitted => inherits defaultFaction
-  if (p.spawns) o.spawns = p.spawns;         // omitted => inherits defaultSpawns
-  if (p.type) o.type = p.type;               // omitted => builder uses base Type / 'Local'
-  if (p.radius != null) o.radius = p.radius; // omitted => builder uses base average radius
-  if (p.patrol && Object.keys(p.patrol).length) o.patrol = p.patrol; // per-point patrol tuning overrides
-  if (p.waypoints && p.waypoints.length) o.waypoints = p.waypoints;   // extra roam-path waypoints (after the spawn)
-  o.x = p.x; o.y = p.y; o.z = p.z;
-  return o;
-}
-// Fold the current map's in-memory edits back into the full document, so switching maps
-// (or saving) never loses them. Replaces just this map's letters within spawns.points.
-function flushMapEdits() {
-  // Only when there are edits to preserve: a clean switch must not reorder the doc, and
-  // discard (which clears the flag first) must not re-inject the very edits it's dropping.
-  if (!mapData || !mapData.spawns || !mapMission || !mapSpawnDirty) return;
-  const mine = mapLettersFor(mapMission);
-  const others = (mapData.spawns.points || []).filter((p) => !mine.includes(p.map));
-  mapData.spawns.points = others.concat(mapPts.map(mapToStored));
-}
-
 function setMapMission(mission) {
   if (!mission) { mapStageMsg('No maps declared in classification.json.'); return; }
-  flushMapEdits();                       // preserve edits on the map we're leaving
   mapMission = mission;
   mapSelPt = -1;
   mapHover = -1;
@@ -491,50 +420,10 @@ function renderMap() {
   renderBuildingsFilter();
   renderMarkersFilter();
   renderLiveFilter();
-  if (mapCal) { renderCalibrate(); updateMapEditUi(); return; }
+  if (mapCal) { renderCalibrate(); return; }
   renderMapList();
   renderMapSummary();
   if (!mapPatEdit) renderMapDetail();   // while editing, the detail panel IS the editor - don't wipe in-progress input on a redraw
-  updateMapEditUi();
-}
-
-// Reflect edit mode + dirty state in the head toolbar.
-function updateMapEditUi() {
-  if (el.mapCalBtn) el.mapCalBtn.classList.toggle('active', !!mapCal);
-  if (mapCal && el.mapEditSeg) el.mapEditSeg.classList.add('hidden');
-  if (!el.mapEditSeg) return;
-  // Derived points are READ-ONLY: the truth lives in the AI settings files, edited
-  // via the Files tab. No Edit toggle at all until the write-back phase.
-  if (mapDerivedActive() || MAP_POINTS_DEPRECATED) {
-    mapEdit = false;
-    el.mapEditSeg.classList.add('hidden');
-    el.mapSaveWrap.classList.add('hidden');
-    el.mapCanvas.classList.remove('editing');
-    return;
-  }
-  el.mapEditSeg.classList.remove('hidden');
-  const btn = el.mapEditSeg.querySelector('button');
-  if (btn) btn.classList.toggle('active', mapEdit);
-  el.mapSaveWrap.classList.toggle('hidden', !mapEdit);
-  el.mapSaveBtn.disabled = !mapSpawnDirty;
-  el.mapDiscardBtn.disabled = !mapSpawnDirty;
-  el.mapSaveBtn.textContent = mapSpawnDirty ? 'Save' : 'Saved';
-  el.mapCanvas.classList.toggle('editing', mapEdit);
-}
-
-function toggleMapEdit() {
-  mapEdit = !mapEdit;
-  if (!mapEdit) { mapHover = -1; el.mapTip.style.display = 'none'; }
-  renderMap();
-}
-
-// Drop in-memory edits, restoring the last-saved points.
-function discardSpawns() {
-  if (!mapSpawnDirty) return;
-  if (mapSpawnBaseline) mapData.spawns.points = JSON.parse(mapSpawnBaseline);
-  mapSpawnDirty = false;
-  mapSelPt = -1;
-  setMapMission(mapMission);   // rebuild mapPts from the restored document
 }
 
 // ===================== Calibrate mode (per-layer alignment) =====================
@@ -547,7 +436,6 @@ function round4(v) { return Math.round(v * 10000) / 10000; }
 function startCalibrate() {
   if (mapCal) { exitCalibrate(); return; }                       // toggle off
   if (!mapTiles || !mapTiles.layer) { toast('Load a tile layer first (pick one in the layer switch).', 'err'); return; }
-  mapEdit = false;                                               // mutually exclusive with spawn-edit
   const layer = mapTiles.layer;
   const short = mapShort(mapMission);
   const saved = mapCalib && mapCalib.maps && mapCalib.maps[short] && mapCalib.maps[short][layer.name];
@@ -1119,7 +1007,6 @@ function drawMap() {
   drawMapPoi(ctx);                                     // iZurvive-derived: crashes/vehicles/hazards/wildlife/infected
   drawMapLabels(ctx, w, h);
   drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
-  drawMapBandits(ctx);                                 // AIB activity under the players
   drawMapPlayers(ctx);                                 // live players on top of the bookmarks
   drawMapShip(ctx);                                    // the Dutchman topmost — one marker, most watched
   drawMapCrosshair(ctx, w, h);
@@ -1558,9 +1445,7 @@ function drawSelectedWaypoints(ctx) {
   ctx.restore();
 }
 function drawMapMarkers(ctx) {
-  // MAP_POINTS_DEPRECATED gates only the authored-layer fallback; the derived store renders
-  // through this same path regardless.
-  if (MAP_POINTS_DEPRECATED && !mapDerivedActive()) return;
+  if (!mapDerivedActive()) return;   // the derived store is the only marker source
   if (!mapPts.length) return;
   drawSelectedWaypoints(ctx);
   const { w, h } = mapVp();
@@ -1607,20 +1492,6 @@ function mapHitTest(sx, sy) {
   });
   return best;
 }
-// Hit-test the SELECTED point's waypoint dots (only shown/grabbable when a point is selected).
-function mapHitWaypoint(sx, sy) {
-  if (mapSelPt < 0) return -1;
-  const p = mapPts[mapSelPt];
-  if (!p || !p.waypoints) return -1;
-  let best = -1, bd = 16 * 16;
-  p.waypoints.forEach((w, i) => {
-    const [px, py] = mapToScreen(w.x, w.z);
-    const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
-    if (d2 < bd) { bd = d2; best = i; }
-  });
-  return best;
-}
-
 // ---------- crosshair + readout ----------
 function drawMapCrosshair(ctx, w, h) {
   if (!mapCursor) return;
@@ -1666,34 +1537,6 @@ async function loadPlayers() {
   } catch (err) {
     if (handle(err)) return;   // 401 -> signed out (stops the poll via showLogin)
     /* transient error: keep the last-known dots rather than blanking the map */
-  }
-}
-// ---------- AI bandit overlay (recent activity from the AIB Unleashed log) ----------
-// Approximate on purpose: these are SPAWN coords (bandits patrol away) + recent KILL spots,
-// not live tracking. Spawns = red diamonds, kills = faded rings. The -serverMod route is the
-// precise-live upgrade; this is the no-mod activity view.
-function drawMapBandits(ctx) {
-  if (BANDIT_RENDER_DEPRECATED) return;   // BanditAI retired
-  if (!mapView || !mapLiveSel.has('NPCs')) return;
-  // Live NPC coordinates only mean anything on the mission the server is actually running —
-  // on any other selected map they'd plot at arbitrary spots, so they're hidden entirely
-  // (unknown live mission counts as no match). Polling continues; switching back to the
-  // live map shows current positions immediately.
-  if (mapMission !== getActiveMission()) return;
-  // The API already dropped positions when the file was stale/missing, so whatever is here is
-  // fresh (<=60s) — plot every live bandit as a diamond, distinct from the player circles.
-  const spawn = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
-  for (const s of mapBandits.positions) {
-    const [sx, sy] = mapToScreen(s.x, s.z);
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(Math.PI / 4);            // a diamond (rotated square) — distinct from player circles
-    ctx.fillStyle = spawn;
-    ctx.fillRect(-4, -4, 8, 8);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.strokeRect(-4, -4, 8, 8);
-    ctx.restore();
   }
 }
 async function loadBandits() {
@@ -1812,8 +1655,7 @@ function updateMapBar() {
     ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
       + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
     : '';
-  // Bandit badge only when toggled on AND on the live mission's map — matches
-  // drawMapBandits, so the bar never claims "N bandits" while the canvas shows none.
+  // Bandit badge only when toggled on AND on the live mission's map.
   const bandits = mapMission !== getActiveMission() || !mapLiveSel.has('NPCs')
     ? ''
     : mapBandits.positions.length
@@ -2011,7 +1853,7 @@ function renderMapSummary() {
   }
   if (!mapPts.length) {
     el.mapSum.innerHTML = '<span class="meta">No spawn points for ' + escapeHtml(mapShort(mapMission)) +
-      (mapEdit ? ' — click the map to add one.' : ' — turn on Edit and click the map to add one.') + ' The map is still browsable.</span>';
+      ' — they come from the AI settings files. The map is still browsable.</span>';
     return;
   }
   const vis = mapPts.filter(mapVisible);
@@ -2027,18 +1869,15 @@ function renderMapSummary() {
     '<span class="stat"><b>' + vis.length + '</b>' + (filtered ? ' of ' + mapPts.length : '') + ' spawn points</span>' +
     chip('mok', 'Δ ≤ 0.5 m', n.mok) + chip('mwarn', '0.5–2 m', n.mwarn) + chip('mbad', '&gt; 2 m', n.mbad) + chip('mnull', 'no height', n.mnull) +
     (worst !== null ? '<span class="stat">worst Δ <b>' + escapeHtml(fmtDelta(worst)) + '</b></span>' : '') +
-    (!mapHm ? '<span class="stat" style="color:var(--danger)">no heightmap shipped for this map — Δ unavailable</span>' : '') +
-    (mapSpawnDirty ? '<span class="stat" style="margin-left:auto;color:var(--warn,#c90)">unsaved edits</span>' : '');
+    (!mapHm ? '<span class="stat" style="color:var(--danger)">no heightmap shipped for this map — Δ unavailable</span>' : '');
 }
 
 function renderMapDetail() {
   if (mapPatEdit) { renderPatrolEditor(); return; }   // patrol/object/global editor lives in this panel, in place
   const p = mapPts[mapSelPt];
   el.mapDetail.classList.toggle('hidden', !p);
-  el.mapDetail.classList.toggle('editing', !!p && mapEdit);
+  el.mapDetail.classList.remove('editing');
   if (!p) return;
-  const cats = (mapData.classes && mapData.classes.categories) || {};
-  if (mapEdit) { el.mapDetail.innerHTML = mapEditFormHtml(p, cats); return; }
   // Derived entries render as their SOURCE file's record, read-only - "as-if browsing
   // AI Location / AI Patrol". idx names the entry's position in that file's array (names
   // are not unique); the full config lives in the Files tab, restart to apply.
@@ -2092,141 +1931,6 @@ function renderMapDetail() {
     '<span><span class="k2">Δ</span><span class="mp-badge ' + band + '">' + (p.delta === undefined ? '—' : fmtDelta(p.delta)) + '</span></span>';
 }
 
-// The editable form shown in the detail bar when a point is selected in edit mode.
-function mapEditFormHtml(p, cats) {
-  const sizes = (mapData.classes && mapData.classes.sizes) || {};
-  const catOpts = ['(base)'].concat(Object.keys(cats));
-  const sizeOpts = ['(default)'].concat(Object.keys(sizes));
-  const cur = p.cat || '(base)', curSize = p.size || '(default)';
-  const catSel = catOpts.map((k) => '<option value="' + attr(k) + '"' + (k === cur ? ' selected' : '') + '>' +
-    escapeHtml(k === '(base)' ? 'Base (holdout)' : k + ' → ' + (cats[k] || '?')) + '</option>').join('');
-  const sizeSel = sizeOpts.map((k) => '<option value="' + attr(k) + '"' + (k === curSize ? ' selected' : '') + '>' +
-    escapeHtml(k === '(default)' ? 'Default' : k + ' (' + sizes[k] + ')') + '</option>').join('');
-  const curFac = p.faction || '(default)';
-  const facSel = ['(default)'].concat(AI_FACTIONS).map((k) => '<option value="' + attr(k) + '"' + (k === curFac ? ' selected' : '') + '>' +
-    escapeHtml(k === '(default)' ? 'Default (' + docDefaultFaction() + ')' : k) + '</option>').join('');
-  const spVal = p.spawns ? p.spawns.slice().sort().join('+') : '(default)';
-  const sysSel = [['(default)', 'Default (' + docDefaultSpawns().slice().sort().join('+') + ')'], ['aib', 'AIB only'], ['expansion', 'Expansion only'], ['aib+expansion', 'Both'], ['', 'None']]
-    .map(([v, lbl]) => '<option value="' + attr(v) + '"' + (v === spVal ? ' selected' : '') + '>' + escapeHtml(lbl) + '</option>').join('');
-  const typeCur = p.type || '(default)';
-  const typeSel = ['(default)'].concat(LOCATION_TYPES).map((k) => '<option value="' + attr(k) + '"' + (k === typeCur ? ' selected' : '') + '>' +
-    escapeHtml(k === '(default)' ? 'Default (Local)' : k) + '</option>').join('');
-  const num = (id, v) => '<label class="me-f"><span class="k2">' + id.slice(2) + '</span>' +
-    '<input class="me-in me-num" id="me' + id.slice(2) + '" type="number" step="0.1" value="' + v.toFixed(2) + '"></label>';
-  const pVal = (k) => (p.patrol && p.patrol[k] != null) ? p.patrol[k] : '';
-  const advRows = PATROL_FIELDS.map((f) => {
-    if (f.t === 'bool') {
-      const cur = pVal(f.k) === '' ? '' : (pVal(f.k) ? '1' : '0');
-      return '<label class="me-f"><span class="k2">' + f.label + '</span><select class="me-in" id="mePatrol_' + f.k + '">' +
-        [['', 'Default (' + (f.def === '1' ? 'Yes' : 'No') + ')'], ['1', 'Yes'], ['0', 'No']].map((o) => '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
-        '</select></label>';
-    }
-    const isNum = (f.t === 'num' || f.t === 'int');
-    return '<label class="me-f"><span class="k2">' + f.label + '</span><input class="me-in' + (isNum ? ' me-num' : '') + '" id="mePatrol_' + f.k + '"' +
-      (isNum ? ' type="number" step="' + (f.t === 'int' ? '1' : '0.01') + '"' : ' type="text"') +
-      ' value="' + attr(pVal(f.k)) + '" placeholder="' + attr(f.def || 'default') + '"></label>';
-  }).join('');
-  const advanced = '<details class="me-adv"><summary class="me-adv-sum">Patrol tuning (advanced) — blank inherits</summary>' + advRows + '</details>';
-  const wps = p.waypoints || [];
-  const wpSection = '<div class="me-wps"><span class="k2">Waypoints (' + wps.length + ')</span>' +
-    wps.map((w, i) => '<div class="me-wp"><span class="mono">' + (i + 1) + '. ' + w.x.toFixed(0) + ' / ' + w.z.toFixed(0) + '</span><button type="button" class="me-wp-del" data-wp="' + i + '" title="Delete waypoint">✕</button></div>').join('') +
-    '<span class="me-wp-hint">Shift-click the map to add · drag dots to move</span></div>';
-  return '<label class="me-f me-wide"><span class="k2">Name</span><input class="me-in" id="meName" value="' + attr(p.name) + '"></label>' +
-    '<label class="me-f"><span class="k2">Class</span><select class="me-in" id="meCat">' + catSel + '</select></label>' +
-    '<label class="me-f"><span class="k2">Size</span><select class="me-in" id="meSize">' + sizeSel + '</select></label>' +
-    '<label class="me-f"><span class="k2">Faction</span><select class="me-in" id="meFaction">' + facSel + '</select></label>' +
-    '<label class="me-f"><span class="k2">Systems</span><select class="me-in" id="meSystems">' + sysSel + '</select></label>' +
-    '<label class="me-f"><span class="k2">Type</span><select class="me-in" id="meType">' + typeSel + '</select></label>' +
-    '<label class="me-f"><span class="k2">Radius</span><input class="me-in me-num" id="meRadius" type="number" step="10" value="' + attr(p.radius != null ? p.radius : '') + '" placeholder="default"></label>' +
-    num('meX', p.x) + num('meZ', p.z) + num('meY', p.y) +
-    '<button class="ghost me-btn" id="meSnap" type="button" title="Set Y to the terrain height at this X/Z">Snap Y</button>' +
-    '<button class="ghost me-btn me-del" id="meDel" type="button">Delete</button>' + wpSection + advanced;
-}
-
-function markSpawnDirty() { mapSpawnDirty = true; updateMapEditUi(); }
-
-// Add a new point at a world position (edit mode, click on empty map). Auto-named unique.
-function addSpawnAt(wx, wz) {
-  if (MAP_POINTS_DEPRECATED) return;   // no new points on the deprecated authored layer
-  const letter = mapLettersFor(mapMission)[0] || 'S';
-  const taken = new Set(mapPts.map((p) => p.name).concat((mapData.spawns.points || []).map((p) => p.name)));
-  let i = 1, name; do { name = letter + '_New' + i++; } while (taken.has(name));
-  const gy = mapLocalY(wx, wz);
-  const p = { name, map: letter, cat: null, size: null, faction: null, spawns: null, type: null, radius: null, waypoints: null, x: wx, z: wz,
-    y: gy == null ? 0 : gy, ty: gy == null ? undefined : gy, delta: gy == null ? undefined : 0 };
-  mapPts.push(p);
-  mapCatFilter.add(mapCatKey(p));          // keep the new point visible under the current filter
-  mapSelPt = mapPts.length - 1;
-  markSpawnDirty();
-  renderMap();
-}
-
-function deleteSelSpawn() {
-  if (mapSelPt < 0) return;
-  mapPts.splice(mapSelPt, 1);
-  mapSelPt = -1;
-  markSpawnDirty();
-  renderMap();
-}
-
-// Append a roam-path waypoint to a point (Y snaps to terrain); shift-click on the map calls this.
-function addWaypointTo(idx, wx, wz) {
-  const p = mapPts[idx]; if (!p) return;
-  if (!p.waypoints) p.waypoints = [];
-  const gy = mapLocalY(wx, wz);
-  p.waypoints.push({ x: wx, z: wz, y: gy == null ? 0 : gy });
-  markSpawnDirty();
-  renderMap();
-}
-function deleteWaypoint(idx, wi) {
-  const p = mapPts[idx]; if (!p || !p.waypoints) return;
-  p.waypoints.splice(wi, 1);
-  if (!p.waypoints.length) delete p.waypoints;
-  markSpawnDirty();
-  renderMap();
-}
-
-function snapSelY() {
-  const p = mapPts[mapSelPt]; if (!p) return;
-  const gy = mapLocalY(p.x, p.z);
-  if (gy == null) { toast('No heightmap for this map — set Y by hand', 'err'); return; }
-  p.y = gy; p.ty = gy; p.delta = 0;
-  markSpawnDirty();
-  renderMap();
-}
-
-// Live field edits from the detail form. Never re-renders the detail panel (that would drop
-// input focus mid-keystroke) — updates the canvas, list, and dirty state only.
-function onMapEditInput(e) {
-  const p = mapPts[mapSelPt]; if (!p || !mapEdit) return;
-  const id = e.target.id, v = e.target.value;
-  if (id === 'meName') p.name = v;
-  else if (id === 'meCat') { p.cat = v === '(base)' ? null : v; mapCatFilter.add(mapCatKey(p)); }
-  else if (id === 'meSize') p.size = v === '(default)' ? null : v;
-  else if (id === 'meFaction') p.faction = v === '(default)' ? null : v;
-  else if (id === 'meSystems') p.spawns = v === '(default)' ? null : (v === '' ? [] : v.split('+'));
-  else if (id === 'meType') p.type = v === '(default)' ? null : v;
-  else if (id === 'meRadius') p.radius = (v === '' ? null : (parseFloat(v) || 0));
-  else if (id === 'meX') p.x = parseFloat(v) || 0;
-  else if (id === 'meZ') p.z = parseFloat(v) || 0;
-  else if (id === 'meY') p.y = parseFloat(v) || 0;
-  else if (id.indexOf('mePatrol_') === 0) {
-    const pk = id.slice(9), pf = PATROL_FIELDS.find((x) => x.k === pk);
-    if (!pf) return;
-    if (!p.patrol) p.patrol = {};
-    if (v === '') delete p.patrol[pk];
-    else if (pf.t === 'bool') p.patrol[pk] = (v === '1') ? 1 : 0;
-    else if (pf.t === 'int') p.patrol[pk] = parseInt(v, 10) || 0;
-    else if (pf.t === 'num') p.patrol[pk] = parseFloat(v) || 0;
-    else p.patrol[pk] = v;
-    if (!Object.keys(p.patrol).length) delete p.patrol;
-  }
-  else return;
-  markSpawnDirty();
-  requestMapDraw();
-  renderMapList();
-}
-
 function selectMapPt(i, center) {
   mapSelPt = i === mapSelPt ? -1 : i;
   if (center && mapSelPt > -1 && mapView) {            // sidebar pick → fly to it
@@ -2263,8 +1967,6 @@ export function mapHashFrag() {
     Math.round(mapView.cx) + ',' + Math.round(mapView.cz) + ',' + (+mapView.ppm.toFixed(4));
 }
 
-// Unsaved spawn edits? — the shell's beforeunload guard asks.
-export function mapIsDirty() { return mapSpawnDirty; }
 
 // Draggable panel seams: the sidebar (grid column), the detail panel + tools rail (flex-basis).
 // Widths persist in localStorage and clamp to a min/max; the map stage (flex:1) absorbs the slack,
@@ -2316,7 +2018,6 @@ export function initMap() {
     const touches = new Map();                            // active pointers (pinch = 2)
     let drag = null;                                      // { id, sx, sy, cx0, cz0, moved }
     let pinch = null;                                     // { d0, ppm0 }
-    let moving = null;                                    // edit-mode marker drag: { id, idx }
     const dist = () => {
       const [a, b] = [...touches.values()];
       return Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -2325,14 +2026,9 @@ export function initMap() {
       if (!mapView || e.button === 2) return;
       c.setPointerCapture(e.pointerId);
       touches.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
-      if (touches.size === 2) { drag = null; moving = null; pinch = { d0: dist(), ppm0: mapView.ppm }; mapTakeControl(); }
+      if (touches.size === 2) { drag = null; pinch = { d0: dist(), ppm0: mapView.ppm }; mapTakeControl(); }
       else if (touches.size === 1) {
-        // Edit mode: grab a waypoint of the selected point, or a marker, to move it; empty space pans (a click adds).
-        const wp = (mapEdit && mapSelPt > -1) ? mapHitWaypoint(e.offsetX, e.offsetY) : -1;
-        const hit = (mapEdit && wp < 0) ? mapHitTest(e.offsetX, e.offsetY) : -1;
-        if (wp > -1) { moving = { id: e.pointerId, idx: mapSelPt, wp: wp }; el.mapTip.style.display = 'none'; }
-        else if (hit > -1) { moving = { id: e.pointerId, idx: hit, wp: -1 }; mapSelPt = hit; el.mapTip.style.display = 'none'; renderMap(); }
-        else { mapTakeControl(); drag = { id: e.pointerId, sx: e.offsetX, sy: e.offsetY, cx0: mapView.cx, cz0: mapView.cz, moved: false }; }
+        mapTakeControl(); drag = { id: e.pointerId, sx: e.offsetX, sy: e.offsetY, cx0: mapView.cx, cz0: mapView.cz, moved: false };
       }
     });
     c.addEventListener('pointermove', (e) => {
@@ -2345,23 +2041,6 @@ export function initMap() {
         mapCursor = mapToWorld((a.x + b.x) / 2, (a.y + b.y) / 2);
         requestMapDraw();
         shellHooks.syncHashSoon();
-        return;
-      }
-      if (moving && e.pointerId === moving.id) {          // drag a marker or a waypoint to a new X/Z (edit mode)
-        const w = mapToWorld(e.offsetX, e.offsetY);
-        const gy = mapLocalY(w.x, w.z);
-        if (moving.wp > -1) {                             // a waypoint of the selected point
-          const wp = mapPts[moving.idx].waypoints[moving.wp];
-          wp.x = w.x; wp.z = w.z; if (gy != null) wp.y = gy;
-        } else {                                          // the spawn marker itself
-          const p = mapPts[moving.idx];
-          p.x = w.x; p.z = w.z;
-          if (gy != null) { p.y = gy; p.ty = gy; p.delta = 0; }   // snap to ground; Y is editable in the panel
-        }
-        mapCursor = w;
-        markSpawnDirty();
-        renderMapDetail();                                // live-update the X/Z/Y fields + waypoint list
-        requestMapDraw();
         return;
       }
       if (drag && e.pointerId === drag.id) {
@@ -2377,7 +2056,7 @@ export function initMap() {
       const hov = (drag && drag.moved) ? -1 : mapHitTest(e.offsetX, e.offsetY);
       if (hov !== mapHover) {
         mapHover = hov;
-        c.style.cursor = hov > -1 ? (mapEdit ? 'move' : 'pointer') : 'crosshair';
+        c.style.cursor = hov > -1 ? 'pointer' : 'crosshair';
         if (hov > -1) { el.mapTip.innerHTML = mapTipHtml(mapPts[hov]); el.mapTip.style.display = 'block'; }
         else el.mapTip.style.display = 'none';
       }
@@ -2387,7 +2066,6 @@ export function initMap() {
     const endPointer = (e) => {
       touches.delete(e.pointerId);
       if (touches.size < 2) pinch = null;
-      if (moving && e.pointerId === moving.id) { moving = null; renderMap(); return; }
       if (drag && e.pointerId === drag.id) {
         if (!drag.moved && e.type === 'pointerup') {
           if (mapCal) {                                                          // calibrate: click captures a control point
@@ -2400,11 +2078,6 @@ export function initMap() {
           } else {
             const i = mapHitTest(e.offsetX, e.offsetY);
             if (i > -1) selectMapPt(i);
-            else if (mapEdit) {
-              const w = mapToWorld(e.offsetX, e.offsetY);
-              if (e.shiftKey && mapSelPt > -1) addWaypointTo(mapSelPt, w.x, w.z);  // shift+click empty = append a waypoint to the selected point
-              else addSpawnAt(w.x, w.z);                                            // click empty = add a new point
-            }
           }
         }
         drag = null;
@@ -2472,14 +2145,5 @@ export function initMap() {
     const b = e.target.closest('.mf-chip'); if (!b) return;
     toggleOverlay(mapLiveSel, 'cfgview-maplive2', b.dataset.live, LIVE_KINDS);
     renderLiveFilter(); requestMapDraw(); updateMapBar();
-  });
-  el.mapEditSeg.addEventListener('click', () => toggleMapEdit());
-  el.mapDiscardBtn.addEventListener('click', () => discardSpawns());
-  el.mapDetail.addEventListener('input', onMapEditInput);
-  el.mapDetail.addEventListener('change', onMapEditInput);
-  el.mapDetail.addEventListener('click', (e) => {
-    if (e.target.id === 'meDel') deleteSelSpawn();
-    else if (e.target.id === 'meSnap') snapSelY();
-    else if (e.target.classList.contains('me-wp-del')) deleteWaypoint(mapSelPt, +e.target.dataset.wp);
   });
 }

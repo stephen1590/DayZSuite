@@ -239,14 +239,7 @@
       <div class="page-head">
         <span class="ph-title">Map</span>
         <select id="mapSel" class="map-head-sel"></select>
-        <span class="map-seg" id="mapEditSeg" title="Edit spawn points: drag a marker to move it, click empty map to add, edit the left panel">
-          <button type="button" data-edit="toggle">Edit</button>
-        </span>
         <span class="spacer"></span>
-        <span class="map-save hidden" id="mapSaveWrap">
-          <button id="mapDiscardBtn" class="ghost" type="button">Discard</button>
-          <button id="mapSaveBtn" class="ghost map-save-go" type="button">Save</button>
-        </span>
         <button id="mapCalBtn" class="ghost" type="button" title="Align this tile layer to the world: mark control points, solve an affine, preview live, copy the calibration">Calibrate</button>
         <button id="mapRefresh" class="ghost" type="button">Refresh</button>
       </div>
@@ -342,7 +335,7 @@ import { saveCred, loadCred, clearCred, handle, setOnUnauthorized } from './js/a
 import { setScope, getScope, isOperator, getActiveMission, setActiveMission } from './js/state.js';
 import { startStats, stopStats, startMaint, stopMaint, loadWhoami, renderUpdate, initMaint } from './js/maintenance.js';
 import { loadLogsTab, startLogFollow, stopLogFollow, initLogs, logsHashFrag, setPendingLog, setLogsShellHooks } from './js/logs.js';
-import { loadMapTab, startPlayers, stopPlayers, initMap, mapHashFrag, setPendingMapView, mapIsDirty, setMapShellHooks, requestMapDraw } from './js/map.js';
+import { loadMapTab, startPlayers, stopPlayers, initMap, mapHashFrag, setPendingMapView, setMapShellHooks, requestMapDraw } from './js/map.js';
 import { loadFiles, showFilesSurface, isDirty, dirtyNames, getSelKey, setPendingFile, initEditor, setEditorHooks } from './js/editor.js';
 import { detectLang, highlight } from './js/highlight.js';
 (() => {
@@ -746,7 +739,7 @@ import { detectLang, highlight } from './js/highlight.js';
   window.addEventListener('hashchange', () => { if (!el.app.classList.contains('hidden')) applyRoute(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAllPolling(); else resumeAllPolling(); });
   // Unsaved-changes guard: reloading or closing the tab drops in-memory file OR spawn edits.
-  window.addEventListener('beforeunload', (e) => { if (isDirty() || mapIsDirty()) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
   initEditor();  // Server Files tree + editor controls wired in js/editor.js
 
