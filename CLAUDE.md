@@ -38,6 +38,9 @@ structural defect: FLAG it (tracker row), do not paper it with prose.**
 - **Report/dry-run first.** Prod deploy permission (owner, standing): Api and ConfigViewer are
   always fine; DayZ-Server is fine when no one is online playing. Anything else against prod
   (`-Fix` / `-Apply` / `-Push`) needs the user's go.
+- **PAUSE the staging VM when testing is done** - `virsh suspend staging-vm`. It runs on the
+  owner's workstation and heats it; resume (`virsh resume`) only for the run that needs it, and
+  suspend again in the same turn. A resumed VM left running is a defect, not a convenience.
 - **Never restart prod unasked.** Staging a fix is the ceiling; the restart is the owner's call.
 - The VPS is the ONLY install - no local server copy exists to test against.
 
