@@ -77,21 +77,18 @@ foreach ($m in $missions) {
 }
 
 
-# --- generator INPUTS are not owned files ---------------------------------------------------
+# --- generator INPUTS are classified, not owned ----------------------------------------------
 # server-settings.json is not a file the game reads: Apply-ServerCfg turns it into serverDZ.cfg
-# (a read-only generated artifact). This is a GENERATOR INPUT -
-# "UI: edits the inputs". Classifying it 'owned' put it in the box's OWNED_FILES, which permits
-# own-write - a whole-file replace that bypasses the 14-toggle allowlist Apply-ServerCfg enforces,
-# so an admin could store keys the renderer silently drops. An input must never be own-writable.
+# (a read-only generated artifact). It is a GENERATOR INPUT the web edits whole via own-write -
+# safe because Apply-ServerCfg's allowlist is closed at RENDER time, so an unlisted key is
+# dropped with a warning no matter who wrote it. The category still matters: 'input' says a
+# COMPILER reads this file, so its effect arrives at the next prestart render, not at save.
 $inputs = @($registry.surfaces | Where-Object { $_.category -eq 'input' })
 Check ($inputs.Count -ge 1) "at least one surface is classified 'input' (generator parameter set)"
 $ss = @($registry.surfaces | Where-Object { $_.box -eq 'server-settings.json' })
 Check ($ss.Count -eq 1) "server-settings.json has exactly one registry row"
 if ($ss.Count -eq 1) {
     Check ($ss[0].category -eq 'input') "server-settings.json is category 'input', not 'owned' (got '$($ss[0].category)')"
-    # Deploy-Api's OWNED_FILES predicate is: category -eq 'owned' -and box -and web -ne 'types'
-    $wouldBeOwnWritable = ($ss[0].category -eq 'owned' -and $ss[0].box -and $ss[0].web -ne 'types')
-    Check (-not $wouldBeOwnWritable) "server-settings.json is NOT own-writable (excluded from OWNED_FILES)"
 }
 foreach ($i in $inputs) {
     Check ($i.category -ne 'owned') "input surface '$($i.name)' is not also 'owned'"

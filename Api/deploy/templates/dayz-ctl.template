@@ -649,24 +649,19 @@ case "$verb" in
     # the whole-file editor. Pure enumeration of the rendered masks - no caller input.
     if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES" | while IFS= read -r _l; do [ -n "$_l" ] && printf 'F\t%s\n' "$_l"; done; fi
     if [ -n "$OWNED_DIRS" ];  then printf '%s\n' "$OWNED_DIRS"  | while IFS= read -r _l; do [ -n "$_l" ] && printf 'D\t%s\n' "$_l"; done; fi
-    # 'E<TAB><relpath>' per owned file that HAS a captured baseline beside it. own-write freezes a
+    # 'E<TAB><relpath>' per file that HAS a captured baseline beside it. own-write freezes a
     # .defaults companion before its FIRST replace, so the companion existing means this file has
     # been saved through the editor at least once - which is what the tree marks as edited.
-    # A directory scan, no reads and no hashing: it says "was edited here", never
-    # "differs right now", and the wording in the UI has to match that.
-    {
-      if [ -n "$OWNED_FILES" ]; then printf '%s\n' "$OWNED_FILES"; fi
-      if [ -n "$OWNED_DIRS" ]; then
-        printf '%s\n' "$OWNED_DIRS" | while IFS= read -r _d; do
-          [ -n "$_d" ] && [ -d "$SERVER_DIR/$_d" ] || continue
-          find "$SERVER_DIR/$_d" -maxdepth 1 -type f \( -name '*.json' -o -name '*.xml' \) 2>/dev/null |
-            while IFS= read -r _f; do printf '%s\n' "${_f#"$SERVER_DIR"/}"; done
-        done
-      fi
-    } | LC_ALL=C sort -u | while IFS= read -r _r; do
+    # Found by enumerating the COMPANIONS themselves (not any mask), so a default-case file
+    # edited under editable-by-default earns its marker the same as a granted one. A directory
+    # scan, no reads and no hashing: it says "was edited here", never "differs right now", and
+    # the wording in the UI has to match that.
+    find "$SERVER_DIR" \( -name '.*' -o -name 'deploy-stage' \) -prune -o \
+         -type f -name '*.defaults.*' -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r _c; do
+      _r="$(_defaults_stem "${_c#"$SERVER_DIR"/}")"
       [ -n "$_r" ] || continue
-      case "${_r##*/}" in *.defaults.*) continue ;; esac      # a companion is never a row itself
-      [ -f "$SERVER_DIR/$(_defaults_path "$_r")" ] && printf 'E\t%s\n' "$_r"
+      _denied "$_r" && continue
+      [ -f "$SERVER_DIR/$_r" ] && printf 'E\t%s\n' "$_r"
     done
     ;;
 

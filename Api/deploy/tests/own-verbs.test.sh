@@ -263,6 +263,10 @@ out="$($CTL own-read "$FREE" 2>/dev/null)"; rc=$?
 printf '%s' '{"free":2}' | $CTL own-write - "$FREE" >/dev/null 2>&1; rc=$?
 [ $rc -eq 0 ] && [ "$(cat "$SD/$FREE")" = '{"free":2}' ] \
   && ok "FLIP: an un-rowed json file is writable by default" || bad "un-rowed json not writable (rc=$rc)"
+# ...and it earns its edited-marker: the write captured a .defaults, and the E scan finds it
+# without any mask membership.
+$CTL config-owned 2>/dev/null | grep -qxF "$(printf 'E\t%s' "$FREE")" \
+  && ok "config-owned marks the edited default-case (un-rowed) file" || bad "no E line for the flip-edited file"
 # the deny list is the boundary - reads AND writes refused underneath it
 $CTL own-read profiles/users/player.json >/dev/null 2>&1; rc=$?
 [ $rc -ne 0 ] && ok "denied path refused on read" || bad "denied path was READABLE"
