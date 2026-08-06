@@ -1,0 +1,16 @@
+[Unit]
+Description=Snapshot DayZ server config (zip per day, 30-day retention, originals untouched)
+
+[Service]
+# TEMPLATE: DEPLOY_* placeholders rendered per-host by Deploy-DayZServer.ps1 (host.env).
+Type=oneshot
+User={{DEPLOY_USER}}
+Group={{DEPLOY_GROUP}}
+# Array arguments are COMMA-separated with no spaces: `pwsh -File` binds a space-separated list
+# positionally, so `-Include *.json *.xml` silently feeds *.xml to the next parameter.
+# Exclusions are what this backup IS: everything the box rewrites on its own (persistence,
+# player profiles) or re-downloads (game install, workshop mods, BattlEye) is not config and
+# would dwarf what is. .own-versions and friends are per-save history the box already keeps.
+# ExcludeName drops the vendor map geometry (mapgroup*/mapcluster*, up to 5 MB each, at every
+# mission depth, never edited) - it ships with the mission and comes back with it.
+ExecStart=/usr/bin/pwsh -NoProfile -File {{DEPLOY_HOME}}/servers/dayz-server/Backup-Snapshot.ps1 -SourceDir {{DEPLOY_HOME}}/servers/dayz-server -ArchiveDir {{DEPLOY_HOME}}/servers/dayz-server/config-backups -Name config -RetentionDays 30 -Include *.json,*.xml,*.txt,*.cfg,*.conf -Exclude storage_,steamapps,@,profiles/users,deploy-stage,battleye,.own-versions,.types-versions,.settings-versions,.patrol-versions,.spawn-versions,.overrides-versions,logs/archive,config-backups -ExcludeName mapgroup*,mapcluster*,cfgeventgroups.xml -Fix

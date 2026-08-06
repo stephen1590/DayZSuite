@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily DayZ config snapshot
+
+[Timer]
+# After the log archive (00:20) so the two never contend for disk. Persistent replays a missed
+# run at next boot - a host that was down at 00:40 still gets that day's snapshot.
+OnCalendar=*-*-* 00:40
+Persistent=true
+
+[Install]
+WantedBy=timers.target

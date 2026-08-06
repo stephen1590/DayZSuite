@@ -491,6 +491,9 @@ $items = @(
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
     @{ Src = "../common/Archive-Logs.ps1"; Dst = Join-Path $ServerDir "Archive-Logs.ps1"; Sudo = $false; Exec = $true }
+    # Shared snapshot engine, same arrangement - dayz-configbackup.timer runs it in the server dir.
+    # It COPIES; the log archiver MOVES. Two jobs, two scripts, never merged.
+    @{ Src = "../common/Backup-Snapshot.ps1"; Dst = Join-Path $ServerDir "Backup-Snapshot.ps1"; Sudo = $false; Exec = $true }
     # The registry is CODE-side truth, but box-side tooling reads it AT RUNTIME, so the box needs
     # the file itself - not just the masks the deploy renders into dayz-ctl. The row stays because
     # Confirm-LiveConfigs and the recovery tooling read the registry on the box.
@@ -543,6 +546,8 @@ $items = @(
     @{ Src = "dayz-server.service"; Dst = $UnitPath;                            Sudo = $true;  Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.service"; Dst = "/etc/systemd/system/dayz-logarchive.service"; Sudo = $true; Exec = $false; Render = $true }
     @{ Src = "dayz-logarchive.timer";   Dst = "/etc/systemd/system/dayz-logarchive.timer";   Sudo = $true; Exec = $false }
+    @{ Src = "dayz-configbackup.service"; Dst = "/etc/systemd/system/dayz-configbackup.service"; Sudo = $true; Exec = $false; Render = $true }
+    @{ Src = "dayz-configbackup.timer";   Dst = "/etc/systemd/system/dayz-configbackup.timer";   Sudo = $true; Exec = $false }
     # Auto-update-check unit + timer (timer interval rendered from host.env). The timer is
     # enabled/disabled by DEPLOY_UPDATE_CHECK_INTERVAL in the -Fix block below.
     @{ Src = "dayz-update-check.service"; Dst = "/etc/systemd/system/dayz-update-check.service"; Sudo = $true; Exec = $false; Render = $true }
@@ -810,6 +815,7 @@ if ($Fix) {
     sudo systemctl enable dayz-server
     # Timer enable is safe under -NoRestart: it never touches the game server process.
     sudo systemctl enable --now dayz-logarchive.timer
+    sudo systemctl enable --now dayz-configbackup.timer
     # Auto-update-check timer: on unless DEPLOY_UPDATE_CHECK_INTERVAL=off. Disabling only
     # stops the periodic check — the manual API arm + prestart apply path are unaffected.
     if ($UpdateCheckEnabled) {
