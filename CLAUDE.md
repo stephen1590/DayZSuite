@@ -35,7 +35,9 @@ structural defect: FLAG it (tracker row), do not paper it with prose.**
 ## Working on the box
 
 - **Never hand-patch the live box.** Fix the deploy script, redeploy. Code → Document → Deploy.
-- **Report/dry-run first.** `-Fix` / `-Apply` / `-Push` against prod needs the user's go.
+- **Report/dry-run first.** Prod deploy permission (owner, standing): Api and ConfigViewer are
+  always fine; DayZ-Server is fine when no one is online playing. Anything else against prod
+  (`-Fix` / `-Apply` / `-Push`) needs the user's go.
 - **Never restart prod unasked.** Staging a fix is the ceiling; the restart is the owner's call.
 - The VPS is the ONLY install - no local server copy exists to test against.
 
