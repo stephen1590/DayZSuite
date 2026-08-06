@@ -44,6 +44,10 @@ let mapSelPt = -1;       // selected point index into mapPts
 let mapCatFilter = new Set();  // active class/type keys ('(base)' = uncategorized); a point shows only if its key is in here
 let mapEdit = false;           // edit mode: drag markers to move, click empty to add, panel to edit fields
 
+// The mission's raw AIPatrolSettings.json - the map's ONE write surface, reached through the
+// generic owned-file verbs (registry row aiPatrolSettings; its '*' segment is the mission).
+function patrolsPath(mission) { return 'mpmissions/' + mission + '/expansion/settings/AIPatrolSettings.json'; }
+
 // --- Deprecations (AI map/location settings rework) ------------------------------
 // The authored map-points store is being replaced by points DERIVED from the live
 // Expansion AIPatrol/AILocation settings. Its on-map layer is turned OFF here (render + new-point
@@ -163,7 +167,7 @@ export async function loadMapTab(force) {
     const liveMission = getActiveMission();
     if (liveMission) {
       try {
-        const pr = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(liveMission), cred);
+        const pr = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(liveMission)), cred);
         if (seq !== mapLoadSeq) return;
         const pd = JSON.parse(stripBom(pr.content || '{}'));
         if (mapData) mapData.livePatrols = (pd && Array.isArray(pd.Patrols)) ? pd : null;
@@ -633,7 +637,7 @@ function $id(id) { return document.getElementById(id); }
 
 // ===================== Per-patrol field editor =====================
 // The map OWNS patrols. Click a patrol -> Edit fields -> this loads the mission's raw
-// AIPatrolSettings.json (configs/settings key=patrols), locates the entry by its stable idx, edits its
+// AIPatrolSettings.json (configs/own), locates the entry by its stable idx, edits its
 // fields directly. Core fields up front, the other ~35 under Advanced (each showing its value;
 // -1 = inheriting the global). Save merges just this entry back and writes the whole doc via
 // configs/set-patrols (unique-name validated on the box, snapshot, base= concurrency). Every
@@ -647,7 +651,7 @@ async function startPatrolEdit(p) {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(mission)), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     const arr = Array.isArray(doc.Patrols) ? doc.Patrols : [];
     if (p.idx == null || !arr[p.idx] || typeof arr[p.idx] !== 'object') { toast('Could not locate this patrol in the live file (idx ' + p.idx + ') - reload the map.', 'err'); return; }
@@ -661,7 +665,7 @@ async function startGlobalEdit() {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(mission)), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     mapPatEdit = { mission, idx: null, doc, version: r.version, entry: doc, isGlobal: true };
     renderMapDetail();
@@ -676,7 +680,7 @@ async function startNewPatrol(wx, wy, wz) {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(mission)), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     if (!Array.isArray(doc.Patrols)) doc.Patrols = [];
     const arr = doc.Patrols;
@@ -699,7 +703,7 @@ async function startNewObjectPatrol() {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(mission)), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     if (!Array.isArray(doc.Patrols)) doc.Patrols = [];
     const arr = doc.Patrols;
@@ -724,11 +728,11 @@ async function deleteSelectedPatrol() {
   const cred = loadCred(); if (!cred) return;
   const mission = mapMission;
   try {
-    const r = await apiPost('/dayz/configs/settings?key=patrols&mission=' + encodeURIComponent(mission), cred);
+    const r = await apiPost('/dayz/configs/own?path=' + encodeURIComponent(patrolsPath(mission)), cred);
     const doc = JSON.parse(stripBom(r.content || '{}'));
     if (!Array.isArray(doc.Patrols) || !doc.Patrols[p.idx]) { toast('Could not locate that patrol in the live file — reload the map.', 'err'); return; }
     doc.Patrols.splice(p.idx, 1);
-    await apiPost('/dayz/configs/set-settings', cred, { key: 'patrols', mission, content: JSON.stringify(doc, null, 2), baseVersion: r.version });
+    await apiPost('/dayz/configs/set-own', cred, { path: patrolsPath(mission), content: JSON.stringify(doc, null, 2), baseVersion: r.version });
     toast('Patrol deleted — restart to apply', 'ok');
     mapPatEdit = null; el.mapDetail.classList.remove('editing');
     applyPatrolDocToMap(doc);   // reflect the deletion on the map NOW (mapSelPt reset inside)
@@ -981,7 +985,7 @@ async function savePatrolEdit() {
       if (e.isGlobal) e.doc = ed; else if (e.doc && Array.isArray(e.doc.Patrols)) e.doc.Patrols[e.idx] = ed;
     }
     const content = JSON.stringify(e.doc, null, 2);
-    const r = await apiPost('/dayz/configs/set-settings', cred, { key: 'patrols', mission: e.mission, content, baseVersion: e.version });
+    const r = await apiPost('/dayz/configs/set-own', cred, { path: patrolsPath(e.mission), content, baseVersion: e.version });
     toast(r.message || 'Saved - restart to apply', 'ok');
     const savedDoc = e.doc, savedIdx = e.idx;
     mapPatEdit = null; mapPatNav = null;

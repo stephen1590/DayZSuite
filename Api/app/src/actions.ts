@@ -15,7 +15,6 @@ import { METRICS, RANGE_HOURS } from './timeseries.js';
 import { statusView, humanDuration } from './status-view.js';
 import { sanitizeText } from './dayz.js';
 import { bigStringify } from './lossless-json.js';
-import { SETTINGS_KEYS, isSettingsKey } from './settings-keys.js';   // generalized AI-settings write allowlist (patrols/locations)
 
 export interface ActionError extends Error {
   statusCode: number;
@@ -750,67 +749,6 @@ export function buildActions(dayz: DayzBridge, warnSeconds: number, heightmaps: 
           .map((l) => l.replace(/\r$/, '').trim())
           .filter(Boolean);
         return { files };
-      },
-    },
-
-    'configs/settings': {
-      destructive: false,
-      readOnly: true,
-      describe: 'one mission\'s Expansion AI settings file raw, plus its version hash. key = patrols (AIPatrolSettings) | locations (AILocationSettings). The map editor loads it, edits the array, and passes the version back to configs/set-settings as baseVersion so a concurrent admin edit is rejected (409). ONE generalized reader over the settings-key allowlist (settings-keys.ts).',
-      schema: {
-        query: { type: 'object', required: ['key', 'mission'], properties: {
-          key: { type: 'string', description: 'a settings key: patrols | locations' },
-          mission: { type: 'string', description: 'a mission folder name, e.g. dayzOffline.sakhal' },
-        } },
-        response: { type: 'object', properties: { key: { type: 'string' }, mission: { type: 'string' }, version: { type: 'string' }, content: { type: 'string' } } },
-      },
-      async run(params) {
-        const key = String(params.key ?? '');
-        if (!isSettingsKey(key)) throw fail(400, `unknown settings key '${key}' (patrols | locations)`);
-        const mission = String(params.mission ?? '');
-        if (!/^[A-Za-z0-9_.-]+$/.test(mission)) throw fail(400, 'invalid or missing "mission"');
-        const label = SETTINGS_KEYS[key].label;
-        const r = await dayz.ctl('settings-read', key, mission);
-        if (r.code === 2) throw fail(404, `${label}.json not on the box for '${mission}'`);
-        if (r.code === 3) throw fail(413, `${label}.json for '${mission}' is too large to retrieve`);
-        if (r.code !== 0) throw fail(502, `settings-read failed: ${(r.stderr || r.stdout).trim()}`);
-        const nl = r.stdout.indexOf('\n');
-        const version = (nl >= 0 ? r.stdout.slice(0, nl) : r.stdout).trim();
-        const content = nl >= 0 ? r.stdout.slice(nl + 1) : '';
-        return { key, mission, version, content };
-      },
-    },
-
-    'configs/set-settings': {
-      destructive: false,
-      readOnly: false,
-      describe: 'replace one mission\'s Expansion AI settings file (key = patrols | locations) with a new document. The box validates JSON + the required array (patrols also require unique non-empty Names), snapshots first, and applies at the next restart. Pass baseVersion (from configs/settings) for optimistic concurrency. ONE generalized writer over the settings-key allowlist (settings-keys.ts).',
-      schema: {
-        body: { type: 'object', required: ['key', 'mission', 'content'], properties: {
-          key: { type: 'string', description: 'a settings key: patrols | locations' },
-          mission: { type: 'string', description: 'a mission folder name, e.g. dayzOffline.sakhal' },
-          content: { type: 'string', description: 'the complete new settings document (object root + the file\'s required array)' },
-          baseVersion: { type: 'string', description: 'the version hash from configs/settings this edit was based on — the box rejects the write with 409 if the file changed since. Omit to skip the check (last-write-wins).' },
-        } },
-        response: { type: 'object', properties: { message: { type: 'string' }, version: { type: 'string' } } },
-      },
-      async run(params) {
-        const key = String(params.key ?? '');
-        if (!isSettingsKey(key)) throw fail(400, `unknown settings key '${key}' (patrols | locations)`);
-        const mission = String(params.mission ?? '');
-        if (!/^[A-Za-z0-9_.-]+$/.test(mission)) throw fail(400, 'invalid or missing "mission"');
-        if (typeof params.content !== 'string' || !params.content.trim()) throw fail(400, '"content" must be the whole settings document');
-        if (params.content.length > 2097152) throw fail(413, '"content" too large (max 2MB)');
-        const label = SETTINGS_KEYS[key].label;
-        // settings-write arg order: content over STDIN ('-' at $2), key at $3, mission at $4, base= at $5.
-        const extra: string[] = [key, mission];
-        if (typeof params.baseVersion === 'string' && params.baseVersion.length) extra.push(`base=${params.baseVersion}`);
-        const r = await dayz.ctlStdin('settings-write', params.content, ...extra);
-        if (r.code === 2) throw fail(404, `${label}.json not on the box for '${mission}'`);
-        if (r.code === 5) throw fail(409, (r.stderr || r.stdout).trim().replace(/^dayz-ctl:\s*/, ''));  // concurrent-edit conflict
-        if (r.code !== 0) throw fail(502, `settings-write failed: ${(r.stderr || r.stdout).trim()}`);
-        const lines = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
-        return { message: `${label} for ${mission} saved (previous version snapshotted on the box); restart to apply`, version: lines.length > 1 ? lines[1] : '' };
       },
     },
 

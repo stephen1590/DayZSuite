@@ -29,7 +29,7 @@ function Assert([string]$name, [bool]$cond, [string]$why = '') {
 # forgets to lower the pin - a ceiling only catches the first.
 $tpl = Get-Content -Raw (Join-Path $repo 'Api/deploy/templates/dayz-ctl.template')
 $writeVerbs = @([regex]::Matches($tpl, '(?m)^\s*([a-z][a-z-]*-write)\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
-$PINNED_WRITE_VERBS = @('own-write', 'settings-write') | Sort-Object
+$PINNED_WRITE_VERBS = @('own-write') | Sort-Object
 $added   = @($writeVerbs | Where-Object { $_ -notin $PINNED_WRITE_VERBS })
 $removed = @($PINNED_WRITE_VERBS | Where-Object { $_ -notin $writeVerbs })
 Assert "dayz-ctl *-write verbs = the pinned set ($($writeVerbs.Count): $($writeVerbs -join ', '))" `
@@ -56,7 +56,7 @@ for ($i = 0; $i -lt $labels.Count; $i++) {
 $writers = @($writers | Sort-Object)
 $PINNED_WRITERS = @(
     'set-map'         # writes $SERVER_DIR/map.env
-    'own-write', 'settings-write'
+    'own-write'
     'update-arm'      # writes $UPDATE_PENDING
     'update-disarm'   # removes $UPDATE_PENDING
 ) | Sort-Object

@@ -259,11 +259,22 @@ $ownedDirs  = @($registry.surfaces | Where-Object { $_ -and $_.category -eq 'own
     ForEach-Object { "$($_.dir)".Trim() } | Where-Object { $_ } | Sort-Object -Unique)
 foreach ($p in ($ownedFiles + $ownedDirs)) {
     if ("$p" -match '^\s*/' -or "$p" -match '\.\.') { throw "Api Configs: owned path must be ServerDir-relative with no '..': '$p'." }
-    if ("$p" -notmatch '^[A-Za-z0-9_./-]+$') { throw "Api Configs: owned path has invalid chars (allowed A-Z a-z 0-9 . _ - /): '$p'." }
+    # '*' is allowed as a glob segment in FILE rows (e.g. the mission folder) - one registry row
+    # covers every mission. dayz-ctl matches it with the same case-glob semantics as 'generated'.
+    if ("$p" -notmatch '^[A-Za-z0-9_./*-]+$') { throw "Api Configs: owned path has invalid chars (allowed A-Z a-z 0-9 . _ - / *): '$p'." }
 }
 $ownedFilesRendered = ($ownedFiles -join "`n")
 $ownedDirsRendered  = ($ownedDirs -join "`n")
-Write-Host "Owned surfaces (own-read/own-write): $($ownedFiles.Count) file(s) + $($ownedDirs.Count) folder(s)`n"
+# Structural checks -> OWNED_CHECKS ("glob<TAB>check" per line): registry rows may name a
+# box-side validator in 'structure' (ce-types, ai-patrols); own-write runs it on matching
+# paths on top of the extension parse. Declared on the row, one mechanism for every surface.
+$ownedChecks = @($registry.surfaces | Where-Object { $_ -and $_.structure -and $_.box } |
+    ForEach-Object {
+        if ("$($_.structure)" -notmatch '^[a-z][a-z0-9-]*$') { throw "Api Configs: structure for '$($_.name)' must be a lowercase word: '$($_.structure)'." }
+        "$("$($_.box)".Trim())`t$($_.structure)"
+    } | Sort-Object -Unique)
+$ownedChecksRendered = ($ownedChecks -join "`n")
+Write-Host "Owned surfaces (own-read/own-write): $($ownedFiles.Count) file(s) + $($ownedDirs.Count) folder(s), $($ownedChecks.Count) structural check(s)`n"
 
 # Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
 # Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
@@ -381,6 +392,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__DISABLED_TARGETS__' = $disabledTargetsRendered
         '__OWNED_FILES__' = $ownedFilesRendered
         '__OWNED_DIRS__'  = $ownedDirsRendered
+        '__OWNED_CHECKS__' = $ownedChecksRendered
         '__LOG_NOISE__'   = $logNoiseSq
         '__DOCS_ROOTS__'    = $docsRoots
         '__DOCS_EXT__'      = $docsExt

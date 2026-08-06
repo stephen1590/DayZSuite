@@ -9,7 +9,7 @@ TPL="$HERE/../templates/dayz-ctl.template"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 SD="$WORK/serverdir"
-mkdir -p "$SD/profiles/ExpansionMod/Loadouts" "$SD/profiles/ExpansionMod/Settings" "$SD/custom-ce" "$SD/profiles/AI_Shared"
+mkdir -p "$SD/profiles/ExpansionMod/Loadouts" "$SD/profiles/ExpansionMod/Settings" "$SD/custom-ce" "$SD/profiles/AI_Shared" "$SD/mpmissions/dayzOffline.test/expansion/settings"
 
 # --- fixtures ---------------------------------------------------------------
 echo '{"a":1,"sets":[{"x":2}]}'            > "$SD/profiles/ExpansionMod/Loadouts/TownLoadout.json"
@@ -18,6 +18,7 @@ echo '<types><type name="X"/></types>'      > "$SD/custom-ce/expansion_types.xml
 echo '{"gen":1}'                            > "$SD/profiles/AI_Shared/map-points.generated.json"
 echo '{"parked":1}'                         > "$SD/profiles/ExpansionMod/Settings/AISettings.json"
 echo 'SECRET=1'                             > "$SD/host.env"
+echo '{"m_Version":1,"Patrols":[{"Name":"Alpha"},{"Name":"Bravo"}]}' > "$SD/mpmissions/dayzOffline.test/expansion/settings/AIPatrolSettings.json"
 
 # --- render the template with fixture masks ---------------------------------
 python3 - "$TPL" "$WORK/dayz-ctl" "$SD" <<'PY'
@@ -30,8 +31,9 @@ vals = {
   '__CONFIG_DIRS__': '', '__IGNORE_EXT__': '', '__WRITE_MAP__': '',
   '__GENERATED__': 'profiles/AI_Shared/map-points.generated.json',
   '__DISABLED_TARGETS__': 'profiles/ExpansionMod/Settings/AISettings.json',
-  '__OWNED_FILES__': 'server-settings.json\nban.txt\ncustom-ce/expansion_types_tuning.xml',
+  '__OWNED_FILES__': 'server-settings.json\nban.txt\ncustom-ce/expansion_types_tuning.xml\nmpmissions/*/expansion/settings/AIPatrolSettings.json',
   '__OWNED_DIRS__': 'profiles/ExpansionMod/Loadouts\nprofiles/ExpansionMod/Settings',
+  '__OWNED_CHECKS__': 'custom-ce/expansion_types_tuning.xml\tce-types\nmpmissions/*/expansion/settings/AIPatrolSettings.json\tai-patrols',
   '__LOG_NOISE__': '', '__DOCS_ROOTS__': '', '__DOCS_EXT__': '', '__DOCS_NAMES__': '',
   '__DOCS_MAXDEPTH__': '3', '__LOG_SOURCES__': '',
 }
@@ -225,6 +227,27 @@ printf '%s' "$out" | grep -q "EditedOnce.defaults.json" \
 # and the existing masks still come through untouched
 printf '%s' "$out" | grep -qxF "$(printf 'F\tserver-settings.json')" && ok "config-owned still emits its F masks" || bad "F masks regressed"
 printf '%s' "$out" | grep -qxF "$(printf 'D\tprofiles/ExpansionMod/Loadouts')" && ok "config-owned still emits its D masks" || bad "D masks regressed"
+
+# A glob OWNED_FILES row ('*' = the mission segment) resolves per-mission paths, so one registry
+# row covers every mission instead of a hand-maintained row per mission.
+PATS="mpmissions/dayzOffline.test/expansion/settings/AIPatrolSettings.json"
+out="$($CTL own-read "$PATS" 2>/dev/null)"; rc=$?
+[ $rc -eq 0 ] && [ "$(printf '%s' "$out" | head -1)" = "$(sha "$SD/$PATS")" ] \
+  && ok "own-read resolves a glob-matched mission path" || bad "glob mission path not readable (rc=$rc)"
+
+# own-write must run the ai-patrols structural check: object root, Patrols array, unique
+# non-empty Names - the guard that stopped the duplicate-Name outage. JSON-valid is not enough.
+good='{"m_Version":1,"Patrols":[{"Name":"Alpha"},{"Name":"Charlie"}]}'
+out="$(printf '%s' "$good" | $CTL own-write - "$PATS" 2>&1)"; rc=$?
+[ $rc -eq 0 ] && [ "$(cat "$SD/$PATS")" = "$good" ] \
+  && ok "own-write accepts a valid AIPatrolSettings doc via the glob row" || bad "valid patrols doc refused (rc=$rc out=$out)"
+before="$(sha "$SD/$PATS")"
+printf '%s' '{"Patrols":[{"Name":"Dup"},{"Name":"Dup"}]}' | $CTL own-write - "$PATS" >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && [ "$(sha "$SD/$PATS")" = "$before" ] \
+  && ok "own-write refuses duplicate patrol Names, file intact" || bad "duplicate Names not refused (rc=$rc)"
+printf '%s' '{"NotPatrols":[]}' | $CTL own-write - "$PATS" >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && [ "$(sha "$SD/$PATS")" = "$before" ] \
+  && ok "own-write refuses a doc without the Patrols array" || bad "missing Patrols array not refused (rc=$rc)"
 
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

@@ -3,7 +3,6 @@
 // THE SECURITY BOUNDARY: the browser sends a KEY from a fixed table and never PromQL. The
 // server holds the query string. There is no free-form query path to escape from, so what
 // follows pins the table and proves the resolver refuses everything that is not a key.
-// Same shape as settings-keys.test.ts, which guards the other key->file allowlist.
 //
 // LIVES HERE, NOT IN app/src/: Deploy-Api.ps1 copies app/src wholesale and remote/deploy.sh
 // rsyncs it to /opt/api/src, so a test placed beside the code ships to the live box. The

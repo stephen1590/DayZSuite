@@ -306,7 +306,8 @@
       "mirror": "live",
       "web": "types",
       "category": "owned",
-      "check": "xml"
+      "check": "xml",
+      "structure": "ce-types"
     },
     {
       "name": "expansionSpawnableTypes",
@@ -354,7 +355,8 @@
       "mirror": "live",
       "web": "types",
       "category": "owned",
-      "check": "xml"
+      "check": "xml",
+      "structure": "ce-types"
     },
     {
       "name": "ceCoreSakhal",
@@ -803,6 +805,14 @@
       "category": "reference",
       "mirror": "live",
       "mirrorGlob": "*.json"
+    },
+    {
+      "name": "aiPatrolSettings",
+      "category": "owned",
+      "box": "mpmissions/*/expansion/settings/AIPatrolSettings.json",
+      "web": "none",
+      "structure": "ai-patrols",
+      "about": "Expansion AI patrols for a mission - edited on the Map tab, one row covers every mission via the * segment"
     }
   ],
   "_denyListReadme": [
@@ -825,13 +835,34 @@
     "Matching is by path PREFIX, relative to the server dir."
   ],
   "denyList": [
-    { "path": "profiles/users",         "why": "player profile data" },
-    { "path": "profiles/VPPAdminTools", "why": "STEAM_API_KEY field (empty today) + BanList player Steam64 IDs" },
-    { "path": "profiles/CodeLock",      "why": "player lock permissions" },
-    { "path": "profiles/LiveTracker",   "why": "20s runtime position snapshots - would churn git on every pull" },
-    { "path": "storage_",               "why": "persistence, not config - the 07-30 incident lived here" },
-    { "path": "mapgroup",               "why": "vendor map geometry: 25 files, 52.8 MB, never edited" },
-    { "path": "mapcluster",             "why": "vendor map geometry, same as mapgroup" }
+    {
+      "path": "profiles/users",
+      "why": "player profile data"
+    },
+    {
+      "path": "profiles/VPPAdminTools",
+      "why": "STEAM_API_KEY field (empty today) + BanList player Steam64 IDs"
+    },
+    {
+      "path": "profiles/CodeLock",
+      "why": "player lock permissions"
+    },
+    {
+      "path": "profiles/LiveTracker",
+      "why": "20s runtime position snapshots - would churn git on every pull"
+    },
+    {
+      "path": "storage_",
+      "why": "persistence, not config - the 07-30 incident lived here"
+    },
+    {
+      "path": "mapgroup",
+      "why": "vendor map geometry: 25 files, 52.8 MB, never edited"
+    },
+    {
+      "path": "mapcluster",
+      "why": "vendor map geometry, same as mapgroup"
+    }
   ],
   "generated": [
     "serverDZ.cfg",
