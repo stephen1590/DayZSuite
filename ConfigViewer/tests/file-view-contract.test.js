@@ -134,3 +134,23 @@ test('E7: rw is derived from an EDIT PATH, never from "not locked"', () => {
 
 // What the predicate DECIDES is asserted by calling it, in access-badge.test.js. Only its
 // wiring into the DOM string builder is a source question, and that is the test above.
+
+// The compare view kept being reported as done while read-only rows had no way to reach it -
+// which is exactly where it was asked for. One renderer, offered from both chromes.
+test('E13: a read-only row can compare too, through the SAME renderer', () => {
+  const chrome = JS.slice(JS.indexOf('function viewChrome('), JS.indexOf('function canCompare('));
+  assert.match(chrome, /data-v="compare"/, 'the read-only chrome must offer the compare segment');
+  assert.match(chrome, /canCompare\(row\)/, 'and gate it on the row having a second copy to fetch');
+  const dispatch = JS.slice(JS.indexOf('async function renderBody('), JS.indexOf('const typesTable'));
+  assert.match(dispatch, /edView === 'compare' && \(row\.ownFile \|\| canCompare\(row\)\)/,
+    'compare must route to renderOwnCompare for read-only rows, not only owned ones');
+  assert.equal((JS.match(/renderOwnCompare\(/g) || []).length, 1,
+    'ONE compare renderer, called from one place - a second diff view is the defect this replaces');
+});
+
+// Landing on a diff nobody asked for is the complaint that re-opened this: compare is a
+// destination you choose, never the view a row opens in.
+test('E13: compare is never the landing view', () => {
+  const sel = JS.slice(JS.indexOf("edView = row.types ? 'types'"), JS.indexOf('renderFilesNav();'));
+  assert.doesNotMatch(sel, /'compare'/, 'selecting a row must not open the comparison');
+});

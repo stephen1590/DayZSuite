@@ -353,13 +353,24 @@ function viewChrome(row) {
   const crumb = row.scope === 'files' ? 'files/' : ('mpmissions \u00b7 ' + (row.mission || 'all missions') + '/');
   return '<div class="ovr-phead">' +
     '<div class="ovr-ppath"><span class="crumb">' + escapeHtml(crumb) + '</span><span class="nm">' + escapeHtml(row.fileKey || row.label) + '</span></div>' +
-    '<div class="ovr-pact">' + dirtyPillHtml() + '<button class="btn-sm" id="ovrCopy" type="button">Copy</button></div>' +
+    '<div class="ovr-pact">' + dirtyPillHtml() +
+      // Not being able to WRITE a file is no reason to be unable to see what it looked like
+      // before something changed it. Same segment, same compare view as an editable row.
+      (canCompare(row)
+        ? '<div class="seg" id="ovrSeg"><button data-v="file" class="' + (edView === 'compare' ? '' : 'on') + '">View file</button>' +
+          '<button data-v="compare" class="' + (edView === 'compare' ? 'on' : '') + '">Compare with default</button></div>'
+        : '') +
+      '<button class="btn-sm" id="ovrCopy" type="button">Copy</button></div>' +
     '</div>' + aboutBlock(row) +
     '<div class="ovr-sum"><span class="stat"><span class="dot b"></span>' +
-    (row.generated ? 'generated file — built at boot from its declared inputs; edit those, not this'
-                   : 'read-only reference file — shipped with the deploy; view only') +
+    (edView === 'compare' ? 'live file beside the frozen default — read-only on both sides'
+      : row.generated ? 'generated file — built at boot from its declared inputs; edit those, not this'
+                      : 'read-only reference file — shipped with the deploy; view only') +
     '</span></div>';
 }
+// Only json/xml can be compared: the box serves those through the generic read verb, so anything
+// else has no second copy to fetch.
+function canCompare(row) { return !!row && isOwnedRel(row.relpath); }
 async function renderEditor() {
   const row = currentRow();
   if (!row || row.access === 'own') return;
@@ -381,7 +392,8 @@ async function renderBody(row) {
   // and the LIST is the sole scroller (types-mode CSS on #editorPage). Everything else — the
   // overrides editor, and a types row's own 'file' view — keeps the normal workspace scroll.
   // Owned rows: the whole-file two-copy editor (own-editor.js) - its own load/save path.
-  if (row.ownFile && edView === 'compare') {
+  // Compare is offered on ANY json/xml row, editable or not - one view, one renderer.
+  if (edView === 'compare' && (row.ownFile || canCompare(row))) {
     el.editorPage.classList.remove('types-mode');
     const text = await renderOwnCompare(row, body);
     if (text != null && selKey === row.key) lastFileText = text;

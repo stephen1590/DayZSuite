@@ -26,6 +26,7 @@
 // XML keeps a single raw pane: json-editor has no XML model, so there is no second side to show.
 import { escapeHtml, setGlobalMsg } from './ui.js';
 import { apiPost } from './api-client.js';
+import { canWrite } from './access.js';
 import { loadCred, handle } from './auth.js';
 // The SAME structured editor the Map tab uses (mountJsonEditor) and the same object-oriented
 // navigator layout the server-files Edit view has always used - one editor, not a per-file one-off.
@@ -545,8 +546,12 @@ export async function renderOwnCompare(row, body) {
     return null;
   }
   if (st.defText == null) {
-    body.innerHTML = '<div class="ovr-note">No frozen default was ever captured for this file, so there is nothing to compare against. ' +
-      'The box captures one from the current bytes the first time the file is saved through the editor.</div>';
+    // A file nobody can edit here never gets a baseline captured, so say that instead of
+    // pointing at a save that is not on offer.
+    body.innerHTML = '<div class="ovr-note">No frozen default exists for this file, so there is nothing to compare against. ' +
+      (canWrite(row)
+        ? 'The box captures one from the current bytes the first time the file is saved through the editor.'
+        : 'Baselines are captured on the first save, and this file is not editable here.') + '</div>';
     return st.baseText;
   }
   // The LIVE side is whatever the editor currently holds, unsaved edits included - comparing the
