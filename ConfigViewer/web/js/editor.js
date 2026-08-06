@@ -30,8 +30,6 @@ let configItems = [];     // /dayz/configs/list — now carries each file's relp
 let boxFiles = [];        // /dayz/configs/writable [{name, path}]
 let roRe = [];            // /dayz/configs/readonly — compiled globs of generated (read-only) files
 let disabledSet = new Set(); // /dayz/configs/disabled — relpaths whose owning mod is off in mods.conf; dropped from the tree
-let ownedFiles = new Set(); // /dayz/configs/owned — exact relpaths of category-'owned' file surfaces
-let ownedDirs = [];         // /dayz/configs/owned — folders whose json/xml files are owned (whole-file editable)
 // /dayz/configs/owned `edited` — owned files the box has a captured .defaults baseline for, i.e.
 // saved through the editor at least once. It is NOT a content comparison: a file saved back to
 // identical bytes still has a baseline, so the tree marker says "edited here", never "differs".
@@ -91,13 +89,12 @@ function isGenerated(rel) { return !!rel && roRe.some((re) => re.test(rel)); }
 // A surface whose owning mod is DISABLED in mods.conf (configs/disabled): dropped from the tree
 // entirely, so a mod turned off there stops surfacing its config files and override-patch targets.
 function isDisabledMod(rel) { return !!rel && disabledSet.has(rel); }
-// A file the two-copy model owns whole (registry category:'owned'): exact owned file row, or a
-// json/xml file under an owned folder. Mirrors dayz-ctl's _own_check allowlist half; the box
-// re-enforces everything (extension, generated, disabled, jail) on every read/write.
+// A file the two-copy model owns whole. EDITABLE BY DEFAULT: any json/xml surface the box
+// lists is own-editable unless an exception says no (view-locked, generated, map-owned,
+// disabled, denied - denied paths never arrive here at all). Mirrors dayz-ctl's _own_check
+// default; the box re-enforces everything on every read/write.
 function isOwnedRel(rel) {
-  if (!rel || !/\.(json|xml)$/.test(rel) || /\.defaults\./.test(rel)) return false;
-  if (ownedFiles.has(rel)) return true;
-  return ownedDirs.some((d) => rel.startsWith(d + '/'));
+  return !!rel && /\.(json|xml)$/i.test(rel) && !/\.defaults\./.test(rel);
 }
 function buildRows(items, writable, mission) {
   const list = [];
@@ -277,8 +274,6 @@ export async function loadFiles(preserve) {
     boxFiles = boxR.files || [];
     roRe = (roR.files || []).map(globToRe);
     disabledSet = new Set(disR.files || []);
-    ownedFiles = new Set(ownR.files || []);
-    ownedDirs = ownR.dirs || [];
     editedFiles = new Set(ownR.edited || []);   // absent on an older API = no marks, never a wrong mark
   } catch (err) {
     if (handle(err)) return;

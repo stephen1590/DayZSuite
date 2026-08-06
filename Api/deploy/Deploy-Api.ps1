@@ -274,7 +274,18 @@ $ownedChecks = @($registry.surfaces | Where-Object { $_ -and $_.structure -and $
         "$("$($_.box)".Trim())`t$($_.structure)"
     } | Sort-Object -Unique)
 $ownedChecksRendered = ($ownedChecks -join "`n")
-Write-Host "Owned surfaces (own-read/own-write): $($ownedFiles.Count) file(s) + $($ownedDirs.Count) folder(s), $($ownedChecks.Count) structural check(s)`n"
+# Deny boundary -> DENY_LIST (one prefix per line): paths underneath are invisible and
+# unreachable through every dayz-ctl surface. THE exception list that makes editable-by-default
+# safe - tests/deny-list.test.ps1 pins its contents.
+$denyPrefixes = @($registry.denyList | Where-Object { $_ -and $_.path } |
+    ForEach-Object {
+        $d = "$($_.path)".Trim()
+        if ($d -match "[`t`n]" -or $d -match '^\s*/' -or $d -match '\.\.') { throw "Api Configs: denyList path invalid: '$d'." }
+        $d
+    } | Sort-Object -Unique)
+if (-not $denyPrefixes.Count) { throw 'Api Configs: registry denyList is empty - refusing to render an unbounded editable-by-default dayz-ctl.' }
+$denyRendered = ($denyPrefixes -join "`n")
+Write-Host "Owned surfaces (own-read/own-write): $($ownedFiles.Count) file(s) + $($ownedDirs.Count) folder(s), $($ownedChecks.Count) structural check(s), deny list $($denyPrefixes.Count) prefix(es)`n"
 
 # Mod-docs browser -> DOCS_* template vars. Roots are ServerDir-relative globs (e.g. "@*"),
 # Extensions/Names filter the recursive scan, MaxDepth bounds it. All read-only.
@@ -393,6 +404,7 @@ Set-Content -NoNewline -Path (Join-Path $stageDir 'dayz-ctl') -Value (
         '__OWNED_FILES__' = $ownedFilesRendered
         '__OWNED_DIRS__'  = $ownedDirsRendered
         '__OWNED_CHECKS__' = $ownedChecksRendered
+        '__DENY_LIST__'   = $denyRendered
         '__LOG_NOISE__'   = $logNoiseSq
         '__DOCS_ROOTS__'    = $docsRoots
         '__DOCS_EXT__'      = $docsExt

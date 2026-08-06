@@ -47,6 +47,8 @@ $required = @(
     'profiles/LiveTracker'     # 20s runtime snapshots, would churn git every pull
     'storage_'                 # persistence, not config
     'mapgroup'                 # vendor geometry: 25 files, 52.8 MB, never edited
+    'steamapps'                # game install - stomped by Steam validate/updates
+    '@'                        # workshop mod content - stomped by mod updates
 )
 $declared = @($deny | ForEach-Object { $_.path })
 foreach ($r in $required) {

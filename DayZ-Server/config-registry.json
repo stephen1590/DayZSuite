@@ -862,6 +862,14 @@
     {
       "path": "mapcluster",
       "why": "vendor map geometry, same as mapgroup"
+    },
+    {
+      "path": "steamapps",
+      "why": "game install - stomped by Steam validate/updates, never config"
+    },
+    {
+      "path": "@",
+      "why": "workshop mod content - stomped by mod updates; server-side mod config lives under profiles/"
     }
   ],
   "generated": [

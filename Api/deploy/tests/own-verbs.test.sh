@@ -19,6 +19,9 @@ echo '{"gen":1}'                            > "$SD/profiles/AI_Shared/map-points
 echo '{"parked":1}'                         > "$SD/profiles/ExpansionMod/Settings/AISettings.json"
 echo 'SECRET=1'                             > "$SD/host.env"
 echo '{"m_Version":1,"Patrols":[{"Name":"Alpha"},{"Name":"Bravo"}]}' > "$SD/mpmissions/dayzOffline.test/expansion/settings/AIPatrolSettings.json"
+mkdir -p "$SD/profiles/users" "$SD/profiles/SomeMod"
+echo '{"steam64":"765611"}'                 > "$SD/profiles/users/player.json"     # denied prefix
+echo '{"free":1}'                           > "$SD/profiles/SomeMod/Extra.json"    # NO row anywhere - the flip's subject
 
 # --- render the template with fixture masks ---------------------------------
 python3 - "$TPL" "$WORK/dayz-ctl" "$SD" <<'PY'
@@ -27,13 +30,14 @@ tpl, out, sd = sys.argv[1], sys.argv[2], sys.argv[3]
 t = open(tpl).read()
 vals = {
   '__UNIT__': 'fake.service', '__SERVER_DIR__': sd,
-  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch\tSets global economy parameters\thttps://low.ms/knowledgebase/dayz-server-configuration\nexpansionTypesTuning\tcustom-ce/expansion_types_tuning.xml\tCustom CE\tExpansion Types Tuning\t0\ttypes\tCE loot tuning\t',
+  '__CONFIG_MAP__': 'Server-settings\tserver-settings.json\tGeneral\tServer Settings\t0\tpatch\tSets global economy parameters\thttps://low.ms/knowledgebase/dayz-server-configuration\nexpansionTypesTuning\tcustom-ce/expansion_types_tuning.xml\tCustom CE\tExpansion Types Tuning\t0\ttypes\tCE loot tuning\t\nexpansionTypes\tcustom-ce/expansion_types.xml\tCustom CE\tExpansion Types (base)\t1\tview\tUpstream reference\t',
   '__CONFIG_DIRS__': '', '__IGNORE_EXT__': '', '__WRITE_MAP__': '',
   '__GENERATED__': 'profiles/AI_Shared/map-points.generated.json',
   '__DISABLED_TARGETS__': 'profiles/ExpansionMod/Settings/AISettings.json',
   '__OWNED_FILES__': 'server-settings.json\nban.txt\ncustom-ce/expansion_types_tuning.xml\nmpmissions/*/expansion/settings/AIPatrolSettings.json',
   '__OWNED_DIRS__': 'profiles/ExpansionMod/Loadouts\nprofiles/ExpansionMod/Settings',
   '__OWNED_CHECKS__': 'custom-ce/expansion_types_tuning.xml\tce-types\nmpmissions/*/expansion/settings/AIPatrolSettings.json\tai-patrols',
+  '__DENY_LIST__': 'profiles/users\nstorage_',
   '__LOG_NOISE__': '', '__DOCS_ROOTS__': '', '__DOCS_EXT__': '', '__DOCS_NAMES__': '',
   '__DOCS_MAXDEPTH__': '3', '__LOG_SOURCES__': '',
 }
@@ -59,9 +63,9 @@ out="$($CTL own-read server-settings.json 2>/dev/null)"; rc=$?
 out="$($CTL own-read profiles/ExpansionMod/Loadouts/TownLoadout.json 2>/dev/null)"; rc=$?
 [ $rc -eq 0 ] && ok "own-read under owned dir" || bad "own-read under owned dir (rc=$rc)"
 
-# 3. own-read: NON-owned (reference) path refused, exit 2
-$CTL own-read custom-ce/expansion_types.xml >/dev/null 2>&1; rc=$?
-[ $rc -eq 2 ] && ok "own-read refuses non-owned path (exit 2)" || bad "own-read non-owned rc=$rc (want 2)"
+# 3. own-read: an un-granted non-json/xml path refused, exit 2
+$CTL own-read deploy/prestart.sh >/dev/null 2>&1; rc=$?
+[ $rc -eq 2 ] && ok "own-read refuses an un-granted non-json/xml path (exit 2)" || bad "own-read un-granted rc=$rc (want 2)"
 
 # 4. own-write: valid JSON to owned-dir file -> ok, new sha printed, content replaced
 new='{"a":9,"sets":[{"x":3}]}'
@@ -248,6 +252,40 @@ printf '%s' '{"Patrols":[{"Name":"Dup"},{"Name":"Dup"}]}' | $CTL own-write - "$P
 printf '%s' '{"NotPatrols":[]}' | $CTL own-write - "$PATS" >/dev/null 2>&1; rc=$?
 [ $rc -ne 0 ] && [ "$(sha "$SD/$PATS")" = "$before" ] \
   && ok "own-write refuses a doc without the Patrols array" || bad "missing Patrols array not refused (rc=$rc)"
+
+# --- THE FLIP: json/xml is editable by default; the exceptions are the masks -----------------
+# A json file with NO registry row anywhere is readable and writable - the deny list, the
+# generated mask, the disabled-mod mask and view-locked rows are the ONLY things that say no.
+FREE="profiles/SomeMod/Extra.json"
+out="$($CTL own-read "$FREE" 2>/dev/null)"; rc=$?
+[ $rc -eq 0 ] && [ "$(printf '%s' "$out" | tail -n +2)" = '{"free":1}' ] \
+  && ok "FLIP: an un-rowed json file is readable by default" || bad "un-rowed json not readable (rc=$rc)"
+printf '%s' '{"free":2}' | $CTL own-write - "$FREE" >/dev/null 2>&1; rc=$?
+[ $rc -eq 0 ] && [ "$(cat "$SD/$FREE")" = '{"free":2}' ] \
+  && ok "FLIP: an un-rowed json file is writable by default" || bad "un-rowed json not writable (rc=$rc)"
+# the deny list is the boundary - reads AND writes refused underneath it
+$CTL own-read profiles/users/player.json >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && ok "denied path refused on read" || bad "denied path was READABLE"
+printf '%s' '{"x":1}' | $CTL own-write - profiles/users/player.json >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && ok "denied path refused on write" || bad "denied path was WRITABLE"
+# a view-locked row (CONFIG_MAP ro=1) stays read-only through the generic verbs too
+out="$($CTL own-read custom-ce/expansion_types.xml 2>/dev/null)"; rc=$?
+[ $rc -eq 0 ] && ok "view-locked row readable via own-read" || bad "view row not readable (rc=$rc)"
+before="$(sha "$SD/custom-ce/expansion_types.xml")"
+printf '%s' '<types><type name="Y"/></types>' | $CTL own-write - custom-ce/expansion_types.xml >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && [ "$(sha "$SD/custom-ce/expansion_types.xml")" = "$before" ] \
+  && ok "view-locked row refused on write, file intact" || bad "view-locked row was WRITABLE (rc=$rc)"
+# a non-json/xml file with no explicit grant stays unreachable (host.env must never ride these verbs)
+$CTL own-read host.env >/dev/null 2>&1; rc=$?
+[ $rc -ne 0 ] && ok "un-granted non-json/xml (host.env) still refused" || bad "host.env leaked through the flip"
+# config-list now enumerates the un-rowed file, rw
+out="$($CTL config-list 2>/dev/null)"
+printf '%s' "$out" | grep -q "$FREE" && ok "config-list enumerates the un-rowed json" || bad "un-rowed json missing from config-list"
+printf '%s' "$out" | grep -q "profiles/users/player.json" && bad "config-list lists a DENIED file" || ok "config-list hides denied paths"
+printf '%s' "$out" | awk -F'\t' -v f="$FREE" '$4==f && $5=="0"{found=1} END{exit !found}' \
+  && ok "the enumerated row is rw (ro=0)" || bad "enumerated row not rw"
+printf '%s' "$out" | awk -F'\t' -v f="profiles/AI_Shared/map-points.generated.json" '$4==f && $5=="1"{found=1} END{exit !found}' \
+  && ok "an enumerated generated file is ro=1" || bad "generated file not marked ro in enumeration"
 
 echo "own-verbs: $pass passed, $fail failed"
 [ $fail -eq 0 ]

@@ -19,6 +19,7 @@ DISABLED_TARGETS='__DISABLED_TARGETS__'  # rendered relpaths of config surfaces 
 OWNED_FILES='__OWNED_FILES__'      # rendered relpaths of registry FILE rows with category:'owned' - the generic own-read/own-write allowlist; '*' = a glob segment (e.g. the mission), one row covers every match
 OWNED_DIRS='__OWNED_DIRS__'        # rendered reldirs of registry FOLDER rows with category:'owned' - files under these are own-read/own-write reachable (json/xml only, replace-only)
 OWNED_CHECKS='__OWNED_CHECKS__'    # rendered "glob<TAB>check" rows (registry 'structure' field) - own-write runs the named structural validator on matching paths, on top of the extension parse
+DENY_LIST='__DENY_LIST__'          # rendered prefixes (registry denyList) - paths underneath are INVISIBLE and UNREACHABLE: never listed, never read, never written. THE boundary of editable-by-default
 NOISE_RE='__LOG_NOISE__'           # rendered ERE (deploy.config.json Dayz.LogNoiseFilter); log-read hides matching lines unless 'raw'
 DOCS_ROOTS='__DOCS_ROOTS__'        # space-separated globs under SERVER_DIR to scan for mod docs (deploy.config.json Docs.Roots, e.g. "@*")
 DOCS_EXT='__DOCS_EXT__'            # comma list of doc extensions (Docs.Extensions, e.g. md,txt,xml,json)
@@ -97,6 +98,27 @@ _is_generated() {
   done
   IFS="$_oldifs_ig"; return 1
 }
+# --- Deny boundary --------------------------------------------------------------------------
+# $1 under a DENY_LIST prefix? Plain string-prefix semantics, same as the deny-list gate
+# asserts offline. Checked BEFORE any grant so no mask can override a denial.
+_denied() {
+  [ -n "$DENY_LIST" ] || return 1
+  while IFS= read -r _dl; do
+    [ -n "$_dl" ] || continue
+    case "$1" in "$_dl"*) return 0 ;; esac
+  done <<EOF
+$DENY_LIST
+EOF
+  return 1
+}
+
+# A CONFIG_MAP row with ro='1' (registry web:'view') is a locked surface: readable, never
+# writable - whichever verb carries the write.
+_locked_row() {
+  [ -n "$CONFIG_MAP" ] || return 1
+  printf '%s\n' "$CONFIG_MAP" | awk -F'\t' -v r="$1" '$2==r && $5=="1"{found=1; exit} END{exit !found}'
+}
+
 # --- Owned-file guard (the generic own-read/own-write allowlist) ----------------------------
 # <name>.<ext> -> <name>.defaults.<ext>; extensionless -> <name>.defaults. The frozen state-0
 # companion of an owned file: how capture-on-write finds where to put the baseline, and how
@@ -168,7 +190,18 @@ EOF
 $OWNED_DIRS
 EOF
   fi
-  [ -n "$_hit" ] || { echo "dayz-ctl: not an owned config surface: $_r" >&2; return 2; }
+  # THE DENY BOUNDARY, before any default: a denied path is unreachable however it is asked for.
+  if _denied "$_maskpath"; then echo "dayz-ctl: denied path: $_r" >&2; return 2; fi
+  # THE FLIP: json/xml is a config surface BY DEFAULT. The masks above are explicit GRANTS
+  # (they can cover any extension, e.g. ban.txt); everything else says no by exception -
+  # deny list, generated mask, disabled-mod mask, view-locked rows, missing file.
+  if [ -z "$_hit" ]; then
+    case "$_maskpath" in *.json|*.xml) _hit=1 ;; esac
+  fi
+  [ -n "$_hit" ] || { echo "dayz-ctl: not a config surface (json/xml by default; other types need an explicit grant): $_r" >&2; return 2; }
+  if [ "$_mode" != read ] && _locked_row "$_maskpath"; then
+    echo "dayz-ctl: read-only surface: $_r" >&2; return 2
+  fi
   if _is_generated "$_maskpath"; then echo "dayz-ctl: generated artifact - edit the inputs, never the output: $_r" >&2; return 2; fi
   if [ -n "$DISABLED_TARGETS" ] && printf '%s\n' "$DISABLED_TARGETS" | grep -qxF "$_maskpath"; then
     echo "dayz-ctl: owning mod is disabled in mods.conf: $_r" >&2; return 2
@@ -233,6 +266,30 @@ emit_allowed() {
       done
     done
   fi
+  # THE FLIP: every .json/.xml under the server dir is a surface unless something says no.
+  # The tables above stay as CURATION (names, groups, labels, about text); this enumeration is
+  # the default case. Denied prefixes never appear, .defaults companions ride the compare view
+  # only, generated artifacts list read-only. Emitted LAST so a curated row wins the UI's
+  # first-listing-wins dedup on relpath.
+  find "$SERVER_DIR" \( -name '.*' -o -name 'deploy-stage' \) -prune -o \
+       -type f \( -name '*.json' -o -name '*.xml' \) -print 2>/dev/null | LC_ALL=C sort | {
+    _n=0
+    while IFS= read -r _f; do
+      _rel="${_f#"$SERVER_DIR"/}"
+      case "${_rel##*/}" in *.defaults.*) continue ;; esac
+      _denied "$_rel" && continue
+      _n=$((_n + 1))
+      [ "$_n" -le 2000 ] || break
+      _ro=0; _is_generated "$_rel" && _ro=1
+      case "$_rel" in
+        mpmissions/*/*/*) _rest="${_rel#mpmissions/*/}"; _grp="${_rest%%/*}"; _lbl="$_rest" ;;
+        mpmissions/*/*)   _rest="${_rel#mpmissions/*/}"; _grp='mission root'; _lbl="$_rest" ;;
+        */*)              _grp="${_rel%%/*}"; _lbl="${_rel#*/}" ;;
+        *)                _grp='General'; _lbl="$_rel" ;;
+      esac
+      printf '%s\t%s\t%s\t%s\t%s\tfile\t\t\n' "$_grp" "$_rel" "$_rel" "$_lbl" "$_ro"
+    done
+  } || true
   return 0
 }
 
