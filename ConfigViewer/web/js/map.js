@@ -41,6 +41,7 @@ let mapPts = [];         // spawn bookmarks of the selected map (plot order)
 let mapWs = 15360;       // world size in meters for the current map
 let mapHm = null;        // API heightmap meta for the current map (null = none shipped)
 let mapSelPt = -1;       // selected point index into mapPts
+let mapSelAI = -1;       // selected LIVE AI index into mapBandits.positions (-1 = none)
 let mapCatFilter = new Set();  // active class/type keys ('(base)' = uncategorized); a point shows only if its key is in here
 
 // The mission's raw AIPatrolSettings.json - the map's ONE write surface, reached through the
@@ -1007,6 +1008,7 @@ function drawMap() {
   drawMapPoi(ctx);                                     // iZurvive-derived: crashes/vehicles/hazards/wildlife/infected
   drawMapLabels(ctx, w, h);
   drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
+  drawMapAI(ctx);                                      // live AI under the players
   drawMapPlayers(ctx);                                 // live players on top of the bookmarks
   drawMapShip(ctx);                                    // the Dutchman topmost — one marker, most watched
   drawMapCrosshair(ctx, w, h);
@@ -1523,6 +1525,68 @@ function drawMapPlayers(ctx) {
     ctx.stroke();
   }
 }
+// Live AI, from the LiveTracker serverMod (same 20s snapshot the bar counts). Drawn as a
+// diamond so it never reads as a player circle. Gated exactly like players: the live map only,
+// and only while the layer is on - stale snapshots arrive with no positions at all.
+function drawMapAI(ctx) {
+  if (mapMission !== getActiveMission()) return;
+  if (!mapLiveSel.has('NPCs')) return;
+  if (!mapBandits.positions.length || !mapView) return;
+  const fill = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
+  mapBandits.positions.forEach((a, i) => {
+    const [sx, sy] = mapToScreen(a.x, a.z);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Math.PI / 4);
+    const r = i === mapSelAI ? 6 : 4.5;
+    ctx.fillStyle = fill;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = i === mapSelAI ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.92)';
+    ctx.strokeRect(-r, -r, r * 2, r * 2);
+    ctx.restore();
+    if (i === mapSelAI) {                       // selection ring, unrotated so it stays a circle
+      ctx.beginPath();
+      ctx.arc(sx, sy, 11, 0, Math.PI * 2);
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+}
+function mapHitAI(sx, sy) {
+  if (mapMission !== getActiveMission() || !mapLiveSel.has('NPCs') || !mapView) return -1;
+  let best = -1, bd = 16 * 16;
+  mapBandits.positions.forEach((a, i) => {
+    const [px, py] = mapToScreen(a.x, a.z);
+    const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+    if (d2 < bd) { bd = d2; best = i; }
+  });
+  return best;
+}
+// WHICH patrol did this AI come from? The tracker reports a position and nothing else, so the
+// answer is inferred: the nearest waypoint across the live patrol document. Presented as a
+// best guess with its distance, never as a fact - two patrols can overlap.
+function nearestPatrol(a) {
+  const doc = mapData && mapData.livePatrols;
+  const list = (doc && Array.isArray(doc.Patrols)) ? doc.Patrols : null;
+  if (!list) return null;
+  let best = null;
+  list.forEach((pt, idx) => {
+    for (const w of (pt.Waypoints || [])) {
+      if (!Array.isArray(w) || w.length < 3) continue;
+      const d = Math.hypot(w[0] - a.x, w[2] - a.z);
+      if (!best || d < best.dist) best = { dist: d, idx, patrol: pt };
+    }
+  });
+  return best;
+}
+function selectMapAI(i) {
+  mapSelAI = i === mapSelAI ? -1 : i;
+  if (mapSelAI > -1) mapSelPt = -1;              // one detail panel, one subject
+  renderMap();
+}
+
 async function loadPlayers() {
   if (rateLimited()) return;      // API said back off — skip this tick, timer stays armed
   const cred = loadCred();
@@ -1872,8 +1936,54 @@ function renderMapSummary() {
     (!mapHm ? '<span class="stat" style="color:var(--danger)">no heightmap shipped for this map — Δ unavailable</span>' : '');
 }
 
+// What the tracker knows about ONE live AI, plus the patrol it probably came from. The
+// snapshot carries position, type and how long that NPC has been alive - everything else here
+// is derived, and says so, because guessing silently is what makes troubleshooting circular.
+function renderAIDetail() {
+  const a = mapBandits.positions[mapSelAI];
+  el.mapDetail.classList.toggle('hidden', !a);
+  el.mapDetail.classList.remove('editing');
+  if (!a) return;
+  const kv = (k, v) => '<span><span class="k2">' + k + '</span>' + v + '</span>';
+  const mono = (v) => '<span class="mono">' + escapeHtml(String(v)) + '</span>';
+  const secs = (n) => (n == null ? 'unknown' : n < 90 ? n + 's' : Math.round(n / 60) + 'm');
+  const kind = a.type === 'eai' ? 'Expansion AI' : a.type === 'bandit' ? 'AI Bandit (retired mod)' : (a.type || 'unknown');
+  let rows = kv('Type', mono(kind)) +
+    kv('Position', mono(Math.round(a.x) + ' / ' + Math.round(a.z))) +
+    kv('Alive for', mono(secs(a.age)) + ' <span class="k2">this session</span>') +
+    kv('Snapshot age', mono(secs(mapBandits.ageSec)) + (mapBandits.stale ? ' <span class="k2">stale</span>' : ''));
+  const near = nearestPatrol(a);
+  if (near) {
+    const pt = near.patrol;
+    const inherits = (v) => (v === -1 || v == null ? '<span class="k2">inherits</span>' : mono(v));
+    rows += '<span class="k2" style="margin-top:6px">likely patrol &mdash; nearest waypoint, ' + Math.round(near.dist) + 'm away</span>' +
+      kv('Name', '<b class="mono">' + escapeHtml(pt.Name || '(unnamed)') + '</b>') +
+      kv('AI count', mono(pt.NumberOfAI != null ? pt.NumberOfAI : '?')) +
+      kv('Spawn chance', mono(pt.Chance != null ? pt.Chance : '?')) +
+      kv('Faction', mono(pt.Faction || '?')) +
+      kv('Min / max spawn dist', inherits(pt.MinDistRadius) + ' / ' + inherits(pt.MaxDistRadius)) +
+      kv('Despawn dist', inherits(pt.DespawnRadius)) +
+      kv('Respawn time', inherits(pt.RespawnTime)) +
+      '<span class="k2">' + ((pt.MinDistRadius === -1 && pt.MaxDistRadius === -1)
+        ? 'No distance limits set, so this patrol spawns regardless of where players are.'
+        : 'Distance limits apply, so it spawns relative to players.') + '</span>' +
+      '<button class="ghost me-btn" id="aiGoPatrol" type="button">Open this patrol</button>';
+  } else {
+    rows += '<span class="k2">No live patrol document loaded for this map, so the source patrol cannot be inferred.</span>';
+  }
+  el.mapDetail.innerHTML = rows;
+  const go = $id('aiGoPatrol');
+  if (go && near) go.onclick = () => {
+    // Jump to the patrol the way the list does: select its point, then let the normal panel take over.
+    const i = mapPts.findIndex((q) => q.kind === 'patrol' && q.idx === near.idx);
+    mapSelAI = -1;
+    if (i > -1) selectMapPt(i, true); else { toast('That patrol has no plotted position (object patrol).', 'err'); renderMap(); }
+  };
+}
+
 function renderMapDetail() {
   if (mapPatEdit) { renderPatrolEditor(); return; }   // patrol/object/global editor lives in this panel, in place
+  if (mapSelAI > -1) { renderAIDetail(); return; }    // a live AI owns the panel while one is picked
   const p = mapPts[mapSelPt];
   el.mapDetail.classList.toggle('hidden', !p);
   el.mapDetail.classList.remove('editing');
@@ -2053,10 +2163,13 @@ export function initMap() {
         }
       }
       mapCursor = mapToWorld(e.offsetX, e.offsetY);
-      const hov = (drag && drag.moved) ? -1 : mapHitTest(e.offsetX, e.offsetY);
+      // A live AI sits on top of the point markers, so it claims the hover first.
+      const hovAI = (drag && drag.moved) ? -1 : mapHitAI(e.offsetX, e.offsetY);
+      const hov = (drag && drag.moved) || hovAI > -1 ? -1 : mapHitTest(e.offsetX, e.offsetY);
+      if (hovAI > -1) { c.style.cursor = 'pointer'; el.mapTip.style.display = 'none'; }
       if (hov !== mapHover) {
         mapHover = hov;
-        c.style.cursor = hov > -1 ? 'pointer' : 'crosshair';
+        c.style.cursor = hovAI > -1 ? 'pointer' : hov > -1 ? 'pointer' : 'crosshair';
         if (hov > -1) { el.mapTip.innerHTML = mapTipHtml(mapPts[hov]); el.mapTip.style.display = 'block'; }
         else el.mapTip.style.display = 'none';
       }
@@ -2076,8 +2189,10 @@ export function initMap() {
             mapPlaceMode = null; if (el.mapCanvas) el.mapCanvas.style.cursor = '';
             startNewPatrol(w.x, gy == null ? 0 : gy, w.z);
           } else {
-            const i = mapHitTest(e.offsetX, e.offsetY);
-            if (i > -1) selectMapPt(i);
+            const ai = mapHitAI(e.offsetX, e.offsetY);
+            const i = ai > -1 ? -1 : mapHitTest(e.offsetX, e.offsetY);
+            if (ai > -1) selectMapAI(ai);
+            else if (i > -1) { mapSelAI = -1; selectMapPt(i); }
           }
         }
         drag = null;
