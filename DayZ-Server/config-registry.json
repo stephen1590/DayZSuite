@@ -203,17 +203,6 @@
       "check": "none"
     },
     {
-      "name": "Basebuilding",
-      "label": "Base Building Plus",
-      "box": "profiles/BaseBuildingPlus/BBP_Settings.json",
-      "scope": "shared",
-      "seed": "deploy/profiles/BaseBuildingPlus/BBP_Settings.json",
-      "mirror": "live",
-      "web": "file",
-      "category": "owned",
-      "check": "json"
-    },
-    {
       "name": "customTypes",
       "label": "Custom Types (our items)",
       "group": "Custom CE",

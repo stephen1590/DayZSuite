@@ -17,7 +17,7 @@
            equivalent for the live box; this script reports that gap rather than asserting
            nothing.
         6. COMPOSED ARTIFACTS: the files prestart's builders generate for the active
-           mission parse (SpawnerBubakuV2.json, transfer_spawn.json) — proof the box-side
+           mission parse (transfer_spawn.json) — proof the box-side
            build chain produced valid output. (DynamicAIB/StaticAIB dropped: BanditAI retired.)
 
     Run it after a deploy, after a restart that applied web edits, or ad-hoc. Exits 0 when
@@ -101,11 +101,9 @@ if (-not $LocalOnly) {
         Where-Object { $_ -match '^DAYZ_MISSION=(.+)$' } | ForEach-Object { $Matches[1].Trim() } | Select-Object -First 1)
     if ($mission) { Show-Pass "active mission: $mission" } else { Show-Fail "could not read map.env for the active mission" }
 
-    # Build-AIBandits does not run at prestart, so DynamicAIB.json / StaticAIB.json are never
-    # composed. Dropped from this check - a fresh box would never create them and this would
-    # hard-fail. (The files may still linger on an old box; that's fine.)
+    # Only artifacts a prestart builder still composes: the bandit and Bubaku compilers are
+    # retired with their mods, so a fresh box would never create theirs and this would hard-fail.
     foreach ($rel in @(
-        "profiles/SpawnerBubaku/SpawnerBubakuV2.json"
         "profiles/transfer_spawn.json"
     )) {
         $raw = Get-Stdout { ssh -o ConnectTimeout=10 $target "cat '$RemotePath/$rel'" } | Out-String
