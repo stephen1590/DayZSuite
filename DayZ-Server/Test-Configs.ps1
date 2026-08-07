@@ -21,8 +21,8 @@
       - every config-defaults/<rel> baseline is placed at its live path (as both the frozen
         <stem>.defaults<ext> AND a live <stem><ext> for the engine to rebuild) - identical to
         the box's reversible-default rebuild.
-      - registry seed rows WITHOUT a captured baseline (classification, StaticAIB, Babaku,
-        messages) are placed from their repo seed - identical to a box that has them.
+      - registry seed rows WITHOUT a captured baseline (classification, messages) are placed
+        from their repo seed - identical to a box that has them.
     Then per declared mission, the full prestart config chain:
     (force-create), Apply-CustomCE, Build-TransferSpawns.
 
@@ -159,26 +159,7 @@ Write-Host "`nRunning the build chain (the prestart compilers) against staging" 
 # --- Validate the produced artifacts --------------------------------------------------------
 Write-Host "`nValidating built artifacts" -ForegroundColor Cyan
 
-# 2. DynamicAIB.common.json is an OWNED file - nothing BUILDS it and there is no force-create
-# to prove. What still matters is that the tuning was not silently dropped: the repo mirror
-# must still carry flags.spawnTypes.
-# Resolve the repo copy from the REGISTRY row's own 'seed' rather than guessing a path - the
-# registry is the declaration point, and a hardcoded guess here silently no-ops if it is wrong.
-$aibRow = @($allSurfaces | Where-Object { "$($_.box)" -eq 'profiles/AI_Bandits/common/DynamicAIB.common.json' })[0]
-$aib = if ($aibRow -and $aibRow.seed) { Join-Path $PSScriptRoot "$($aibRow.seed)" } else { $null }
-if (-not $aib -or -not (Test-Path $aib)) { Show-Fail "DynamicAIB.common.json: no resolvable repo copy from its registry seed - cannot verify the A2 cutover kept its tuning" }
-elseif (Test-Path $aib) {
-    $doc = Get-Content -Raw $aib | ConvertFrom-Json
-    $st = $doc.flags.spawnTypes
-    if ($st) { Show-Pass "flags.spawnTypes survives in the OWNED DynamicAIB.common.json ($(@($st.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('_') }).Count) type(s))" }
-    else { Show-Fail "flags.spawnTypes MISSING from DynamicAIB.common.json - the A2 cutover dropped tuning it used to force-create" }
-    # Reality the composed output depends on: 124 spawn points do nothing if this gate is off.
-    if ($null -ne $doc.flags.useSpawnLocations -and [int]$doc.flags.useSpawnLocations -eq 0) {
-        Write-Host "  [note] flags.useSpawnLocations = 0 -> dynamic AI bandit spawns compose EMPTY (spawn-points inert). Intentional?" -ForegroundColor DarkYellow
-    }
-}
-
-# 3. Compose EACH mission and validate its artifacts (the mod reads these; invalid = boots blind).
+# 2. Compose EACH mission and validate its artifacts (the mod reads these; invalid = boots blind).
 #    Every prestart engine that writes a FIXED output path overwrites it per mission, so run +
 #    validate each mission before the next runs. Each engine is guarded independently: one bad
 #    engine surfaces its own failure without masking the others.
