@@ -10,6 +10,7 @@ import { apiPost, rateLimited } from './api-client.js';
 import { mountJsonEditor, inferSchema } from './json-editor-ui.js';   // opt-in structured editor for a patrol entry (a patrol is small - no JSON-map pane needed, and the detail panel is narrow)
 import { loadCred, handle } from './auth.js';
 import { getActiveMission, setActiveMission } from './state.js';
+import { LIVE_LAYERS, LIVE_KINDS, liveLayer, liveVisible, livePositions, liveCount } from './map-live-layers.js';
 import { IDENTITY, isIdentity, applyAffine, invertAffine, solveCalibration } from './map-calibrate.js';
 import { confirmSave } from './dirty-files.js';           // name the files before saving
 
@@ -694,14 +695,9 @@ function renderPatrolEditor() {
   // dedicated widget - domain CONTROLS, not a second editor family. The only two editor families
   // are the navigator (structured JSON) and CM6 (raw text).
   const peHints = {
-    badge: (k, v) => (typeof v === 'number' && v < 0 ? 'inherits' : null),
+    ...PATROL_FIELD_RULES,
     enums: (k) => (k === 'LoadBalancingCategory' ? peLbcKeys : null),
     readOnly: ['Waypoints', 'LoadBalancingCategories'],
-    summary: (k, v) => {
-      if (k === 'Waypoints' && Array.isArray(v)) return v.length + ' point(s) - drag on the map';
-      if (k === 'LoadBalancingCategories' && v && typeof v === 'object') return Object.keys(v).length + ' categor' + (Object.keys(v).length === 1 ? 'y' : 'ies') + ' - edit below';
-      return null;
-    },
     priority: core,
   };
   el.mapDetail.innerHTML =
@@ -1008,8 +1004,7 @@ function drawMap() {
   drawMapPoi(ctx);                                     // iZurvive-derived: crashes/vehicles/hazards/wildlife/infected
   drawMapLabels(ctx, w, h);
   drawMapMarkers(ctx);                                 // bookmarks stay on top of labels
-  drawMapAI(ctx);                                      // live AI under the players
-  drawMapPlayers(ctx);                                 // live players on top of the bookmarks
+  drawLiveLayers(ctx);                                 // every live overlay, from the layer table
   drawMapShip(ctx);                                    // the Dutchman topmost — one marker, most watched
   drawMapCrosshair(ctx, w, h);
   updateMapBar();
@@ -1190,7 +1185,7 @@ const saveSet = (key, set) => { try { localStorage.setItem(key, JSON.stringify([
 // Live overlays (player dots, NPC diamonds) default ON — readSet's empty-set default is
 // right for the datascraped bars but would blank live positions on everyone's first visit.
 const readSetOr = (key, dflt) => { try { return localStorage.getItem(key) === null ? new Set(dflt) : readSet(key); } catch { return new Set(dflt); } };
-const LIVE_KINDS = ['Players', 'NPCs', 'Ship'];
+
 // Key bumped (…-maplive → …-maplive2) when 'Ship' joined LIVE_KINDS: a stored pre-Ship
 // selection would otherwise lock the new chip OFF for every existing visitor. One-time
 // preference reset to the all-on default is the lesser evil.
@@ -1254,13 +1249,9 @@ function renderMarkersFilter() {
 // diamonds). Always present — 0-count chips stay clickable so the preference can be set
 // before anyone is online. The NPC count reads 0 off the live map (the draw gate hides them).
 function renderLiveFilter() {
-  const css = (v, fb) => (getComputedStyle(document.documentElement).getPropertyValue(v) || fb).trim();
   chipBar(el.mapLiveFilter, 'Live', LIVE_KINDS, mapLiveSel, 'data-live',
-    (n) => (n === 'Players' ? css('--info', '#2f6fd0') : n === 'NPCs' ? css('--map-bad', '#c33327') : css('--map-ship', '#0e9aa7')),
-    (n) => (mapMission !== getActiveMission() ? 0
-      : n === 'Players' ? mapPlayers.length
-      : n === 'NPCs' ? mapBandits.positions.length
-      : mapShip.positions.length));
+    (n) => layerColor(liveLayer(n)),
+    (n) => liveCount(liveLayer(n), liveState(), { onLiveMission: onLiveMission() }));
 }
 
 // Building footprints: small dark squares, culled to the viewport. 5-12k points,
@@ -1509,61 +1500,91 @@ function drawMapCrosshair(ctx, w, h) {
 }
 
 // ---------- live player overlay (anonymized {x,z}, polled on the Map tab) ----------
-function drawMapPlayers(ctx) {
-  if (mapMission !== getActiveMission()) return;   // live players belong to the running server's map only
-  if (!mapLiveSel.has('Players')) return;
-  if (!mapPlayers.length || !mapView) return;
-  const fill = (getComputedStyle(document.documentElement).getPropertyValue('--info') || '#2f6fd0').trim();
-  for (const p of mapPlayers) {
-    const [sx, sy] = mapToScreen(p.x, p.z);
+// ONE renderer for every live overlay: the table says where the positions are, what colour
+// they take and which marker shape to draw. A new overlay is a row there, not a function here.
+function drawLiveMarker(ctx, shape, sx, sy, color, selected) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = selected ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.92)';   // reads on any terrain, either theme
+  if (shape === 'diamond') {
+    const r = selected ? 6 : 4.5;
+    ctx.translate(sx, sy); ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.strokeRect(-r, -r, r * 2, r * 2);
+  } else {
     ctx.beginPath();
     ctx.arc(sx, sy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(255,255,255,0.92)';   // white ring reads on any terrain, either theme
     ctx.stroke();
   }
+  ctx.restore();
+  if (selected) {                                  // selection ring, unrotated so it stays round
+    ctx.beginPath();
+    ctx.arc(sx, sy, 11, 0, Math.PI * 2);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+  }
 }
-// Live AI, from the LiveTracker serverMod (same 20s snapshot the bar counts). Drawn as a
-// diamond so it never reads as a player circle. Gated exactly like players: the live map only,
-// and only while the layer is on - stale snapshots arrive with no positions at all.
-function drawMapAI(ctx) {
-  if (mapMission !== getActiveMission()) return;
-  if (!mapLiveSel.has('NPCs')) return;
-  if (!mapBandits.positions.length || !mapView) return;
-  const fill = (getComputedStyle(document.documentElement).getPropertyValue('--map-bad') || '#c33327').trim();
-  mapBandits.positions.forEach((a, i) => {
-    const [sx, sy] = mapToScreen(a.x, a.z);
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(Math.PI / 4);
-    const r = i === mapSelAI ? 6 : 4.5;
-    ctx.fillStyle = fill;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = i === mapSelAI ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.92)';
-    ctx.strokeRect(-r, -r, r * 2, r * 2);
-    ctx.restore();
-    if (i === mapSelAI) {                       // selection ring, unrotated so it stays a circle
-      ctx.beginPath();
-      ctx.arc(sx, sy, 11, 0, Math.PI * 2);
-      ctx.strokeStyle = fill;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
-    }
-  });
+function drawLiveLayers(ctx) {
+  if (!mapView) return;
+  const state = liveState();
+  for (const l of LIVE_LAYERS) {
+    if (l.marker === 'ship') continue;             // the ship draws its route and dock too - its own function
+    if (!liveOn(l.key)) continue;
+    const color = layerColor(l);
+    livePositions(l, state).forEach((p, i) => {
+      const [sx, sy] = mapToScreen(p.x, p.z);
+      drawLiveMarker(ctx, l.marker, sx, sy, color, l.pick && i === mapSelAI);
+    });
+  }
 }
-function mapHitAI(sx, sy) {
-  if (mapMission !== getActiveMission() || !mapLiveSel.has('NPCs') || !mapView) return -1;
-  let best = -1, bd = 16 * 16;
-  mapBandits.positions.forEach((a, i) => {
-    const [px, py] = mapToScreen(a.x, a.z);
-    const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
-    if (d2 < bd) { bd = d2; best = i; }
-  });
-  return best;
+// Hit-testing only makes sense for a layer the table marks pickable.
+function mapHitLive(sx, sy) {
+  const state = liveState();
+  for (const l of LIVE_LAYERS) {
+    if (!l.pick || !liveOn(l.key)) continue;
+    let best = -1, bd = 16 * 16;
+    livePositions(l, state).forEach((p, i) => {
+      const [px, py] = mapToScreen(p.x, p.z);
+      const d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+      if (d2 < bd) { bd = d2; best = i; }
+    });
+    if (best > -1) return best;
+  }
+  return -1;
 }
+// The live state bag the layer table reads through, so no drawing or counting code names a
+// specific overlay's variable.
+function liveState() {
+  return { players: mapPlayers, ai: mapBandits.positions, ship: mapShip.positions };
+}
+function onLiveMission() { return mapMission === getActiveMission(); }
+function liveOn(key) {
+  return liveVisible(liveLayer(key), { onLiveMission: onLiveMission(), selected: mapLiveSel.has(key) });
+}
+function layerColor(l) { return (getComputedStyle(document.documentElement).getPropertyValue(l.cssVar) || l.fallback).trim(); }
+
+// How a PATROL FIELD reads, wherever it is shown - the editor and the live-AI panel both ask
+// these rather than each deciding what -1 means. They belong to the record, not to a widget.
+const PATROL_FIELD_RULES = {
+  badge: (k, v) => (typeof v === 'number' && v < 0 ? 'inherits' : null),
+  summary: (k, v) => {
+    if (k === 'Waypoints' && Array.isArray(v)) return v.length + ' point(s) - drag on the map';
+    if (v && typeof v === 'object' && !Array.isArray(v)) return Object.keys(v).length + ' entr' + (Object.keys(v).length === 1 ? 'y' : 'ies');
+    if (Array.isArray(v)) return v.length + ' item(s)';
+    return null;
+  },
+};
+
+// ONE row shape for every detail panel on this tab. Two copies of these drifted within a day
+// of the second one being written.
+function kvRow(k, v) { return '<span><span class="k2">' + escapeHtml(k) + '</span>' + v + '</span>'; }
+function kvMono(v) { return '<span class="mono">' + escapeHtml(String(v)) + '</span>'; }
+// What the tracker's `type` means in words. A type it has never seen shows raw rather than
+// being dropped - an unknown AI on the map is exactly what someone is trying to troubleshoot.
+const AI_KINDS = { eai: 'Expansion AI', bandit: 'AI Bandit (retired mod)' };
+
 // WHICH patrol did this AI come from? The tracker reports a position and nothing else, so the
 // answer is inferred: the nearest waypoint across the live patrol document. Presented as a
 // best guess with its distance, never as a fact - two patrols can overlap.
@@ -1624,8 +1645,7 @@ async function loadBandits() {
 }
 // ---------- the Flying Dutchman (patrol-ship overlay: one triangle + a state label) ----------
 function drawMapShip(ctx) {
-  if (!mapView || !mapLiveSel.has('Ship')) return;
-  if (mapMission !== getActiveMission()) return;   // ship coords only mean anything on the live map
+  if (!mapView || !liveOn('Ship')) return;
   const stateColor = { patrol: '#0e9aa7', docked: '#3fae4a', halted: '#e0a63a' };
   // The patrol loop, dashed, under the ship marker — so "where is it going" needs no guesswork.
   if (mapShip.route.length > 1) {
@@ -1715,31 +1735,18 @@ export function stopPlayers() { if (mapPlayersTimer) { clearInterval(mapPlayersT
 function updateMapBar() {
   const scale = mapView ? (1 / mapView.ppm) : 0;
   const scaleTxt = scale >= 1 ? scale.toFixed(1) + ' m/px' : (1 / scale).toFixed(1) + ' px/m';
-  const players = (mapMission !== getActiveMission() || !mapLiveSel.has('Players')) ? '' : mapPlayers.length
-    ? '<span class="mp-live"><span class="mp-dot"></span>' + mapPlayers.length + ' player' + (mapPlayers.length === 1 ? '' : 's')
-      + (mapPlayersAt ? ' · as of ' + escapeHtml(mapPlayersAt) : '') + '</span>'
-    : '';
-  // Bandit badge only when toggled on AND on the live mission's map.
-  const bandits = mapMission !== getActiveMission() || !mapLiveSel.has('NPCs')
-    ? ''
-    : mapBandits.positions.length
-      ? '<span class="mp-bandit" title="Live AI-bandit positions from the AIB_Tracker serverMod (updated every 20s)">'
-        + '<span class="mb-dot"></span>' + mapBandits.positions.length + ' bandit' + (mapBandits.positions.length === 1 ? '' : 's') + '</span>'
-      : mapBandits.stale
-        ? '<span class="mp-stale" title="AIB tracker has not updated in over a minute — the server or the AIB_Tracker serverMod may be down">bandit tracker stale</span>'
-        : '';
-  // Ship badge: state + destination at a glance ("is it moving?"), same gating as the others.
-  const shipFix = mapShip.positions.length ? mapShip.positions[0] : null;
-  const ship = mapMission !== getActiveMission() || !mapLiveSel.has('Ship')
-    ? ''
-    : shipFix
-      ? '<span class="mp-live" title="The Flying Dutchman — live position from the serverMod (updated every 20s)">⛵ '
-        + escapeHtml(shipFix.state || '?') + (shipFix.target ? ' → ' + escapeHtml(shipFix.target) : '') + '</span>'
-      : mapShip.stale
-        ? '<span class="mp-stale" title="Ship tracker has not updated in over a minute — the server or the FlyingDutchman serverMod may be down">ship tracker stale</span>'
-        : '';
+  // Every live layer reports itself the same way: its own row says what to say, the bar says it.
+  const meta = { Players: { at: mapPlayersAt }, NPCs: { stale: mapBandits.stale }, Ship: { stale: mapShip.stale } };
+  const state = liveState();
+  const live = LIVE_LAYERS.map((l) => {
+    if (!liveOn(l.key) || !l.badge) return '';
+    const b = l.badge(livePositions(l, state), meta[l.key] || {});
+    if (!b) return '';
+    return '<span class="' + (b.stale ? 'mp-stale' : 'mp-live') + '" title="' + attr(b.title || '') + '">' +
+      (b.stale ? '' : '<span class="mp-dot"></span>') + escapeHtml(b.text) + '</span>';
+  }).join('');
   if (!mapCursor) {
-    el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits + ship +
+    el.mapBar.innerHTML = '<span>hover the map for coordinates</span><span>' + escapeHtml(scaleTxt) + '</span>' + live +
       (mapTiles ? '' : '<span style="color:var(--danger)">no map tiles delivered for this map — run Build-MapTiles.ps1 -Execute -Deliver + redeploy</span>');
     return;
   }
@@ -1748,7 +1755,7 @@ function updateMapBar() {
     '<span>X <b>' + mapCursor.x.toFixed(1) + '</b></span>' +
     '<span>Y <b>' + (y === null ? '—' : y.toFixed(2)) + '</b></span>' +
     '<span>Z <b>' + mapCursor.z.toFixed(1) + '</b></span>' +
-    '<span>' + escapeHtml(scaleTxt) + '</span>' + players + bandits + ship +
+    '<span>' + escapeHtml(scaleTxt) + '</span>' + live +
     '<span class="meta">right-click copies X Y Z</span>';
 }
 
@@ -1944,30 +1951,31 @@ function renderAIDetail() {
   el.mapDetail.classList.toggle('hidden', !a);
   el.mapDetail.classList.remove('editing');
   if (!a) return;
-  const kv = (k, v) => '<span><span class="k2">' + k + '</span>' + v + '</span>';
-  const mono = (v) => '<span class="mono">' + escapeHtml(String(v)) + '</span>';
   const secs = (n) => (n == null ? 'unknown' : n < 90 ? n + 's' : Math.round(n / 60) + 'm');
-  const kind = a.type === 'eai' ? 'Expansion AI' : a.type === 'bandit' ? 'AI Bandit (retired mod)' : (a.type || 'unknown');
-  let rows = kv('Type', mono(kind)) +
-    kv('Position', mono(Math.round(a.x) + ' / ' + Math.round(a.z))) +
-    kv('Alive for', mono(secs(a.age)) + ' <span class="k2">this session</span>') +
-    kv('Snapshot age', mono(secs(mapBandits.ageSec)) + (mapBandits.stale ? ' <span class="k2">stale</span>' : ''));
+  const kind = AI_KINDS[a.type] || a.type || 'unknown';
+  let rows = kvRow('Type', kvMono(kind)) +
+    kvRow('Position', kvMono(Math.round(a.x) + ' / ' + Math.round(a.z))) +
+    kvRow('Alive for', kvMono(secs(a.age)) + ' <span class="k2">this session</span>') +
+    kvRow('Snapshot age', kvMono(secs(mapBandits.ageSec)) + (mapBandits.stale ? ' <span class="k2">stale</span>' : ''));
   const near = nearestPatrol(a);
   if (near) {
     const pt = near.patrol;
-    const inherits = (v) => (v === -1 || v == null ? '<span class="k2">inherits</span>' : mono(v));
     rows += '<span class="k2" style="margin-top:6px">likely patrol &mdash; nearest waypoint, ' + Math.round(near.dist) + 'm away</span>' +
-      kv('Name', '<b class="mono">' + escapeHtml(pt.Name || '(unnamed)') + '</b>') +
-      kv('AI count', mono(pt.NumberOfAI != null ? pt.NumberOfAI : '?')) +
-      kv('Spawn chance', mono(pt.Chance != null ? pt.Chance : '?')) +
-      kv('Faction', mono(pt.Faction || '?')) +
-      kv('Min / max spawn dist', inherits(pt.MinDistRadius) + ' / ' + inherits(pt.MaxDistRadius)) +
-      kv('Despawn dist', inherits(pt.DespawnRadius)) +
-      kv('Respawn time', inherits(pt.RespawnTime)) +
-      '<span class="k2">' + ((pt.MinDistRadius === -1 && pt.MaxDistRadius === -1)
-        ? 'No distance limits set, so this patrol spawns regardless of where players are.'
-        : 'Distance limits apply, so it spawns relative to players.') + '</span>' +
-      '<button class="ghost me-btn" id="aiGoPatrol" type="button">Open this patrol</button>';
+      kvRow('Name', '<b class="mono">' + escapeHtml(pt.Name || '(unnamed)') + '</b>');
+    // The patrol RECORD decides what shows, not a list here: every scalar field the document
+    // carries is reported, formatted by the same hints the patrol editor uses. An Expansion
+    // update that adds or renames a field lands in this panel with no code change.
+    for (const [k, v] of Object.entries(pt)) {
+      if (k === 'Name') continue;
+      if (v && typeof v === 'object') {                       // arrays/maps get the editor's own summary
+        const sum = PATROL_FIELD_RULES.summary(k, v);
+        if (sum) rows += kvRow(k, '<span class="k2">' + escapeHtml(sum) + '</span>');
+        continue;
+      }
+      const badge = PATROL_FIELD_RULES.badge(k, v);            // -1 reads as 'inherits', in ONE place
+      rows += kvRow(k, badge ? '<span class="k2">' + escapeHtml(badge) + '</span>' : kvMono(v));
+    }
+    rows += '<button class="ghost me-btn" id="aiGoPatrol" type="button">Open this patrol</button>';
   } else {
     rows += '<span class="k2">No live patrol document loaded for this map, so the source patrol cannot be inferred.</span>';
   }
@@ -1992,34 +2000,32 @@ function renderMapDetail() {
   // AI Location / AI Patrol". idx names the entry's position in that file's array (names
   // are not unique); the full config lives in the Files tab, restart to apply.
   if (p.kind) {
-    const kv = (k, v) => '<span><span class="k2">' + k + '</span>' + v + '</span>';
-    const mono = (v) => '<span class="mono">' + escapeHtml(String(v)) + '</span>';
     const srcFile = p.kind === 'location' ? 'AILocationSettings.json' : 'AIPatrolSettings.json';
-    let rows = kv('Name', '<b class="mono">' + escapeHtml(p.name) + '</b>') +
-               kv('Source', mono(srcFile + ' [' + p.idx + ']') + ' <span class="k2">read-only</span>');
+    let rows = kvRow('Name', '<b class="mono">' + escapeHtml(p.name) + '</b>') +
+               kvRow('Source', kvMono(srcFile + ' [' + p.idx + ']') + ' <span class="k2">read-only</span>');
     if (p.kind === 'location') {
-      rows += kv('Roam', escapeHtml((p.type || '?') + ' · r' + p.radius)) +
-              kv('Enabled', p.enabled ? 'yes' : '<b>no</b> <span class="k2">(dimmed on map)</span>') +
-              kv('X / Z', mono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1))) +
-              kv('Y', mono(p.y.toFixed(2)));
+      rows += kvRow('Roam', escapeHtml((p.type || '?') + ' · r' + p.radius)) +
+              kvRow('Enabled', p.enabled ? 'yes' : '<b>no</b> <span class="k2">(dimmed on map)</span>') +
+              kvRow('X / Z', kvMono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1))) +
+              kvRow('Y', kvMono(p.y.toFixed(2)));
     } else if (p.kind === 'patrol') {
-      rows += kv('Faction', escapeHtml(p.faction || '?')) +
-              kv('Loadout', p.loadout ? escapeHtml(p.loadout) : '<span class="k2">(faction default)</span>') +
-              kv('Units', mono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
-              kv('Behaviour', escapeHtml(p.behaviour || '?') + ' · ' + escapeHtml(p.speed || '?')) +
-              kv('Chance', mono(p.chance)) +
-              kv('Persist', p.persist ? 'yes' : 'no') +
-              kv('Route', mono((p.waypoints.length + 1) + ' waypoint' + (p.waypoints.length ? 's' : '')) + ' <span class="k2">(drawn when selected)</span>') +
-              kv('X / Z', mono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1)));
+      rows += kvRow('Faction', escapeHtml(p.faction || '?')) +
+              kvRow('Loadout', p.loadout ? escapeHtml(p.loadout) : '<span class="k2">(faction default)</span>') +
+              kvRow('Units', kvMono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
+              kvRow('Behaviour', escapeHtml(p.behaviour || '?') + ' · ' + escapeHtml(p.speed || '?')) +
+              kvRow('Chance', kvMono(p.chance)) +
+              kvRow('Persist', p.persist ? 'yes' : 'no') +
+              kvRow('Route', kvMono((p.waypoints.length + 1) + ' waypoint' + (p.waypoints.length ? 's' : '')) + ' <span class="k2">(drawn when selected)</span>') +
+              kvRow('X / Z', kvMono(p.x.toFixed(1) + ' / ' + p.z.toFixed(1)));
     } else {
-      rows += kv('Object class', mono(p.objectClass)) +
-              kv('Faction', escapeHtml(p.faction || '?')) +
-              kv('Units', mono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
-              kv('Behaviour', escapeHtml(p.behaviour || '?')) +
-              kv('Chance', mono(p.chance)) +
-              kv('Position', '<span class="k2">none — spawns at every instance of the class</span>');
+      rows += kvRow('Object class', kvMono(p.objectClass)) +
+              kvRow('Faction', escapeHtml(p.faction || '?')) +
+              kvRow('Units', kvMono(p.count + (p.countMax > p.count ? '–' + p.countMax : ''))) +
+              kvRow('Behaviour', escapeHtml(p.behaviour || '?')) +
+              kvRow('Chance', kvMono(p.chance)) +
+              kvRow('Position', '<span class="k2">none — spawns at every instance of the class</span>');
     }
-    if (p.delta !== undefined) rows += kv('Δ', '<span class="mp-badge ' + mapBand(p) + '">' + fmtDelta(p.delta) + '</span>');
+    if (p.delta !== undefined) rows += kvRow('Δ', '<span class="mp-badge ' + mapBand(p) + '">' + fmtDelta(p.delta) + '</span>');
     // Patrols/object patrols are editable field-by-field (the map owns them). Locations
     // stay read-only here (they need their own write verb).
     if (mapDerivedActive() && (p.kind === 'patrol' || p.kind === 'object')) rows += '<span><button class="btn-sm" id="mpEditPatrol">Edit fields</button></span>';
@@ -2164,7 +2170,7 @@ export function initMap() {
       }
       mapCursor = mapToWorld(e.offsetX, e.offsetY);
       // A live AI sits on top of the point markers, so it claims the hover first.
-      const hovAI = (drag && drag.moved) ? -1 : mapHitAI(e.offsetX, e.offsetY);
+      const hovAI = (drag && drag.moved) ? -1 : mapHitLive(e.offsetX, e.offsetY);
       const hov = (drag && drag.moved) || hovAI > -1 ? -1 : mapHitTest(e.offsetX, e.offsetY);
       if (hovAI > -1) { c.style.cursor = 'pointer'; el.mapTip.style.display = 'none'; }
       if (hov !== mapHover) {
@@ -2189,7 +2195,7 @@ export function initMap() {
             mapPlaceMode = null; if (el.mapCanvas) el.mapCanvas.style.cursor = '';
             startNewPatrol(w.x, gy == null ? 0 : gy, w.z);
           } else {
-            const ai = mapHitAI(e.offsetX, e.offsetY);
+            const ai = mapHitLive(e.offsetX, e.offsetY);
             const i = ai > -1 ? -1 : mapHitTest(e.offsetX, e.offsetY);
             if (ai > -1) selectMapAI(ai);
             else if (i > -1) { mapSelAI = -1; selectMapPt(i); }
