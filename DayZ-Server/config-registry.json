@@ -16,9 +16,7 @@
     "  defaults to 'General'. Both ride through CONFIG_MAP -> config-list to the editor. Folder",
     "  row: group, dir, subfolders, scope, web:'browse'.",
     "scope    - 'shared' = one file applied to EVERY map (edit once); 'map:<mission>' = belongs",
-    "           to that mission only. AI_Bandits shared templates live in common/ and apply to all",
-    "           maps; per-map placements live in maps/<mission>/. The overrides DOCUMENT is one",
-    "           shared file whose OWN schema layers common (all missions) vs per-mission patches.",
+    "           to that mission only; per-map placements live under maps/<mission>/.",
     "seed     - repo-root-relative source copied to the box ONLY when missing (fresh box / disaster",
     "           recovery); null = box-generated, never seeded from the repo. CODE files (mods.conf,",
     "           scripts, units) are shipped by Deploy-DayZServer's own $items, NOT seeded here.",
@@ -160,14 +158,15 @@
     },
     {
       "name": "AI-Classes",
-      "label": "AI Classes (shared)",
-      "box": "profiles/AI_Bandits/common/classification.json",
+      "label": "Map classes + missions",
+      "box": "profiles/AI_Shared/classification.json",
       "scope": "shared",
-      "seed": "deploy/profiles/AI_Bandits/common/classification.json",
+      "seed": "deploy/profiles/AI_Shared/classification.json",
       "mirror": "live",
       "web": "file",
       "category": "owned",
-      "check": "json"
+      "check": "json",
+      "about": "Map letters to missions, and the spawn categories the Map tab colours by. Not a mod file - the map reads it."
     },
     {
       "name": "ExpansionAI-patrols",

@@ -476,17 +476,10 @@ $items = @(
     # The VPP permission pair, SuperAdmins.txt and UserGroups.json are box-owned: shipping them
     # DRIFT-OVERWRITE would re-stamp the box copy on every run, clobbering on-box edits. The
     # repo copies stay under deploy/ as the backup only.
-    # NOTE: box-owned CONFIG CONTENT (the AI_Bandits source tree, map-points.json, classification,
-    # per-map StaticAIB, messages.xml, the Babaku per-map sources) is NO
+    # NOTE: box-owned CONFIG CONTENT (map-points.json, the map classes, messages.xml) is NO
     # LONGER listed here. It is declared once in config-registry.json and seeded-if-missing by the
     # "Config content" section below (single source; the API allowlist + pulls + validator read the
     # same file). $items now carries CODE only (ships on drift).
-    #
-    # AI_Bandits DynamicAIB/StaticAIB are per-map raw coords composed at prestart from
-    # common (shared templates, scope:shared) + maps/<mission> (per-map, scope:map:<mission>);
-    # Sakhal's dynamic spawns come entirely from map-points.json; Chernarus is PARKED (map.env +
-    # its registry/seed present but not the active mission);
-    # KnockKnock/AIB_UL/etc. are mod-generated; the box owns them (not seeded).
     @{ Src = "dayz-rcon.ps1";       Dst = Join-Path $ServerDir "dayz-rcon.ps1"; Sudo = $false; Exec = $true  }
     # Shared log-archive engine — single source in common/ (rsynced to the box alongside the
     # tooling tree); copied into the server dir so dayz-logarchive.timer runs it there.
@@ -498,8 +491,6 @@ $items = @(
     # the file itself - not just the masks the deploy renders into dayz-ctl. The row stays because
     # Confirm-LiveConfigs and the recovery tooling read the registry on the box.
     @{ Src = "../config-registry.json"; Dst = Join-Path $ServerDir "config-registry.json"; Sudo = $false; Exec = $false }
-    # AI bandit builder lives in the server dir so prestart composes the flat DynamicAIB/StaticAIB
-    # from common + maps/<mission> on every start (see the AI_Bandits source tree above).
     # serverDZ.cfg renderer (template + host.env secrets + server-settings.json). Lives in the
     # server dir because prestart rebuilds serverDZ.cfg on every start; the ENGINE is code, the
     # server-settings.json DOCUMENT is box-owned content seeded from config-registry.json.

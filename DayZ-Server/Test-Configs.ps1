@@ -7,7 +7,7 @@
     "Box builds, dev validates" done properly: not a prediction, an actual build. The box
     rebuilds every patched file as frozen-default + override patches at prestart, then composes
     the AI-bandit configs. Dev has the same inputs (config-defaults/ baselines
-    + the AI_Bandits source tree + spawn-points + Babaku sources + the custom-CE manifest) and
+    + spawn-points + the custom-CE manifest) and
     the SAME engines the box runs at prestart (
     Apply-CustomCE, Build-TransferSpawns). So this stages a throwaway ServerDir
     from the mirrors, runs the ACTUAL build chain against it, and validates the produced artifacts.
