@@ -159,18 +159,6 @@
       "check": "none"
     },
     {
-      "name": "Aib-common",
-      "label": "AI Bandits - Common",
-      "box": "profiles/AI_Bandits/common/DynamicAIB.common.json",
-      "scope": "shared",
-      "seed": "deploy/profiles/AI_Bandits/common/DynamicAIB.common.json",
-      "mirror": "live",
-      "web": "none",
-      "category": "owned",
-      "mod": "@aibandits",
-      "check": "json"
-    },
-    {
       "name": "AI-Classes",
       "label": "AI Classes (shared)",
       "box": "profiles/AI_Bandits/common/classification.json",
@@ -179,30 +167,6 @@
       "mirror": "live",
       "web": "file",
       "category": "owned",
-      "check": "json"
-    },
-    {
-      "name": "Aib-ul-config",
-      "label": "AI Bandits - Unleashed",
-      "box": "profiles/AIB_Unleashed/AIB_UL_Config.json",
-      "scope": "shared",
-      "seed": "deploy/profiles/AIB_Unleashed/AIB_UL_Config.json",
-      "mirror": "live",
-      "web": "none",
-      "category": "owned",
-      "mod": "@aibunleashed",
-      "check": "json"
-    },
-    {
-      "name": "Aib-knock",
-      "label": "AI Bandits - Knock Knock",
-      "box": "profiles/KnockKnockAIBandits/KnockKnockAIBandits_Settings.json",
-      "scope": "shared",
-      "seed": "deploy/profiles/KnockKnockAIBandits/KnockKnockAIBandits_Settings.json",
-      "mirror": "live",
-      "web": "none",
-      "category": "owned",
-      "mod": "@knockknock",
       "check": "json"
     },
     {
@@ -247,29 +211,6 @@
       "mirror": "live",
       "web": "file",
       "category": "owned",
-      "check": "json"
-    },
-    {
-      "name": "Babaku-spawner",
-      "label": "Bubaku Spawner (Sakhal)",
-      "box": "profiles/SpawnerBubaku/maps/dayzOffline.sakhal/SpawnerBubakuV2.json",
-      "scope": "map:dayzOffline.sakhal",
-      "seed": "deploy/profiles/SpawnerBubaku/maps/dayzOffline.sakhal/SpawnerBubakuV2.json",
-      "mirror": "live",
-      "web": "file",
-      "category": "owned",
-      "mod": "@babaku",
-      "check": "json"
-    },
-    {
-      "name": "staticaib-sakhal",
-      "box": "profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json",
-      "scope": "map:dayzOffline.sakhal",
-      "seed": "deploy/profiles/AI_Bandits/maps/dayzOffline.sakhal/StaticAIB.json",
-      "mirror": "live",
-      "web": "none",
-      "category": "owned",
-      "mod": "@aibandits",
       "check": "json"
     },
     {
@@ -875,8 +816,6 @@
   "generated": [
     "serverDZ.cfg",
     "profiles/AI_Shared/map-points.generated.json",
-    "profiles/AI_Bandits/DynamicAIB.json",
-    "profiles/AI_Bandits/StaticAIB.json",
     "mpmissions/*/expansion/settings/AIPatrols.draft.json",
     "mpmissions/*/expansion/settings/AILocations.draft.json"
   ]
